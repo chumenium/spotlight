@@ -1,0 +1,570 @@
+SpotLight API仕様書
+==================
+
+このドキュメントでは、SpotLightアプリのAPI仕様について説明します。
+
+## API概要
+
+### ベースURL
+```
+開発環境: https://api-dev.spotlight.app
+本番環境: https://api.spotlight.app
+```
+
+### 認証方式
+- **Bearer Token**: JWT形式のアクセストークン
+- **ヘッダー**: `Authorization: Bearer <token>`
+
+### レスポンス形式
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "Success",
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+### エラーレスポンス
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input data",
+    "details": {}
+  },
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+## 認証API
+
+### 1. ユーザー登録
+**POST** `/api/v1/auth/register`
+
+#### リクエスト
+```json
+{
+  "nickname": "ユーザー名",
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user_001",
+      "nickname": "ユーザー名",
+      "email": "user@example.com",
+      "profileImageUrl": null,
+      "bio": null,
+      "followersCount": 0,
+      "followingCount": 0,
+      "postsCount": 0,
+      "badges": [],
+      "createdAt": "2024-01-01T00:00:00Z"
+    },
+    "token": "jwt_token_here"
+  }
+}
+```
+
+### 2. ログイン
+**POST** `/api/v1/auth/login`
+
+#### リクエスト
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user_001",
+      "nickname": "ユーザー名",
+      "email": "user@example.com",
+      "profileImageUrl": "https://example.com/avatar.jpg",
+      "bio": "自己紹介文",
+      "followersCount": 42,
+      "followingCount": 18,
+      "postsCount": 25,
+      "badges": [
+        {
+          "id": "badge_001",
+          "name": "初投稿者",
+          "description": "初回投稿を完了しました",
+          "iconUrl": "https://example.com/badge.png",
+          "earnedAt": "2024-01-01T00:00:00Z"
+        }
+      ],
+      "createdAt": "2024-01-01T00:00:00Z"
+    },
+    "token": "jwt_token_here"
+  }
+}
+```
+
+### 3. ログアウト
+**POST** `/api/v1/auth/logout`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": null,
+  "message": "Logged out successfully"
+}
+```
+
+## ユーザーAPI
+
+### 1. プロフィール取得
+**GET** `/api/v1/users/{userId}`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "id": "user_001",
+    "nickname": "ユーザー名",
+    "profileImageUrl": "https://example.com/avatar.jpg",
+    "bio": "自己紹介文",
+    "followersCount": 42,
+    "followingCount": 18,
+    "postsCount": 25,
+    "badges": [
+      {
+        "id": "badge_001",
+        "name": "初投稿者",
+        "description": "初回投稿を完了しました",
+        "iconUrl": "https://example.com/badge.png",
+        "earnedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 2. プロフィール更新
+**PUT** `/api/v1/users/{userId}`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### リクエスト
+```json
+{
+  "nickname": "新しいユーザー名",
+  "bio": "新しい自己紹介文",
+  "profileImageUrl": "https://example.com/new_avatar.jpg"
+}
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "id": "user_001",
+    "nickname": "新しいユーザー名",
+    "profileImageUrl": "https://example.com/new_avatar.jpg",
+    "bio": "新しい自己紹介文",
+    "followersCount": 42,
+    "followingCount": 18,
+    "postsCount": 25,
+    "badges": [],
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+## 投稿API
+
+### 1. 投稿一覧取得
+**GET** `/api/v1/posts`
+
+#### クエリパラメータ
+- `page`: ページ番号 (デフォルト: 1)
+- `limit`: 取得件数 (デフォルト: 20, 最大: 50)
+- `sort`: ソート順 (`newest`, `popular`)
+- `tag`: タグフィルター
+- `userId`: ユーザーフィルター
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "posts": [
+      {
+        "id": "post_001",
+        "userId": "user_001",
+        "nickname": "ユーザー名",
+        "profileImageUrl": "https://example.com/avatar.jpg",
+        "content": "投稿内容",
+        "imageUrls": [
+          "https://example.com/image1.jpg",
+          "https://example.com/image2.jpg"
+        ],
+        "tags": ["料理", "レシピ"],
+        "likesCount": 15,
+        "commentsCount": 3,
+        "likedBy": ["user_002", "user_003"],
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 10,
+      "totalItems": 200,
+      "hasNext": true,
+      "hasPrev": false
+    }
+  }
+}
+```
+
+### 2. 投稿詳細取得
+**GET** `/api/v1/posts/{postId}`
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "id": "post_001",
+    "userId": "user_001",
+    "nickname": "ユーザー名",
+    "profileImageUrl": "https://example.com/avatar.jpg",
+    "content": "投稿内容",
+    "imageUrls": [
+      "https://example.com/image1.jpg"
+    ],
+    "tags": ["料理", "レシピ"],
+    "likesCount": 15,
+    "commentsCount": 3,
+    "likedBy": ["user_002", "user_003"],
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 3. 投稿作成
+**POST** `/api/v1/posts`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+#### リクエスト
+```
+content: "投稿内容"
+tags: ["料理", "レシピ"]
+images: [file1, file2, ...]
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "id": "post_002",
+    "userId": "user_001",
+    "nickname": "ユーザー名",
+    "profileImageUrl": "https://example.com/avatar.jpg",
+    "content": "投稿内容",
+    "imageUrls": [
+      "https://example.com/uploaded_image1.jpg"
+    ],
+    "tags": ["料理", "レシピ"],
+    "likesCount": 0,
+    "commentsCount": 0,
+    "likedBy": [],
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 4. 投稿更新
+**PUT** `/api/v1/posts/{postId}`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+#### リクエスト
+```
+content: "更新された投稿内容"
+tags: ["料理", "レシピ", "新タグ"]
+images: [file1, file2, ...]
+```
+
+### 5. 投稿削除
+**DELETE** `/api/v1/posts/{postId}`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": null,
+  "message": "Post deleted successfully"
+}
+```
+
+## いいねAPI
+
+### 1. いいね切り替え
+**POST** `/api/v1/posts/{postId}/like`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "isLiked": true,
+    "likesCount": 16
+  }
+}
+```
+
+## コメントAPI
+
+### 1. コメント一覧取得
+**GET** `/api/v1/posts/{postId}/comments`
+
+#### クエリパラメータ
+- `page`: ページ番号 (デフォルト: 1)
+- `limit`: 取得件数 (デフォルト: 20)
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "comments": [
+      {
+        "id": "comment_001",
+        "postId": "post_001",
+        "userId": "user_002",
+        "nickname": "コメントユーザー",
+        "profileImageUrl": "https://example.com/avatar2.jpg",
+        "content": "素晴らしいですね！",
+        "createdAt": "2024-01-01T00:30:00Z"
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 1,
+      "totalItems": 1,
+      "hasNext": false,
+      "hasPrev": false
+    }
+  }
+}
+```
+
+### 2. コメント作成
+**POST** `/api/v1/posts/{postId}/comments`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### リクエスト
+```json
+{
+  "content": "コメント内容"
+}
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "id": "comment_002",
+    "postId": "post_001",
+    "userId": "user_001",
+    "nickname": "ユーザー名",
+    "profileImageUrl": "https://example.com/avatar.jpg",
+    "content": "コメント内容",
+    "createdAt": "2024-01-01T01:00:00Z"
+  }
+}
+```
+
+## 通知API
+
+### 1. 通知一覧取得
+**GET** `/api/v1/notifications`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### クエリパラメータ
+- `page`: ページ番号 (デフォルト: 1)
+- `limit`: 取得件数 (デフォルト: 20)
+- `unreadOnly`: 未読のみ (true/false)
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "notifications": [
+      {
+        "id": "notification_001",
+        "type": "like",
+        "userId": "user_002",
+        "nickname": "いいねユーザー",
+        "profileImageUrl": "https://example.com/avatar2.jpg",
+        "content": "あなたの投稿にいいねしました",
+        "postId": "post_001",
+        "badgeId": null,
+        "isRead": false,
+        "createdAt": "2024-01-01T00:30:00Z"
+      }
+    ],
+    "unreadCount": 5,
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 3,
+      "totalItems": 50,
+      "hasNext": true,
+      "hasPrev": false
+    }
+  }
+}
+```
+
+### 2. 通知既読
+**PUT** `/api/v1/notifications/{notificationId}/read`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "isRead": true
+  }
+}
+```
+
+### 3. 全通知既読
+**PUT** `/api/v1/notifications/read-all`
+
+#### ヘッダー
+```
+Authorization: Bearer <token>
+```
+
+#### レスポンス
+```json
+{
+  "success": true,
+  "data": {
+    "readCount": 5
+  }
+}
+```
+
+## エラーコード
+
+### 認証エラー
+- `INVALID_CREDENTIALS`: 認証情報が無効
+- `TOKEN_EXPIRED`: トークンの有効期限切れ
+- `TOKEN_INVALID`: 無効なトークン
+- `UNAUTHORIZED`: 認証が必要
+
+### バリデーションエラー
+- `VALIDATION_ERROR`: 入力データが無効
+- `REQUIRED_FIELD`: 必須フィールドが不足
+- `INVALID_FORMAT`: 形式が無効
+
+### リソースエラー
+- `NOT_FOUND`: リソースが見つからない
+- `FORBIDDEN`: アクセス権限なし
+- `CONFLICT`: リソースの競合
+
+### サーバーエラー
+- `INTERNAL_ERROR`: 内部サーバーエラー
+- `SERVICE_UNAVAILABLE`: サービス利用不可
+- `RATE_LIMIT_EXCEEDED`: レート制限超過
+
+## レート制限
+
+### 制限値
+- **認証API**: 10回/分
+- **投稿API**: 30回/分
+- **いいねAPI**: 100回/分
+- **コメントAPI**: 60回/分
+- **通知API**: 60回/分
+
+### ヘッダー
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1640995200
+```
+
+## バージョニング
+
+### バージョン形式
+- **メジャー**: `/api/v1/` (破壊的変更)
+- **マイナー**: `/api/v1.1/` (新機能追加)
+- **パッチ**: `/api/v1.1.1/` (バグ修正)
+
+### サポートポリシー
+- **最新バージョン**: 完全サポート
+- **前バージョン**: 6ヶ月間サポート
+- **旧バージョン**: 非サポート

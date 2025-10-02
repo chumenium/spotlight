@@ -1,0 +1,224 @@
+SpotLight 開発ガイド
+====================
+
+このドキュメントでは、SpotLightアプリの開発における基本的なガイドラインとベストプラクティスについて説明します。
+
+## 開発環境セットアップ
+
+### 必要なツール
+1. **Flutter SDK** (3.0.0以上)
+2. **Dart SDK** (3.0.0以上)
+3. **Android Studio** または **VS Code**
+4. **Git**
+
+### 初期セットアップ手順
+1. Flutter SDKをインストール
+2. プロジェクトディレクトリに移動
+3. 依存関係をインストール:
+   ```
+   flutter pub get
+   ```
+4. アプリを実行:
+   ```
+   flutter run
+   ```
+
+## コーディング規約
+
+### Dart/Flutter規約
+1. **命名規則**:
+   - ファイル名: snake_case (例: user_profile.dart)
+   - クラス名: PascalCase (例: UserProfile)
+   - 変数・関数名: camelCase (例: userName, getUserData)
+   - 定数: SCREAMING_SNAKE_CASE (例: API_BASE_URL)
+
+2. **インポート順序**:
+   ```dart
+   // Dart SDK
+   import 'dart:async';
+   
+   // Flutter SDK
+   import 'package:flutter/material.dart';
+   
+   // 外部パッケージ
+   import 'package:provider/provider.dart';
+   
+   // 内部ファイル
+   import '../models/user.dart';
+   import '../providers/auth_provider.dart';
+   ```
+
+3. **コメント**:
+   - クラス・関数には適切なドキュメントコメントを記述
+   - 複雑なロジックには説明コメントを追加
+
+## アーキテクチャパターン
+
+### Provider + MVVM
+- **Model**: lib/models/ - データ構造の定義
+- **View**: lib/screens/ - UI画面
+- **ViewModel**: lib/providers/ - 状態管理とビジネスロジック
+
+### ディレクトリ構成の原則
+1. **単一責任の原則**: 各ファイルは一つの責任を持つ
+2. **関心の分離**: UI、ビジネスロジック、データを分離
+3. **再利用性**: 共通コンポーネントはwidgets/に配置
+
+## 状態管理ガイドライン
+
+### Provider使用時の注意点
+1. **適切なスコープ**: 必要な範囲でのみProviderを使用
+2. **パフォーマンス**: 不要な再ビルドを避ける
+3. **エラーハンドリング**: 適切なエラー状態の管理
+
+### 状態管理の例
+```dart
+// Provider定義
+class AuthProvider with ChangeNotifier {
+  User? _currentUser;
+  bool _isLoading = false;
+  
+  User? get currentUser => _currentUser;
+  bool get isLoading => _isLoading;
+  
+  Future<void> login(String email, String password) async {
+    _isLoading = true;
+    notifyListeners();
+    
+    try {
+      // API呼び出し
+      _currentUser = await authService.login(email, password);
+    } catch (e) {
+      // エラーハンドリング
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}
+```
+
+## UI/UXガイドライン
+
+### デザイン原則
+1. **モバイルファースト**: スマートフォンを優先した設計
+2. **アクセシビリティ**: 視覚障害者にも配慮したUI
+3. **一貫性**: 統一されたデザインシステム
+
+### カラーパレット
+- **プライマリ**: #FF6B35 (オレンジ)
+- **セカンダリ**: #2C3E50 (ダークブルー)
+- **アクセント**: #E74C3C (レッド)
+- **背景**: #F8F9FA (ライトグレー)
+
+### タイポグラフィ
+- **フォント**: Noto Sans JP
+- **見出し**: 24px, 20px, 18px
+- **本文**: 16px, 14px
+- **キャプション**: 12px
+
+## テスト戦略
+
+### テストの種類
+1. **ユニットテスト**: 個別の関数・クラスのテスト
+2. **ウィジェットテスト**: UIコンポーネントのテスト
+3. **統合テスト**: アプリ全体のテスト
+
+### テストファイル配置
+```
+test/
+├── unit/           # ユニットテスト
+├── widget/         # ウィジェットテスト
+└── integration/    # 統合テスト
+```
+
+## パフォーマンス最適化
+
+### メモリ管理
+1. **画像キャッシュ**: cached_network_imageの使用
+2. **リスト最適化**: ListView.builderの使用
+3. **不要な再ビルド**: constコンストラクタの使用
+
+### ネットワーク最適化
+1. **リクエスト最適化**: 必要なデータのみ取得
+2. **キャッシュ戦略**: 適切なキャッシュの実装
+3. **エラーハンドリング**: ネットワークエラーの適切な処理
+
+## セキュリティ考慮事項
+
+### データ保護
+1. **認証情報**: SharedPreferencesでの安全な保存
+2. **API通信**: HTTPSの使用
+3. **入力検証**: 適切なバリデーション
+
+### プライバシー
+1. **個人情報**: 最小限の情報収集
+2. **権限管理**: 必要な権限のみ要求
+3. **データ削除**: ユーザーによるデータ削除機能
+
+## デバッグ・ログ
+
+### ログレベル
+1. **DEBUG**: 開発時の詳細情報
+2. **INFO**: 一般的な情報
+3. **WARNING**: 警告
+4. **ERROR**: エラー
+
+### ログ出力例
+```dart
+import 'package:flutter/foundation.dart';
+
+void logInfo(String message) {
+  if (kDebugMode) {
+    print('[INFO] $message');
+  }
+}
+```
+
+## バージョン管理
+
+### Git運用
+1. **ブランチ戦略**: Git Flow
+2. **コミットメッセージ**: 明確で簡潔なメッセージ
+3. **プルリクエスト**: コードレビューの実施
+
+### バージョニング
+- **メジャー**: 大きな機能追加・破壊的変更
+- **マイナー**: 新機能追加
+- **パッチ**: バグ修正
+
+## デプロイメント
+
+### ビルド設定
+1. **デバッグビルド**: 開発用
+2. **リリースビルド**: 本番用
+3. **プロファイルビルド**: パフォーマンステスト用
+
+### ストア公開
+1. **Google Play Store**: Android
+2. **App Store**: iOS
+3. **メタデータ**: 適切な説明・スクリーンショット
+
+## トラブルシューティング
+
+### よくある問題
+1. **依存関係エラー**: flutter clean && flutter pub get
+2. **ビルドエラー**: キャッシュクリア
+3. **パフォーマンス問題**: Flutter Inspectorの使用
+
+### デバッグツール
+1. **Flutter Inspector**: UI構造の確認
+2. **Performance View**: パフォーマンス分析
+3. **Network Inspector**: ネットワーク通信の確認
+
+## 継続的改善
+
+### コードレビュー
+1. **定期的なレビュー**: 品質の維持
+2. **ベストプラクティス**: 最新の手法の採用
+3. **リファクタリング**: コードの改善
+
+### ドキュメント更新
+1. **API仕様**: 変更時の更新
+2. **README**: 新機能の追加
+3. **コメント**: コードの説明
