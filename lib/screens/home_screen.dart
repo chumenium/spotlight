@@ -23,6 +23,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   AnimationController? _ambientAnimationController;
   Animation<double>? _spotlightScaleAnimation;
   Animation<double>? _ambientOpacityAnimation;
+  
+  // ウィジェットの破棄状態を管理
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -61,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _pageController.dispose();
     _spotlightAnimationController?.dispose();
     _ambientAnimationController?.dispose();
@@ -587,17 +591,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     
     // 2秒後にアニメーションをリセット
     Future.delayed(const Duration(seconds: 2), () {
-      _ambientAnimationController?.reverse().then((_) {
-        _resetSpotlightState();
-      });
+      if (!_isDisposed && mounted) {
+        _ambientAnimationController?.reverse().then((_) {
+          if (!_isDisposed && mounted) {
+            _resetSpotlightState();
+          }
+        });
+      }
     });
   }
 
   void _resetSpotlightState() {
-    setState(() {
-      _swipeOffset = 0.0;
-      _isSpotlighting = false;
-    });
+    if (!_isDisposed && mounted) {
+      setState(() {
+        _swipeOffset = 0.0;
+        _isSpotlighting = false;
+      });
+    }
     _spotlightAnimationController?.reset();
     _ambientAnimationController?.reset();
   }
@@ -632,11 +642,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     
     // 2秒後にアニメーションをリセット
     Future.delayed(const Duration(seconds: 2), () {
-      _ambientAnimationController?.reverse().then((_) {
-        setState(() {
-          _isSpotlighting = false;
+      if (!_isDisposed && mounted) {
+        _ambientAnimationController?.reverse().then((_) {
+          if (!_isDisposed && mounted) {
+            setState(() {
+              _isSpotlighting = false;
+            });
+          }
         });
-      });
+      }
     });
   }
 

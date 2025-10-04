@@ -18,6 +18,9 @@ class _SearchScreenState extends State<SearchScreen> {
   final List<SearchHistory> _searchHistory = List.generate(8, (index) => SearchHistory.sample(index));
   final List<SearchSuggestion> _allSuggestions = List.generate(10, (index) => SearchSuggestion.sample(index));
   List<SearchSuggestion> _filteredSuggestions = [];
+  
+  // ウィジェットの破棄状態を管理
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -28,6 +31,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -35,24 +39,28 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onSearchChanged() {
     final query = _searchController.text;
-    setState(() {
-      if (query.isEmpty) {
-        _filteredSuggestions = _allSuggestions;
-      } else {
-        _filteredSuggestions = _allSuggestions
-            .where((suggestion) => 
-                suggestion.query.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
-    });
+    if (!_isDisposed && mounted) {
+      setState(() {
+        if (query.isEmpty) {
+          _filteredSuggestions = _allSuggestions;
+        } else {
+          _filteredSuggestions = _allSuggestions
+              .where((suggestion) => 
+                  suggestion.query.toLowerCase().contains(query.toLowerCase()))
+              .toList();
+        }
+      });
+    }
   }
 
   void _performSearch(String query) {
     if (query.trim().isEmpty) return;
     
-    setState(() {
-      _isSearching = true;
-    });
+    if (!_isDisposed && mounted) {
+      setState(() {
+        _isSearching = true;
+      });
+    }
     
     // 検索履歴に追加（実際のアプリでは永続化）
     final newHistory = SearchHistory(
@@ -62,18 +70,22 @@ class _SearchScreenState extends State<SearchScreen> {
       resultCount: '${(query.length * 10)}件',
     );
     
-    setState(() {
-      _searchHistory.insert(0, newHistory);
-      if (_searchHistory.length > 20) {
-        _searchHistory.removeLast();
-      }
-    });
+    if (!_isDisposed && mounted) {
+      setState(() {
+        _searchHistory.insert(0, newHistory);
+        if (_searchHistory.length > 20) {
+          _searchHistory.removeLast();
+        }
+      });
+    }
     
     // 検索結果画面への遷移（仮実装）
     Future.delayed(const Duration(milliseconds: 500), () {
-      setState(() {
-        _isSearching = false;
-      });
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
     });
   }
 
