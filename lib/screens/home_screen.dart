@@ -19,7 +19,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ジェスチャー関連
   double _swipeOffset = 0.0;
   bool _isSpotlighting = false;
-  bool _isSpotlighted = false; // スポットライト済み状態
   AnimationController? _ambientAnimationController;
   Animation<double>? _ambientOpacityAnimation;
   
@@ -159,27 +158,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               },
             ),
           
-          // スポットライト完了時のアニメーション
-          if (_isSpotlighted && _ambientOpacityAnimation != null)
-            AnimatedBuilder(
-              animation: _ambientOpacityAnimation!,
-              builder: (context, child) {
-                return Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 1.5,
-                      colors: [
-                        SpotLightColors.getSpotlightColor(0).withOpacity(0.4 * _ambientOpacityAnimation!.value),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
           
           // 下部の投稿者情報とコントロール
           Positioned(
@@ -583,16 +561,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // スポットライト実行（共通処理）
   void _executeSpotlight() {
-    setState(() {
-      _isSpotlighted = true;
-      _swipeOffset = 0.0; // スワイプオフセットをリセット
-    });
-    
-    // アンビエントライティングアニメーション開始
-    _ambientAnimationController?.forward();
+    final currentPost = _posts[_currentIndex];
+    final isCurrentlySpotlighted = currentPost.isSpotlighted;
     
     // 投稿のスポットライト状態を更新
-    final currentPost = _posts[_currentIndex];
     _posts[_currentIndex] = Post(
       id: currentPost.id,
       userId: currentPost.userId,
@@ -603,25 +575,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       type: currentPost.type,
       mediaUrl: currentPost.mediaUrl,
       thumbnailUrl: currentPost.thumbnailUrl,
-      likes: currentPost.isSpotlighted ? currentPost.likes - 1 : currentPost.likes + 1,
+      likes: isCurrentlySpotlighted ? currentPost.likes - 1 : currentPost.likes + 1,
       comments: currentPost.comments,
       shares: currentPost.shares,
-      isSpotlighted: !currentPost.isSpotlighted,
+      isSpotlighted: !isCurrentlySpotlighted,
       createdAt: currentPost.createdAt,
     );
     
-    // 2秒後にアニメーションをリセット
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!_isDisposed && mounted) {
-        _ambientAnimationController?.reverse().then((_) {
-          if (!_isDisposed && mounted) {
-            setState(() {
-              _isSpotlighted = false;
-            });
-          }
-        });
-      }
-    });
+    if (!isCurrentlySpotlighted) {
+      // スポットライトをつける場合：アニメーション付き
+      setState(() {
+        _isSpotlighting = true;
+        _swipeOffset = 0.0;
+      });
+      
+      // アンビエントライティングアニメーション開始
+      _ambientAnimationController?.forward();
+      
+      // 2秒後にアニメーション付きで消す
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!_isDisposed && mounted) {
+          _ambientAnimationController?.reverse().then((_) {
+            if (!_isDisposed && mounted) {
+              setState(() {
+                _isSpotlighting = false;
+              });
+              _ambientAnimationController?.reset();
+            }
+          });
+        }
+      });
+    } else {
+      // スポットライトを消す場合：アニメーションなし、色もなし
+      setState(() {
+        _swipeOffset = 0.0;
+      });
+    }
   }
 
   void _resetSpotlightState() {
@@ -629,7 +618,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _swipeOffset = 0.0;
         _isSpotlighting = false;
-        _isSpotlighted = false;
       });
     }
     _ambientAnimationController?.reset();
