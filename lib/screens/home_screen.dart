@@ -19,9 +19,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ジェスチャー関連
   double _swipeOffset = 0.0;
   bool _isSpotlighting = false;
-  AnimationController? _spotlightAnimationController;
+  bool _isSpotlighted = false; // スポットライト済み状態
   AnimationController? _ambientAnimationController;
-  Animation<double>? _spotlightScaleAnimation;
   Animation<double>? _ambientOpacityAnimation;
   
   // ウィジェットの破棄状態を管理
@@ -34,25 +33,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
     
     // アニメーションコントローラー初期化
-    _spotlightAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
     _ambientAnimationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
     
     // アニメーション設定
-    _spotlightScaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _spotlightAnimationController!,
-      curve: Curves.elasticOut,
-    ));
-    
     _ambientOpacityAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -66,7 +52,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _isDisposed = true;
     _pageController.dispose();
-    _spotlightAnimationController?.dispose();
     _ambientAnimationController?.dispose();
     // ステータスバーを表示に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -79,23 +64,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // 下のレイヤー（常駐の懐中電灯アイコン）
+          Positioned.fill(
+            child: Transform.translate(
+              offset: Offset(_swipeOffset * 0.1, 0),
+              child: Transform.rotate(
+                angle: _swipeOffset * 0.0005, // 下のレイヤーも軽く回転
+                alignment: Alignment.bottomLeft,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        SpotLightColors.getSpotlightColor(0).withOpacity(0.8),
+                        SpotLightColors.getSpotlightColor(0).withOpacity(0.6),
+                      ],
+                    ),
+                  ),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.flashlight_on,
+                          color: Colors.white,
+                          size: 80,
+                        ),
+                        SizedBox(height: 20),
+                        Text(
+                          'スポットライト！',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
           // 全画面投稿表示（ジェスチャー対応）
-          GestureDetector(
-            onPanUpdate: _handlePanUpdate,
-            onPanEnd: _handlePanEnd,
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical, // 縦スクロール
-              onPageChanged: (index) {
-                setState(() {
-                  _currentIndex = index;
-                  _resetSpotlightState();
-                });
-              },
-              itemCount: _posts.length,
-              itemBuilder: (context, index) {
-                return _buildPostContent(_posts[index]);
-              },
+          Positioned.fill(
+            child: GestureDetector(
+              onPanUpdate: _handlePanUpdate,
+              onPanEnd: _handlePanEnd,
+              child: Transform.translate(
+                offset: Offset(_swipeOffset * 0.3, 0), // スワイプに応じてズレ
+                child: Transform.rotate(
+                  angle: _swipeOffset * 0.001, // スワイプに応じて左下を中心に回転
+                  alignment: Alignment.bottomLeft, // 左下を中心に回転
+                  child: PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical, // 縦スクロール
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentIndex = index;
+                        _resetSpotlightState();
+                      });
+                    },
+                    itemCount: _posts.length,
+                    itemBuilder: (context, index) {
+                      return _buildPostContent(_posts[index]);
+                    },
+                  ),
+                ),
+              ),
             ),
           ),
           
@@ -121,38 +159,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               },
             ),
           
-          // スポットライトアイコン（右スワイプ時）
-          if (_swipeOffset > 0 && _spotlightScaleAnimation != null)
+          // スポットライト完了時のアニメーション
+          if (_isSpotlighted && _ambientOpacityAnimation != null)
             AnimatedBuilder(
-              animation: _spotlightScaleAnimation!,
+              animation: _ambientOpacityAnimation!,
               builder: (context, child) {
-                return Positioned(
-                  right: 50 + (_swipeOffset * 0.5),
-                  top: MediaQuery.of(context).size.height * 0.5 - 40,
-                  child: Transform.scale(
-                    scale: _spotlightScaleAnimation!.value,
-                    child: GestureDetector(
-                      onTap: _handleSpotlightTap,
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: SpotLightColors.getSpotlightColor(0),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: SpotLightColors.getSpotlightColor(0).withOpacity(0.5),
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.star,
-                          color: Colors.white,
-                          size: 40,
-                        ),
-                      ),
+                return Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.5,
+                      colors: [
+                        SpotLightColors.getSpotlightColor(0).withOpacity(0.4 * _ambientOpacityAnimation!.value),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
                 );
@@ -441,15 +463,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildRightBottomControls(Post post) {
     return Column(
       children: [
-        // スポットライトボタン
-        _buildControlButton(
-          icon: post.isSpotlighted ? Icons.star : Icons.star_border,
-          color: post.isSpotlighted 
-              ? SpotLightColors.getSpotlightColor(0)
-              : Colors.white,
-          label: '${post.likes}',
-          onTap: () => _handleSpotlightButton(post),
-        ),
+              // スポットライトボタン
+              _buildControlButton(
+                icon: post.isSpotlighted ? Icons.flashlight_on : Icons.flashlight_on_outlined,
+                color: post.isSpotlighted 
+                    ? SpotLightColors.getSpotlightColor(0)
+                    : Colors.white,
+                label: '${post.likes}',
+                onTap: () => _handleSpotlightButton(post),
+              ),
         const SizedBox(height: 20),
         // コメントボタン
         _buildControlButton(
@@ -542,86 +564,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // 右スワイプのみを検出
     if (details.delta.dx > 0) {
       setState(() {
-        _swipeOffset = math.min(_swipeOffset + details.delta.dx, 200.0);
+        _swipeOffset = math.min(_swipeOffset + details.delta.dx, 300.0);
       });
-      
-      // スワイプ量に応じてスポットライトアイコンを表示
-      if (_swipeOffset > 50 && _spotlightAnimationController != null && !_spotlightAnimationController!.isAnimating) {
-        _spotlightAnimationController!.forward();
-      }
     }
   }
 
   void _handlePanEnd(DragEndDetails details) {
-    // スワイプが十分でない場合は元に戻す
-    if (_swipeOffset < 100) {
+    // スワイプが十分な場合は即座にスポットライト実行
+    if (_swipeOffset > 80) {
+      _executeSpotlight();
+    } else {
+      // スワイプが不十分な場合は元に戻す
       setState(() {
         _swipeOffset = 0.0;
       });
-      _spotlightAnimationController?.reverse();
     }
   }
 
-  void _handleSpotlightTap() {
-    // スポットライト実行
+  // スポットライト実行（共通処理）
+  void _executeSpotlight() {
     setState(() {
-      _isSpotlighting = true;
+      _isSpotlighted = true;
+      _swipeOffset = 0.0; // スワイプオフセットをリセット
     });
     
     // アンビエントライティングアニメーション開始
     _ambientAnimationController?.forward();
     
     // 投稿のスポットライト状態を更新
-    _posts[_currentIndex] = Post(
-      id: _posts[_currentIndex].id,
-      userId: _posts[_currentIndex].userId,
-      username: _posts[_currentIndex].username,
-      userAvatar: _posts[_currentIndex].userAvatar,
-      title: _posts[_currentIndex].title,
-      content: _posts[_currentIndex].content,
-      type: _posts[_currentIndex].type,
-      mediaUrl: _posts[_currentIndex].mediaUrl,
-      thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
-      likes: _posts[_currentIndex].likes,
-      comments: _posts[_currentIndex].comments,
-      shares: _posts[_currentIndex].shares,
-      isSpotlighted: true, // スポットライト状態を更新
-      createdAt: _posts[_currentIndex].createdAt,
-    );
-    
-    // 2秒後にアニメーションをリセット
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!_isDisposed && mounted) {
-        _ambientAnimationController?.reverse().then((_) {
-          if (!_isDisposed && mounted) {
-            _resetSpotlightState();
-          }
-        });
-      }
-    });
-  }
-
-  void _resetSpotlightState() {
-    if (!_isDisposed && mounted) {
-      setState(() {
-        _swipeOffset = 0.0;
-        _isSpotlighting = false;
-      });
-    }
-    _spotlightAnimationController?.reset();
-    _ambientAnimationController?.reset();
-  }
-
-  // ボタン機能実装
-  void _handleSpotlightButton(Post post) {
-    setState(() {
-      _isSpotlighting = true;
-    });
-    
-    // アンビエントライティングアニメーション開始
-    _ambientAnimationController?.forward();
-    
-    // 投稿のスポットライト状態とライク数を更新
     final currentPost = _posts[_currentIndex];
     _posts[_currentIndex] = Post(
       id: currentPost.id,
@@ -646,12 +616,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _ambientAnimationController?.reverse().then((_) {
           if (!_isDisposed && mounted) {
             setState(() {
-              _isSpotlighting = false;
+              _isSpotlighted = false;
             });
           }
         });
       }
     });
+  }
+
+  void _resetSpotlightState() {
+    if (!_isDisposed && mounted) {
+      setState(() {
+        _swipeOffset = 0.0;
+        _isSpotlighting = false;
+        _isSpotlighted = false;
+      });
+    }
+    _ambientAnimationController?.reset();
+  }
+
+  // ボタン機能実装
+  void _handleSpotlightButton(Post post) {
+    _executeSpotlight();
   }
 
   void _handleCommentButton(Post post) {
