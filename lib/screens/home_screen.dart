@@ -1,6 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:math' as math;
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
 
@@ -23,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   AnimationController? _ambientAnimationController;
   Animation<double>? _spotlightScaleAnimation;
   Animation<double>? _ambientOpacityAnimation;
+  Timer? _ambientResetTimer;
 
   @override
   void initState() {
@@ -61,9 +64,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _ambientResetTimer?.cancel();
+    _ambientResetTimer = null;
     _pageController.dispose();
     _spotlightAnimationController?.dispose();
+    _spotlightAnimationController = null;
     _ambientAnimationController?.dispose();
+    _ambientAnimationController = null;
     // ステータスバーを表示に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -585,15 +592,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       createdAt: _posts[_currentIndex].createdAt,
     );
     
-    // 2秒後にアニメーションをリセット
-    Future.delayed(const Duration(seconds: 2), () {
-      _ambientAnimationController?.reverse().then((_) {
-        _resetSpotlightState();
-      });
-    });
+    _scheduleAmbientReset(_resetSpotlightState);
   }
 
   void _resetSpotlightState() {
+    if (!mounted) return;
     setState(() {
       _swipeOffset = 0.0;
       _isSpotlighting = false;
@@ -630,12 +633,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       createdAt: currentPost.createdAt,
     );
     
-    // 2秒後にアニメーションをリセット
-    Future.delayed(const Duration(seconds: 2), () {
-      _ambientAnimationController?.reverse().then((_) {
-        setState(() {
-          _isSpotlighting = false;
-        });
+    _scheduleAmbientReset(() {
+      if (!mounted) return;
+      setState(() {
+        _isSpotlighting = false;
+      });
+    });
+  }
+
+  void _scheduleAmbientReset(VoidCallback onReverseComplete) {
+    _ambientResetTimer?.cancel();
+    _ambientResetTimer = Timer(const Duration(seconds: 2), () {
+      _ambientResetTimer = null;
+      if (!mounted) return;
+      final ambientController = _ambientAnimationController;
+      if (ambientController == null) return;
+      ambientController.reverse().whenComplete(() {
+        if (!mounted) return;
+        onReverseComplete();
       });
     });
   }
