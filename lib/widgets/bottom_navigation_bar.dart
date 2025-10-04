@@ -47,7 +47,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                       ),
                       _buildNavItem(
                         icon: Icons.add_outlined,
-                        activeIcon: Icons.add,
+                        activeIcon: Icons.add_circle_sharp,
                         index: 2,
                         isCenter: true,
                       ),
