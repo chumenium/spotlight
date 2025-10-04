@@ -54,7 +54,7 @@ class MainScreen extends StatelessWidget {
             index: navigationProvider.currentIndex,
             children: const [
               HomeScreen(),
-              SearchScreen(),
+              Placeholder(), // SearchScreenは独立した画面として表示
               CreatePostScreen(),
               NotificationsScreen(),
               ProfileScreen(),
@@ -63,7 +63,17 @@ class MainScreen extends StatelessWidget {
           bottomNavigationBar: CustomBottomNavigationBar(
             currentIndex: navigationProvider.currentIndex,
             onTap: (index) {
-              navigationProvider.setCurrentIndex(index);
+              if (index == 1) {
+                // 検索画面は独立した画面として表示
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SearchScreen(),
+                  ),
+                );
+              } else {
+                navigationProvider.setCurrentIndex(index);
+              }
             },
           ),
         );
