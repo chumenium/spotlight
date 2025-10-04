@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../models/search_history.dart';
 import '../utils/spotlight_colors.dart';
 
@@ -13,6 +16,7 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
+  Timer? _searchDelayTimer;
   
   // サンプルデータ
   final List<SearchHistory> _searchHistory = List.generate(8, (index) => SearchHistory.sample(index));
@@ -28,6 +32,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    _searchDelayTimer?.cancel();
+    _searchDelayTimer = null;
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -70,7 +76,10 @@ class _SearchScreenState extends State<SearchScreen> {
     });
     
     // 検索結果画面への遷移（仮実装）
-    Future.delayed(const Duration(milliseconds: 500), () {
+    _searchDelayTimer?.cancel();
+    _searchDelayTimer = Timer(const Duration(milliseconds: 500), () {
+      _searchDelayTimer = null;
+      if (!mounted) return;
       setState(() {
         _isSearching = false;
       });
