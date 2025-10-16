@@ -1,0 +1,126 @@
+--属性の説明
+contentID:一意な数値を自動で設定
+spotlightnum:数値
+contentpath:128文字可変
+link:128文字可変
+posttimestamp:投稿時間年月日時分
+commentID:contentIDごとに一意な自動で設定される数値
+commenttimestamp:投稿時間年月日時分
+commenttext:コメントテキストを格納
+parentcommentID:自己参照
+userID:一意な数値を自動で設定
+iconimgpath:128文字可変
+spotlightflag:true,falseを判断
+bookmarkflag:true,falseを判断
+playlistID:userIDごとに一意な自動で設定される数値
+contentID:userIDごとplaylistIDごとに一意な自動で設定される数値
+playnum:再生回数を保存する
+
+--DB接続
+psql -U postgres -d spotlight
+
+--DB作成
+CREATE DATABASE spotlight;
+
+-- userテーブル
+CREATE TABLE user (
+    userID SERIAL PRIMARY KEY,
+    iconimgpath VARCHAR(128)
+);
+
+-- contentテーブル
+CREATE TABLE content (
+    contentID SERIAL PRIMARY KEY,
+    spotlightnum INTEGER,
+    contentpath VARCHAR(128),
+    link VARCHAR(128),
+    title VARCHAR(128),
+    posttimestamp TIMESTAMP,
+    userID INTEGER REFERENCES "user"(userID)
+);
+
+-- commentテーブル
+CREATE TABLE comment (
+    contentID INTEGER REFERENCES content(contentID),
+    commentID SERIAL,
+    userID INTEGER REFERENCES "user"(userID),
+    commenttimestamp TIMESTAMP,
+    commenttext TEXT,
+    parentcommentID INTEGER,
+    PRIMARY KEY (contentID, commentID),
+    FOREIGN KEY (parentcommentID) REFERENCES comment(commentID)
+);
+
+-- contentuserテーブル
+CREATE TABLE contentuser (
+    contentID INTEGER REFERENCES content(contentID),
+    userID INTEGER REFERENCES "user"(userID),
+    spotlightflag BOOLEAN,
+    bookmarkflag BOOLEAN,
+    PRIMARY KEY (contentID, userID)
+);
+
+-- playlistテーブル
+CREATE TABLE playlist (
+    userID INTEGER REFERENCES "user"(userID),
+    playlistID SERIAL,
+    PRIMARY KEY (userID, playlistID)
+);
+
+-- playlistdetailテーブル
+CREATE TABLE playlistdetail (
+    userID INTEGER,
+    playlistID INTEGER,
+    contentID INTEGER REFERENCES content(contentID),
+    PRIMARY KEY (userID, playlistID, contentID),
+    FOREIGN KEY (userID, playlistID) REFERENCES playlist(userID, playlistID)
+);
+
+
+--------------------------------コピペOK----------------------------------------------
+
+CREATE TABLE "user" (
+    userID SERIAL PRIMARY KEY,
+    iconimgpath VARCHAR(128)
+);
+CREATE TABLE content (
+    contentID SERIAL PRIMARY KEY,
+    spotlightnum INTEGER,
+    contentpath VARCHAR(128),
+    link VARCHAR(128),
+    title VARCHAR(128),
+    posttimestamp TIMESTAMP,
+    userID INTEGER REFERENCES "user"(userID)
+);
+CREATE TABLE comment (
+    contentID INTEGER REFERENCES content(contentID),
+    commentID SERIAL,
+    userID INTEGER REFERENCES "user"(userID),
+    commenttimestamp TIMESTAMP,
+    commenttext TEXT,
+    parentcommentID INTEGER,
+    PRIMARY KEY (contentID, commentID),
+    FOREIGN KEY (contentID, parentcommentID)
+        REFERENCES comment(contentID, commentID)
+);
+CREATE TABLE contentuser (
+    contentID INTEGER REFERENCES content(contentID),
+    userID INTEGER REFERENCES "user"(userID),
+    spotlightflag BOOLEAN,
+    bookmarkflag BOOLEAN,
+    PRIMARY KEY (contentID, userID)
+);
+CREATE TABLE playlist (
+    userID INTEGER REFERENCES "user"(userID),
+    playlistID SERIAL,
+    PRIMARY KEY (userID, playlistID)
+);
+CREATE TABLE playlistdetail (
+    userID INTEGER,
+    playlistID INTEGER,
+    contentID INTEGER REFERENCES content(contentID),
+    PRIMARY KEY (userID, playlistID, contentID),
+    FOREIGN KEY (userID, playlistID) REFERENCES playlist(userID, playlistID)
+);
+ALTER TABLE content
+ADD COLUMN playnum INTEGER DEFAULT 0;
