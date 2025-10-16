@@ -15,6 +15,103 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
 CORS(app)
 
+
+
+
+#-------------------------------------- JWT --------------------------------------
+# ===== 設定 =====
+GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+JWT_SECRET = "YOUR_SECRET_KEY"  # 実運用では環境変数で設定する
+JWT_ALGORITHM = "HS256"
+JWT_EXP_HOURS = 24  # JWTの有効期限（例：24時間）
+
+# ===== Google認証 & JWT発行 =====
+@app.route("/api/auth/google", methods=["POST"])
+def google_auth():
+    try:
+        # Flutterなどから送られた id_token を取得
+        data = request.get_json()
+        token = data.get("id_token")
+
+        if not token:
+            return jsonify({"error": "id_token is required"}), 400
+
+        # Googleの公開鍵でトークンを検証
+        idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
+
+        # 正常ならGoogleアカウント情報を取得
+        google_id = idinfo["sub"]
+        email = idinfo.get("email")
+        name = idinfo.get("name")
+        picture = idinfo.get("picture")
+
+        # 独自のJWTを発行
+        payload = {
+            "google_id": google_id,
+            "email": email,
+            "name": name,
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXP_HOURS)
+        }
+        jwt_token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        # クライアントに返す
+        return jsonify({
+            "status": "success",
+            "jwt": jwt_token,
+            "user": {
+                "email": email,
+                "name": name,
+                "picture": picture
+            }
+        })
+
+    except ValueError:
+        return jsonify({"error": "Invalid Google token"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== JWT認証用デコレーター =====
+from functools import wraps
+
+def jwt_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
+
+        token = auth_header.split(" ")[1]
+
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+
+        # 認証情報をFlaskコンテキストに追加（必要なら）
+        request.user = payload
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ===== JWT保護されたAPIの例 =====
+@app.route("/api/userinfo", methods=["GET"])
+@jwt_required
+def user_info():
+    user = request.user
+    return jsonify({
+        "message": "認証に成功しました！",
+        "user": {
+            "google_id": user["google_id"],
+            "email": user["email"],
+            "name": user["name"]
+        }
+    })
+
+
+#-------------------------------------- D B --------------------------------------
 # PostgreSQLデータベース接続設定
 DATABASE_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
