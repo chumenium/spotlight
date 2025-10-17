@@ -61,119 +61,77 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 下のレイヤー（常駐の懐中電灯アイコン）
-          Positioned.fill(
-            child: Transform.translate(
-              offset: Offset(_swipeOffset * 0.1, 0),
-              child: Transform.rotate(
-                angle: _swipeOffset * 0.0005, // 下のレイヤーも軽く回転
-                alignment: Alignment.bottomLeft,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        SpotLightColors.getSpotlightColor(0).withOpacity(0.8),
-                        SpotLightColors.getSpotlightColor(0).withOpacity(0.6),
-                      ],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.flashlight_on,
-                          color: Colors.white,
-                          size: 80,
-                        ),
-                        SizedBox(height: 20),
-                        Text(
-                          'スポットライト！',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          
-          // 全画面投稿表示（ジェスチャー対応）
-          Positioned.fill(
-            child: GestureDetector(
-              onPanUpdate: _handlePanUpdate,
-              onPanEnd: _handlePanEnd,
+      body: GestureDetector(
+        onPanUpdate: _handlePanUpdate,
+        onPanEnd: _handlePanEnd,
+        child: Stack(
+          children: [
+            // メイン投稿表示（不透明な背景で完全に覆う）
+            Positioned.fill(
               child: Transform.translate(
                 offset: Offset(_swipeOffset * 0.3, 0), // スワイプに応じてズレ
                 child: Transform.rotate(
                   angle: _swipeOffset * 0.001, // スワイプに応じて左下を中心に回転
                   alignment: Alignment.bottomLeft, // 左下を中心に回転
-                  child: PageView.builder(
-                    controller: _pageController,
-                    scrollDirection: Axis.vertical, // 縦スクロール
-                    onPageChanged: (index) {
-                      setState(() {
-                        _currentIndex = index;
-                        _resetSpotlightState();
-                      });
-                    },
-                    itemCount: _posts.length,
-                    itemBuilder: (context, index) {
-                      return _buildPostContent(_posts[index]);
-                    },
+                  child: Container(
+                    color: Colors.black, // 不透明な背景を追加
+                    child: PageView.builder(
+                      controller: _pageController,
+                      scrollDirection: Axis.vertical, // 縦スクロール
+                      onPageChanged: (index) {
+                        setState(() {
+                          _currentIndex = index;
+                          _resetSpotlightState();
+                        });
+                      },
+                      itemCount: _posts.length,
+                      itemBuilder: (context, index) {
+                        return _buildPostContent(_posts[index]);
+                      },
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          
-          // スポットライトアンビエントライティング
-          if (_isSpotlighting && _ambientOpacityAnimation != null)
-            AnimatedBuilder(
-              animation: _ambientOpacityAnimation!,
-              builder: (context, child) {
-                return Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 1.5,
-                      colors: [
-                        SpotLightColors.getSpotlightColor(0).withOpacity(0.3 * _ambientOpacityAnimation!.value),
-                        Colors.transparent,
-                      ],
+            
+            // スポットライトアンビエントライティング（投稿の上に表示）
+            if (_isSpotlighting && _ambientOpacityAnimation != null)
+              AnimatedBuilder(
+                animation: _ambientOpacityAnimation!,
+                builder: (context, child) {
+                  return Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.center,
+                          radius: 1.5,
+                          colors: [
+                            SpotLightColors.getSpotlightColor(0).withOpacity(0.3 * _ambientOpacityAnimation!.value),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
+            
+            // 下部の投稿者情報とコントロール
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildBottomControls(_posts[_currentIndex]),
             ),
-          
-          
-          // 下部の投稿者情報とコントロール
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomControls(_posts[_currentIndex]),
-          ),
-          
-          // 右下のコントロールボタン
-          Positioned(
-            bottom: 120,
-            right: 20,
-            child: _buildRightBottomControls(_posts[_currentIndex]),
-          ),
-        ],
+            
+            // 右下のコントロールボタン
+            Positioned(
+              bottom: 120,
+              right: 20,
+              child: _buildRightBottomControls(_posts[_currentIndex]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -273,43 +231,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       width: double.infinity,
       height: double.infinity,
+      color: Colors.black, // 不透明な背景を追加
       padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            SpotLightColors.getSpotlightColor(0).withOpacity(0.1),
-            SpotLightColors.getSpotlightColor(1).withOpacity(0.1),
-          ],
-        ),
-      ),
-      child: Center(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                post.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 30),
-              Text(
-                post.content,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 18,
-                  height: 1.6,
-                ),
-                textAlign: TextAlign.center,
-              ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              SpotLightColors.getSpotlightColor(0).withOpacity(0.1),
+              SpotLightColors.getSpotlightColor(1).withOpacity(0.1),
             ],
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  post.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 30),
+                Text(
+                  post.content,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 18,
+                    height: 1.6,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -463,7 +424,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _buildControlButton(
           icon: Icons.share,
           color: Colors.white,
-          label: '${post.shares}',
           onTap: () => _handleShareButton(post),
         ),
       ],

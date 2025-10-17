@@ -116,23 +116,6 @@ class _SearchScreenState extends State<SearchScreen> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // 戻るボタン
-          IconButton(
-            onPressed: () {
-              if (_searchController.text.isNotEmpty) {
-                _searchController.clear();
-                _searchFocusNode.unfocus();
-              } else {
-                // ホーム画面の投稿表示に戻る
-                Navigator.of(context).pop();
-              }
-            },
-            icon: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-            ),
-          ),
-          
           // 検索入力フィールド
           Expanded(
             child: Container(
@@ -149,6 +132,11 @@ class _SearchScreenState extends State<SearchScreen> {
                   hintText: '検索',
                   hintStyle: TextStyle(color: Colors.grey[400]),
                   border: InputBorder.none,
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: Colors.grey,
+                    size: 20,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
@@ -168,17 +156,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 onSubmitted: _performSearch,
               ),
-            ),
-          ),
-          
-          const SizedBox(width: 8),
-          
-          // 検索ボタン
-          IconButton(
-            onPressed: () => _performSearch(_searchController.text),
-            icon: const Icon(
-              Icons.search,
-              color: Colors.white,
             ),
           ),
         ],
