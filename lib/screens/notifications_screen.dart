@@ -9,13 +9,25 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen> 
+    with SingleTickerProviderStateMixin {
   late List<NotificationItem> notifications;
+  late TabController _tabController;
+  
+  // タブの定義
+  final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'トレンド', 'システム'];
 
   @override
   void initState() {
     super.initState();
     notifications = NotificationItem.getSampleNotifications();
+    _tabController = TabController(length: _tabs.length, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -31,6 +43,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         backgroundColor: const Color(0xFF1E1E1E),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.done_all, color: Colors.white),
@@ -60,35 +73,116 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             tooltip: 'すべて既読にする',
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          indicatorColor: SpotLightColors.primaryOrange,
+          indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.grey,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.normal,
+          ),
+          tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+        ),
       ),
-      body: notifications.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_none,
-                    size: 80,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    '通知はありません',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              itemCount: notifications.length,
-              itemBuilder: (context, index) {
-                final notification = notifications[index];
-                return _buildNotificationItem(notification);
-              },
+      body: TabBarView(
+        controller: _tabController,
+        children: _tabs.map((tab) {
+          return _buildTabContent(tab);
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTabContent(String tabName) {
+    List<NotificationItem> filteredNotifications = _getFilteredNotifications(tabName);
+    
+    if (filteredNotifications.isEmpty) {
+      return _buildEmptyState(tabName);
+    }
+    
+    return ListView.builder(
+      itemCount: filteredNotifications.length,
+      itemBuilder: (context, index) {
+        final notification = filteredNotifications[index];
+        return _buildNotificationItem(notification);
+      },
+    );
+  }
+
+  List<NotificationItem> _getFilteredNotifications(String tabName) {
+    switch (tabName) {
+      case 'すべて':
+        return notifications;
+      case 'スポットライト':
+        return notifications.where((n) => n.type == NotificationType.spotlight).toList();
+      case 'コメント':
+        return notifications.where((n) => 
+          n.type == NotificationType.comment || n.type == NotificationType.reply).toList();
+      case 'トレンド':
+        return notifications.where((n) => n.type == NotificationType.trending).toList();
+      case 'システム':
+        return notifications.where((n) => n.type == NotificationType.system).toList();
+      default:
+        return notifications;
+    }
+  }
+
+  Widget _buildEmptyState(String tabName) {
+    String message;
+    IconData icon;
+    
+    switch (tabName) {
+      case 'すべて':
+        message = '通知はありません';
+        icon = Icons.notifications_none;
+        break;
+      case 'スポットライト':
+        message = 'スポットライト通知はありません';
+        icon = Icons.auto_awesome;
+        break;
+      case 'コメント':
+        message = 'コメント通知はありません';
+        icon = Icons.comment;
+        break;
+      case 'トレンド':
+        message = 'トレンド通知はありません';
+        icon = Icons.trending_up;
+        break;
+      case 'システム':
+        message = 'システム通知はありません';
+        icon = Icons.info_outline;
+        break;
+      default:
+        message = '通知はありません';
+        icon = Icons.notifications_none;
+    }
+    
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 80,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Colors.grey,
             ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -105,86 +199,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: _buildLeadingWidget(notification),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                notification.title,
-                style: TextStyle(
-                  fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
-                  fontSize: 15,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            if (!notification.isRead)
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: SpotLightColors.primaryOrange,
-                  shape: BoxShape.circle,
-                ),
-              ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              notification.message,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[300],
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (notification.postTitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                '投稿: ${notification.postTitle}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[500],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              _formatTime(notification.createdAt),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-        trailing: notification.thumbnailUrl != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  notification.thumbnailUrl!,
-                  width: 60,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 60,
-                      height: 60,
-                      color: Colors.grey[800],
-                      child: const Icon(Icons.image, color: Colors.grey),
-                    );
-                  },
-                ),
-              )
-            : null,
+      child: InkWell(
         onTap: () {
           setState(() {
             final index = notifications.indexOf(notification);
@@ -202,7 +217,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               isRead: true,
             );
           });
-          // ここで詳細画面へ遷移する処理を追加できます
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('${notification.title}をタップしました'),
@@ -211,6 +225,108 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           );
         },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 左側のアイコン
+              _buildLeadingWidget(notification),
+              const SizedBox(width: 12),
+              
+              // 中央のコンテンツ
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // タイトル
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification.title,
+                            style: TextStyle(
+                              fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (!notification.isRead)
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: SpotLightColors.primaryOrange,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    
+                    // メッセージ
+                    Text(
+                      notification.message,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[300],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    
+                    // 投稿タイトル（ある場合）
+                    if (notification.postTitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        notification.postTitle!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    
+                    // 時刻
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatTime(notification.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // 右側のサムネイル（ある場合）
+              if (notification.thumbnailUrl != null) ...[
+                const SizedBox(width: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    notification.thumbnailUrl!,
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 80,
+                        height: 80,
+                        color: Colors.grey[800],
+                        child: const Icon(Icons.image, color: Colors.grey),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -221,20 +337,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Stack(
           children: [
             CircleAvatar(
-              radius: 24,
+              radius: 20,
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
               backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
-                  ? const Icon(Icons.person, color: Colors.white)
+                  ? const Icon(Icons.person, color: Colors.white, size: 20)
                   : null,
             ),
             Positioned(
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   color: SpotLightColors.primaryOrange,
                   shape: BoxShape.circle,
@@ -242,7 +358,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: const Icon(
                   Icons.auto_awesome,
-                  size: 12,
+                  size: 10,
                   color: Colors.white,
                 ),
               ),
@@ -254,20 +370,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Stack(
           children: [
             CircleAvatar(
-              radius: 24,
+              radius: 20,
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
               backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
-                  ? const Icon(Icons.person, color: Colors.white)
+                  ? const Icon(Icons.person, color: Colors.white, size: 20)
                   : null,
             ),
             Positioned(
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   color: Colors.blue,
                   shape: BoxShape.circle,
@@ -275,7 +391,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: const Icon(
                   Icons.comment,
-                  size: 12,
+                  size: 10,
                   color: Colors.white,
                 ),
               ),
@@ -287,20 +403,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Stack(
           children: [
             CircleAvatar(
-              radius: 24,
+              radius: 20,
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
               backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
-                  ? const Icon(Icons.person, color: Colors.white)
+                  ? const Icon(Icons.person, color: Colors.white, size: 20)
                   : null,
             ),
             Positioned(
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   color: Colors.green,
                   shape: BoxShape.circle,
@@ -308,7 +424,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: const Icon(
                   Icons.reply,
-                  size: 12,
+                  size: 10,
                   color: Colors.white,
                 ),
               ),
@@ -318,21 +434,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       case NotificationType.trending:
         return CircleAvatar(
-          radius: 24,
+          radius: 20,
           backgroundColor: SpotLightColors.warmRed,
           child: const Icon(
             Icons.trending_up,
             color: Colors.white,
+            size: 20,
           ),
         );
 
       case NotificationType.system:
         return CircleAvatar(
-          radius: 24,
+          radius: 20,
           backgroundColor: Colors.purple,
           child: const Icon(
             Icons.info_outline,
             color: Colors.white,
+            size: 20,
           ),
         );
     }
