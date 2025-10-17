@@ -3,25 +3,22 @@ name: Notify Discord on Push
 on:
   push:
     branches:
-      - main  # 通知したいブランチ
+      - main
 
 jobs:
   notify:
     runs-on: ubuntu-latest
-
     steps:
       - name: Send notification to Discord via curl
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          # JSONペイロードを整形して送信
+          # コミット情報を取得してDiscordに送信
           curl -H "Content-Type: application/json" \
             -X POST \
             -d "{
-              \"content\": \":rocket: **Push detected!**\n👤 By: **${{ github.actor }}**\n📦 Repo: \`${{ github.repository }}\`\n📝 Commit: [${{ github.event.head_commit.message }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\"
+              \"username\": \"GitHub Bot\",
+              \"avatar_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\",
+              \"content\": \":rocket: **Push detected on main!**\n👤 Author: **${{ github.event.head_commit.author.name }}**\n📝 Message: **${{ github.event.head_commit.message }}**\n🔗 [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\"
             }" \
             $DISCORD_WEBHOOK
-
-##testcode
-
-
