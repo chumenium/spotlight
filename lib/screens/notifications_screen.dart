@@ -21,6 +21,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: const Text(
           '通知',
@@ -29,7 +30,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             color: Colors.white,
           ),
         ),
-        backgroundColor: SpotLightColors.primaryOrange,
+        backgroundColor: const Color(0xFF1E1E1E),
         actions: [
           IconButton(
             icon: const Icon(Icons.done_all, color: Colors.white),
@@ -94,11 +95,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildNotificationItem(NotificationItem notification) {
     return Container(
       decoration: BoxDecoration(
-        color: notification.isRead ? Colors.white : SpotLightColors.primaryOrange.withOpacity(0.05),
-        border: const Border(
+        color: notification.isRead 
+            ? const Color(0xFF1E1E1E)
+            : const Color(0xFF2A2A2A),
+        border: Border(
           bottom: BorderSide(
-            color: Color(0xFFEEEEEE),
-            width: 1,
+            color: Colors.grey[800]!,
+            width: 0.5,
           ),
         ),
       ),
@@ -113,6 +116,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 style: TextStyle(
                   fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
                   fontSize: 15,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -133,9 +137,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             const SizedBox(height: 4),
             Text(
               notification.message,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Colors.black87,
+                color: Colors.grey[300],
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -146,7 +150,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 '投稿: ${notification.postTitle}',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey[600],
+                  color: Colors.grey[500],
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -157,7 +161,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               _formatTime(notification.createdAt),
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey[500],
+                color: Colors.grey[600],
               ),
             ),
           ],
@@ -174,7 +178,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     return Container(
                       width: 60,
                       height: 60,
-                      color: Colors.grey[300],
+                      color: Colors.grey[800],
                       child: const Icon(Icons.image, color: Colors.grey),
                     );
                   },
@@ -203,6 +207,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             SnackBar(
               content: Text('${notification.title}をタップしました'),
               duration: const Duration(seconds: 1),
+              backgroundColor: const Color(0xFF2A2A2A),
             ),
           );
         },
@@ -220,7 +225,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
                   ? const Icon(Icons.person, color: Colors.white)
                   : null,
@@ -233,7 +238,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 decoration: BoxDecoration(
                   color: SpotLightColors.primaryOrange,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
                 ),
                 child: const Icon(
                   Icons.auto_awesome,
@@ -253,7 +258,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
                   ? const Icon(Icons.person, color: Colors.white)
                   : null,
@@ -266,7 +271,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 decoration: BoxDecoration(
                   color: Colors.blue,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
                 ),
                 child: const Icon(
                   Icons.comment,
@@ -286,7 +291,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               backgroundImage: notification.userAvatar != null
                   ? NetworkImage(notification.userAvatar!)
                   : null,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: Colors.grey[700],
               child: notification.userAvatar == null
                   ? const Icon(Icons.person, color: Colors.white)
                   : null,
@@ -299,7 +304,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 decoration: BoxDecoration(
                   color: Colors.green,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
                 ),
                 child: const Icon(
                   Icons.reply,
