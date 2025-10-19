@@ -1,122 +1,265 @@
-# Spotlight バックエンド API
+# SpotLight バックエンド API
 
-このディレクトリには、SpotlightアプリケーションのPythonバックエンドAPIが含まれています。
+このディレクトリには、SpotLightアプリケーションのFlaskバックエンドAPIが含まれています。
 
-## 技術スタック
+## 📁 プロジェクト構造
 
-- **Flask**: Webフレームワーク
-- **SQLAlchemy**: ORM（Object-Relational Mapping）
-- **SQLite**: データベース（開発用）
-- **Flask-CORS**: クロスオリジンリクエストの処理
+```
+backend/
+├── app.py                 # メインアプリケーションファイル
+├── requirements.txt       # Python依存パッケージ
+├── env.example           # 環境変数のサンプル
+├── .gitignore            # Git除外設定
+├── config/               # 設定ファイル
+│   ├── __init__.py
+│   └── settings.py       # アプリケーション設定
+├── routes/               # APIエンドポイント
+│   ├── __init__.py
+│   ├── auth.py          # 認証関連
+│   ├── posts.py         # 投稿関連
+│   ├── comments.py      # コメント関連
+│   ├── search.py        # 検索関連
+│   ├── users.py         # ユーザー関連
+│   └── notifications.py # 通知関連
+├── models/              # データモデル（DB担当が実装）
+│   └── __init__.py
+└── utils/               # ユーティリティ
+    ├── __init__.py
+    └── auth.py          # 認証ユーティリティ
+```
 
-## セットアップ
+## 🚀 セットアップ手順
 
-### 1. 仮想環境の作成とアクティベート
+### 1. リポジトリのクローン（または最新版の取得）
+
+```bash
+git clone <repository-url>
+cd spotlight/backend
+
+# または既にクローン済みの場合
+git pull origin main
+```
+
+### 2. 仮想環境の作成とアクティベート
 
 ```bash
 # 仮想環境の作成
-python -m venv venv
-
-# Windowsでのアクティベート
-venv\Scripts\activate
+python3 -m venv venv
 
 # macOS/Linuxでのアクティベート
 source venv/bin/activate
+
+# Windowsでのアクティベート
+venv\Scripts\activate
 ```
 
-### 2. 依存関係のインストール
+### 3. 依存パッケージのインストール
 
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. アプリケーションの起動
+**注意**: PostgreSQL関連のパッケージ（psycopg2-binary）は、DB担当メンバーがPostgreSQLをセットアップした後にインストールしてください。
 
 ```bash
+# PostgreSQLセットアップ後に実行
+pip install psycopg2-binary==2.9.9
+```
+
+### 4. 環境変数の設定
+
+```bash
+# サンプルファイルをコピー
+cp env.example .env
+
+# .envファイルを編集（必要に応じて値を変更）
+# 特にSECRET_KEYとJWT_SECRETは必ず変更してください
+```
+
+### 5. サーバーの起動
+
+```bash
+# 開発サーバーを起動
 python app.py
 ```
 
 サーバーは `http://localhost:5000` で起動します。
 
-## API エンドポイント
+## 📝 API エンドポイント
 
-### 投稿関連
+### ヘルスチェック
+- `GET /api/health` - サーバーの稼働確認
 
-- `GET /api/posts` - すべての投稿を取得
-- `GET /api/posts/<id>` - 特定の投稿を取得
-- `POST /api/posts` - 新しい投稿を作成
-- `PUT /api/posts/<id>` - 投稿を更新
-- `DELETE /api/posts/<id>` - 投稿を削除
+### 認証 API
+- `POST /api/auth/register` - ユーザー登録
+- `POST /api/auth/login` - ログイン
+- `POST /api/auth/google` - Google認証
 
-### 検索履歴関連
+### 投稿 API
+- `GET /api/posts` - 投稿一覧取得
+- `POST /api/posts` - 投稿作成（認証必須）
+- `GET /api/posts/<post_id>` - 投稿詳細取得
+- `POST /api/posts/<post_id>/spotlight` - スポットライト実行（認証必須）
+- `DELETE /api/posts/<post_id>/spotlight` - スポットライト解除（認証必須）
 
-- `GET /api/search-history?user_id=<user_id>` - ユーザーの検索履歴を取得
-- `POST /api/search-history` - 検索履歴を追加
-- `DELETE /api/search-history/<id>` - 検索履歴を削除
+### コメント API
+- `GET /api/posts/<post_id>/comments` - コメント一覧取得
+- `POST /api/posts/<post_id>/comments` - コメント作成（認証必須）
 
-### その他
+### 検索 API
+- `GET /api/search?q=<query>` - 検索実行
+- `GET /api/search/suggestions?q=<query>` - 検索候補取得
 
-- `GET /api/health` - ヘルスチェック
+### ユーザー API
+- `GET /api/users/<user_id>` - プロフィール取得
+- `PUT /api/users/<user_id>` - プロフィール更新（認証必須）
 
-## データベースモデル
+### 通知 API
+- `GET /api/notifications` - 通知一覧取得（認証必須）
+- `PUT /api/notifications/<notification_id>/read` - 通知既読（認証必須）
 
-### Post（投稿）
-- `id`: 主キー
-- `title`: タイトル
-- `content`: コンテンツ
-- `author`: 作成者
-- `created_at`: 作成日時
-- `updated_at`: 更新日時
+詳細なAPI仕様については、`/docs/API仕様書.md` を参照してください。
 
-### SearchHistory（検索履歴）
-- `id`: 主キー
-- `query`: 検索クエリ
-- `user_id`: ユーザーID
-- `created_at`: 作成日時
+## 🔧 開発時の注意事項
 
-## 使用例
+### 現在の実装状態
 
-### 投稿の作成
+✅ **実装済み**
+- Flaskアプリケーションの基盤
+- API エンドポイントの構造
+- JWT認証の仕組み
+- モックデータでのレスポンス
 
-```bash
-curl -X POST http://localhost:5000/api/posts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "テスト投稿",
-    "content": "これはテスト投稿です",
-    "author": "テストユーザー"
-  }'
+⚠️ **未実装（DB担当メンバーが担当）**
+- データベース接続処理
+- SQLクエリの実装
+- 実際のデータの永続化
+
+### モックデータについて
+
+現在、すべてのエンドポイントはモックデータを返します。DB担当メンバーがデータベース処理を実装するまでは、APIの動作確認のみ可能です。
+
+### データベース処理の追加方法（DB担当メンバー向け）
+
+各エンドポイントには `# TODO: DB担当メンバーが〜を実装` というコメントがあります。このコメントの下に、データベース処理を追加してください。
+
+例：
+```python
+# routes/posts.py
+@posts_bp.route('', methods=['GET'])
+def get_posts():
+    # TODO: DB担当メンバーが投稿取得処理を実装
+    # ここにデータベースクエリを追加
+    posts = db.query("SELECT * FROM posts")
+    
+    # モックデータ → 実際のデータに置き換え
+    return jsonify({'success': True, 'data': {'posts': posts}})
 ```
 
-### 投稿の取得
+## 🧪 テスト
 
 ```bash
-curl http://localhost:5000/api/posts
+# テストの実行（test_app.pyは旧版のため更新予定）
+python -m pytest test_app.py
 ```
 
-### 検索履歴の追加
+## 📦 依存パッケージ
 
+- **Flask 3.0.0**: Webフレームワーク
+- **Flask-CORS 4.0.0**: CORS対応
+- **PyJWT 2.8.0**: JWT認証
+- **google-auth 2.25.2**: Google認証
+- **bcrypt 4.1.2**: パスワードハッシュ化
+- **python-dotenv 1.0.0**: 環境変数管理
+- **requests 2.31.0**: HTTPリクエスト
+
+## 🔐 セキュリティ
+
+### 本番環境での設定
+
+1. **環境変数の変更**
+   - `SECRET_KEY`: 強力なランダム文字列に変更
+   - `JWT_SECRET`: 強力なランダム文字列に変更
+   - `DEBUG=False` に設定
+
+2. **HTTPS の使用**
+   - 本番環境では必ずHTTPS通信を使用
+   - SSL証明書の設定（Let's Encrypt推奨）
+
+3. **Gunicorn + Nginx の使用**
+   - Flask開発サーバーではなく、Gunicornを使用
+   - Nginxをリバースプロキシとして設定
+
+## 🚢 本番デプロイ
+
+### Linuxサーバーでの起動手順
+
+1. **必要なパッケージのインストール**
 ```bash
-curl -X POST http://localhost:5000/api/search-history \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Flutter チュートリアル",
-    "user_id": "user123"
-  }'
+sudo apt update
+sudo apt install python3 python3-pip python3-venv nginx postgresql
 ```
 
-## 開発時の注意事項
+2. **プロジェクトのデプロイ**
+```bash
+cd /var/www/spotlight/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install gunicorn
+```
 
-- データベースファイル（`spotlight.db`）は自動的に作成されます
-- 開発モードでは `debug=True` で実行されます
-- CORSが有効になっているため、フロントエンドからのリクエストが可能です
+3. **Gunicornでの起動**
+```bash
+gunicorn --bind 0.0.0.0:5000 --workers 4 app:app
+```
 
-## 本番環境への展開
+4. **systemdサービスとして登録**
+```bash
+# /etc/systemd/system/spotlight.service を作成
+sudo systemctl enable spotlight
+sudo systemctl start spotlight
+```
 
-本番環境では以下の変更を推奨します：
+詳細なデプロイ手順は、別途デプロイドキュメントを参照してください。
 
-1. `debug=False` に設定
-2. より堅牢なデータベース（PostgreSQL、MySQL等）を使用
-3. 環境変数でシークレットキーを管理
-4. HTTPSの使用
-5. 適切なログ設定
+## 🤝 チーム開発
+
+### 担当分担
+
+- **バックエンド担当**: APIロジック、認証、エンドポイント実装
+- **DB担当**: データベース設計、SQL実装、データ永続化
+- **フロントエンド担当**: Flutter アプリ、API連携
+
+### ブランチ戦略
+
+```
+main           # 本番環境
+├─ develop     # 開発環境
+   ├─ feature/auth      # 認証機能
+   ├─ feature/posts     # 投稿機能
+   └─ feature/database  # DB実装
+```
+
+## 🐛 トラブルシューティング
+
+### よくある問題
+
+**Q: `ModuleNotFoundError: No module named 'flask'`**
+A: 仮想環境がアクティベートされているか確認し、`pip install -r requirements.txt` を実行してください。
+
+**Q: `pg_config executable not found`**
+A: PostgreSQLがインストールされていません。DB担当メンバーがセットアップするまで、psycopg2-binaryは不要です。
+
+**Q: `Address already in use`**
+A: ポート5000が既に使用されています。`.env` ファイルで `PORT` を変更してください。
+
+## 📞 サポート
+
+質問や問題がある場合は、チームチャットまたはIssueで報告してください。
+
+---
+
+**最終更新**: 2024年1月
+**バージョン**: 1.0.0
