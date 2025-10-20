@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/navigation_provider.dart';
+import 'providers/auth_provider.dart';
 import 'widgets/bottom_navigation_bar.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/create_post_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/login_screen.dart';
 
 void main() {
   runApp(const SpotLightApp());
@@ -17,8 +19,11 @@ class SpotLightApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => NavigationProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => NavigationProvider()),
+        ChangeNotifierProvider(create: (context) => AuthProvider()),
+      ],
       child: MaterialApp(
         title: 'SpotLight',
         theme: ThemeData(
@@ -36,7 +41,16 @@ class SpotLightApp extends StatelessWidget {
             elevation: 0,
           ),
         ),
-        home: const MainScreen(),
+        home: Consumer<AuthProvider>(
+          builder: (context, authProvider, _) {
+            // ログイン状態に応じて画面を切り替え
+            if (authProvider.isLoggedIn) {
+              return const MainScreen();
+            } else {
+              return const LoginScreen();
+            }
+          },
+        ),
       ),
     );
   }
