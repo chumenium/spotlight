@@ -30,18 +30,27 @@ cd spotlight/backend
 
 ```bash
 # 仮想環境を作成
-python3 -m venv venv
+python -m venv venv
 
 # 仮想環境をアクティベート
+
+# Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+
+# Windows コマンドプロンプト:
+# venv\Scripts\activate.bat
+
 # macOS/Linux:
-source venv/bin/activate
+# source venv/bin/activate
 
-# Windows:
-# venv\Scripts\activate
+# パッケージをインストール（Windows PowerShellの場合はUTF-8モードで）
+# Windows PowerShell:
+$env:PYTHONUTF8=1; pip install --upgrade pip
+$env:PYTHONUTF8=1; pip install -r requirements.txt
 
-# パッケージをインストール
-pip install --upgrade pip
-pip install -r requirements.txt
+# macOS/Linux:
+# pip install --upgrade pip
+# pip install -r requirements.txt
 ```
 
 ### ステップ3: 環境変数を設定
