@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/navigation_provider.dart';
 import 'providers/auth_provider.dart';
+import 'services/firebase_service.dart';
 import 'widgets/bottom_navigation_bar.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/create_post_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/login_screen.dart';
+import 'screens/social_login_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Firebase初期化
+  await FirebaseService.instance.initialize();
+  
   runApp(const SpotLightApp());
 }
 
@@ -47,7 +53,7 @@ class SpotLightApp extends StatelessWidget {
             if (authProvider.isLoggedIn) {
               return const MainScreen();
             } else {
-              return const LoginScreen();
+              return const SocialLoginScreen();
             }
           },
         ),
