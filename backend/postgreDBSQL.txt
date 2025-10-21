@@ -9,6 +9,7 @@ commenttimestamp:投稿時間年月日時分
 commenttext:コメントテキストを格納
 parentcommentID:自己参照
 userID:一意な数値を自動で設定
+username:アプリ内で一意なユーザの名前
 iconimgpath:128文字可変
 spotlightflag:true,falseを判断
 bookmarkflag:true,falseを判断
@@ -124,3 +125,5 @@ CREATE TABLE playlistdetail (
 );
 ALTER TABLE content
 ADD COLUMN playnum INTEGER DEFAULT 0;
+ALTER TABLE "user"
+ADD COLUMN username VARCHAR(30);
