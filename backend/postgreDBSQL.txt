@@ -80,10 +80,21 @@ CREATE TABLE playlistdetail (
 
 --------------------------------コピペOK----------------------------------------------
 
+drop table serchhistory;
+drop table playhistory;
+drop table playlistdetail;
+drop table playlist;
+drop table contentuser;
+drop table comment;
+drop table content;
+drop table "user";
+
 CREATE TABLE "user" (
     userID VARCHAR(512) PRIMARY KEY,
-    username VARCHAR(30)
-    iconimgpath VARCHAR(128)
+    username VARCHAR(30),
+    iconimgpath VARCHAR(128),
+    token TEXT,
+    notificationenabled BOOLEAN DEFAULT FALSE
 );
 CREATE TABLE content (
     contentID SERIAL PRIMARY KEY,
@@ -124,4 +135,16 @@ CREATE TABLE playlistdetail (
     contentID INTEGER REFERENCES content(contentID),
     PRIMARY KEY (userID, playlistID, contentID),
     FOREIGN KEY (userID, playlistID) REFERENCES playlist(userID, playlistID)
+);
+CREATE TABLE serchhistory (
+    userID VARCHAR(512),
+    serchID SERIAL,
+    serchword TEXT,
+    PRIMARY KEY (userID, serchID)
+);
+CREATE TABLE playhistory (
+    userID VARCHAR(512),
+    playID SERIAL,
+    contentID INTEGER REFERENCES content(contentID),
+    PRIMARY KEY (userID, playID)
 );
