@@ -81,7 +81,8 @@ CREATE TABLE playlistdetail (
 --------------------------------コピペOK----------------------------------------------
 
 CREATE TABLE "user" (
-    userID SERIAL PRIMARY KEY,
+    userID VARCHAR(512) PRIMARY KEY,
+    username VARCHAR(30)
     iconimgpath VARCHAR(128)
 );
 CREATE TABLE content (
@@ -91,12 +92,13 @@ CREATE TABLE content (
     link VARCHAR(128),
     title VARCHAR(128),
     posttimestamp TIMESTAMP,
-    userID INTEGER REFERENCES "user"(userID)
+    playnum INTEGER DEFAULT 0,
+    userID VARCHAR(512) REFERENCES "user"(userID)
 );
 CREATE TABLE comment (
     contentID INTEGER REFERENCES content(contentID),
     commentID SERIAL,
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     commenttimestamp TIMESTAMP,
     commenttext TEXT,
     parentcommentID INTEGER,
@@ -106,24 +108,20 @@ CREATE TABLE comment (
 );
 CREATE TABLE contentuser (
     contentID INTEGER REFERENCES content(contentID),
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     spotlightflag BOOLEAN,
     bookmarkflag BOOLEAN,
     PRIMARY KEY (contentID, userID)
 );
 CREATE TABLE playlist (
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     playlistID SERIAL,
     PRIMARY KEY (userID, playlistID)
 );
 CREATE TABLE playlistdetail (
-    userID INTEGER,
+    userID VARCHAR(512),
     playlistID INTEGER,
     contentID INTEGER REFERENCES content(contentID),
     PRIMARY KEY (userID, playlistID, contentID),
     FOREIGN KEY (userID, playlistID) REFERENCES playlist(userID, playlistID)
 );
-ALTER TABLE content
-ADD COLUMN playnum INTEGER DEFAULT 0;
-ALTER TABLE "user"
-ADD COLUMN username VARCHAR(30);
