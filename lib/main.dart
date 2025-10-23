@@ -14,8 +14,13 @@ import 'auth/social_login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Firebase初期化
-  await FirebaseService.instance.initialize();
+  try {
+    // Firebase初期化
+    await FirebaseService.instance.initialize();
+    print('✅ Firebase初期化完了');
+  } catch (e) {
+    print('❌ Firebase初期化エラー: $e');
+  }
   
   runApp(const SpotLightApp());
 }

@@ -75,7 +75,7 @@ class AuthProvider extends ChangeNotifier {
   
   /// Twitter Sign-Inのインスタンス
   /// Twitter Developer Portalで取得したAPIキーで初期化されます
-  late final TwitterLogin _twitterLogin;
+  TwitterLogin? _twitterLogin;
   
   // ==========================================================================
   // 状態管理
@@ -120,17 +120,28 @@ class AuthProvider extends ChangeNotifier {
   // ==========================================================================
 
   AuthProvider() {
-    // Twitter認証の初期化
-    // AuthConfigから設定を読み込みます
-    _twitterLogin = TwitterLogin(
-      apiKey: AuthConfig.twitterApiKey,
-      apiSecretKey: AuthConfig.twitterApiSecretKey,
-      redirectURI: AuthConfig.twitterRedirectUri,
-    );
-    
     // Firebase Authの状態変化を監視
     // ユーザーがログイン/ログアウトすると自動的に通知されます
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+  }
+
+  /// TwitterLoginインスタンスを取得（遅延初期化）
+  TwitterLogin? get _getTwitterLogin {
+    if (_twitterLogin == null) {
+      try {
+        _twitterLogin = TwitterLogin(
+          apiKey: AuthConfig.twitterApiKey,
+          apiSecretKey: AuthConfig.twitterApiSecretKey,
+          redirectURI: AuthConfig.twitterRedirectUri,
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('❌ Twitter Login初期化エラー: $e');
+        }
+        return null;
+      }
+    }
+    return _twitterLogin;
   }
 
   /// 認証状態が変化したときの処理
@@ -324,6 +335,13 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
 
+    // TwitterLoginが初期化されていない場合はエラー
+    final twitterLogin = _getTwitterLogin;
+    if (twitterLogin == null) {
+      _errorMessage = 'Twitter Sign-Inの初期化に失敗しました';
+      return false;
+    }
+
     try {
       // ローディング開始
       _isLoading = true;
@@ -336,7 +354,7 @@ class AuthProvider extends ChangeNotifier {
 
       // STEP 1: Twitterサインインフローを開始
       // ブラウザまたはアプリ内WebViewでTwitterログイン画面が表示されます
-      final authResult = await _twitterLogin.login();
+      final authResult = await twitterLogin.login();
 
       if (authResult.status == TwitterLoginStatus.loggedIn) {
         if (kDebugMode && AuthConfig.enableAuthDebugLog) {
