@@ -456,36 +456,43 @@ class AuthProvider extends ChangeNotifier {
   /// すべての認証プロバイダーからサインアウトします
   /// 
   /// 処理の流れ:
-  /// 1. Firebase Authenticationからサインアウト
-  /// 2. Google Sign-Inからサインアウト
-  /// 3. ユーザー情報をクリア
-  /// 4. authStateChangesリスナーが発火し、ユーザー情報がnullに更新される
+  /// 1. ゲストモードかどうかを確認
+  /// 2. Firebase Authenticationからサインアウト（ゲストでない場合）
+  /// 3. Google Sign-Inからサインアウト
+  /// 4. ユーザー情報をクリア
+  /// 5. notifyListeners()で画面を更新
   /// 
   /// 注意:
   /// - Twitter Sign-Inはサインアウト処理不要（自動処理）
+  /// - ゲストモードの場合はFirebase認証を使わないため、直接クリア
   Future<void> logout() async {
     if (kDebugMode && AuthConfig.enableAuthDebugLog) {
       debugPrint('🔐 ログアウト開始');
     }
 
-    // Firebase Authenticationからサインアウト
-    // これによりauthStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-    await _firebaseAuth.signOut();
+    final isGuest = _currentUser?.id == 'guest';
 
-    // Google Sign-Inからサインアウト
-    // 次回のログイン時にアカウント選択画面が表示されます
-    await _googleSignIn.signOut();
+    if (!isGuest) {
+      // Firebase Authenticationからサインアウト
+      // これによりauthStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
+      await _firebaseAuth.signOut();
 
-    // Twitter Sign-Inは明示的なサインアウト処理不要
-    // Firebase Authenticationのサインアウトで十分です
+      // Google Sign-Inからサインアウト
+      // 次回のログイン時にアカウント選択画面が表示されます
+      await _googleSignIn.signOut();
 
-    // ユーザー情報をクリア（念のため）
+      // Twitter Sign-Inは明示的なサインアウト処理不要
+      // Firebase Authenticationのサインアウトで十分です
+    }
+
+    // ユーザー情報をクリア
     _currentUser = null;
 
     if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-      debugPrint('🔐 ログアウト完了');
+      debugPrint('🔐 ログアウト完了: ゲストモード=${isGuest}');
     }
 
+    // 画面更新を通知
     notifyListeners();
   }
 }
