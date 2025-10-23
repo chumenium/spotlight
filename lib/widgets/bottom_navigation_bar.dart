@@ -13,55 +13,66 @@ class CustomBottomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-            return Container(
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 10,
-                    offset: Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+    return Container(
+      height: 70,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 10,
+            offset: Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildNavItem(
-                        icon: Icons.flashlight_on_outlined,
-                        activeIcon: Icons.flashlight_on,
-                        index: 0,
-                      ),
-                      _buildNavItem(
-                        icon: Icons.search_outlined,
-                        activeIcon: Icons.search,
-                        index: 1,
-                      ),
-                      _buildNavItem(
-                        icon: Icons.add_outlined,
-                        activeIcon: Icons.add_circle_sharp,
-                        index: 2,
-                        isCenter: true,
-                      ),
-                      _buildNavItem(
-                        icon: Icons.notifications_outlined,
-                        activeIcon: Icons.notifications,
-                        index: 3,
-                      ),
-                      _buildNavItem(
-                        icon: Icons.person_outline,
-                        activeIcon: Icons.person,
-                        index: 4,
-                      ),
-                    ],
+            children: [
+              Expanded(
+                child: _buildNavItem(
+                  icon: Icons.flashlight_on_outlined,
+                  activeIcon: Icons.flashlight_on,
+                  index: 0,
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  icon: Icons.search_outlined,
+                  activeIcon: Icons.search,
+                  index: 1,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: _buildNavItem(
+                  icon: Icons.add_outlined,
+                  activeIcon: Icons.add_circle_sharp,
+                  index: 2,
+                  isCenter: true,
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  icon: Icons.notifications_outlined,
+                  activeIcon: Icons.notifications,
+                  index: 3,
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  index: 4,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -79,11 +90,10 @@ class CustomBottomNavigationBar extends StatelessWidget {
     return GestureDetector(
       onTap: () => onTap(index),
       child: Container(
-        width: isCenter ? 80 : 70, // 固定幅
-        height: 50, // 固定高さ（バーの高さいっぱい）
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: isCenter 
             ? Center(
@@ -92,18 +102,19 @@ class CustomBottomNavigationBar extends StatelessWidget {
                   color: isSelected 
                       ? SpotLightColors.getSpotlightColor(index)
                       : Colors.grey[400],
-                  size: 28,
+                  size: 32,
                 ),
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     isSelected ? activeIcon : icon,
                     color: isSelected 
                         ? SpotLightColors.getSpotlightColor(index)
                         : Colors.grey[400],
-                    size: 24,
+                    size: 22,
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -112,9 +123,12 @@ class CustomBottomNavigationBar extends StatelessWidget {
                       color: isSelected 
                           ? SpotLightColors.getSpotlightColor(index)
                           : Colors.grey[400],
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.w500,
                     ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -129,7 +143,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
       case 1:
         return '検索';
       case 2:
-        return 'スポットライト';
+        return '投稿';
       case 3:
         return '通知';
       case 4:
