@@ -1,3 +1,11 @@
+user:toudai
+database:spotlight
+password:kcsf2026
+isolationLevel:read committed
+timezone:Asia/Tokyo
+GRANT ALL PRIVILEGES
+client_encoding:utf8
+
 --属性の説明
 contentID:一意な数値を自動で設定
 spotlightnum:数値
@@ -18,7 +26,7 @@ contentID:userIDごとplaylistIDごとに一意な自動で設定される数値
 playnum:再生回数を保存する
 
 --DB接続
-psql -U postgres -d spotlight
+psql -U toudai -d spotlight
 
 --DB作成
 CREATE DATABASE spotlight;
@@ -80,6 +88,7 @@ CREATE TABLE playlistdetail (
 
 --------------------------------コピペOK----------------------------------------------
 
+drop table notification;
 drop table serchhistory;
 drop table playhistory;
 drop table playlistdetail;
@@ -147,4 +156,16 @@ CREATE TABLE playhistory (
     playID SERIAL,
     contentID INTEGER REFERENCES content(contentID),
     PRIMARY KEY (userID, playID)
+);
+CREATE TABLE notification(
+    userID VARCHAR(512),
+    notificationID SERIAL,
+    notificationtimestamp TIMESTAMP,
+    contentuserCID int,
+    contentuserUID VARCHAR(512),
+    comCTID int,
+    comCMID int,
+    PRIMARY KEY (userID, notificationID),
+    FOREIGN KEY (contentuserCID, contentuserUID) REFERENCES contentuser(contentID, userID),
+    FOREIGN KEY (comCTID, comCMID) REFERENCES comment(contentID, commentID)
 );
