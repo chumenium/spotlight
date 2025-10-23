@@ -1,190 +1,107 @@
 """
-投稿関連のエンドポイント
-投稿の作成、取得、更新、削除など
+コンテンツ管理API
+コンテンツの投稿、取得、更新、削除機能を提供
 """
 from flask import Blueprint, request, jsonify
-from utils.auth import jwt_required
+from database import Content, ContentUser, PlayHistory
+from datetime import datetime
+import os
 
 posts_bp = Blueprint('posts', __name__, url_prefix='/api/posts')
 
-@posts_bp.route('', methods=['GET'])
-def get_posts():
+@posts_bp.route('/', methods=['POST'])
+def create_content():
     """
-    投稿一覧取得
-    
-    Query Parameters:
-        page (int): ページ番号（デフォルト: 1）
-        limit (int): 取得件数（デフォルト: 20）
-        type (str): 投稿タイプ（all, video, image, text, audio）
-    
-    Returns:
-        JSON: 投稿一覧とページネーション情報
-    """
-    try:
-        page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 20, type=int)
-        post_type = request.args.get('type', 'all')
-        
-        # TODO: DB担当メンバーが投稿取得処理を実装
-        # - ページネーション処理
-        # - フィルタリング（タイプ別）
-        # - ソート処理
-        
-        # モックデータ
-        mock_posts = [
-            {
-                'id': f'post_{i}',
-                'userId': f'user_{i}',
-                'username': f'ユーザー{i}',
-                'userAvatar': f'https://example.com/avatar{i}.jpg',
-                'title': f'投稿タイトル{i}',
-                'content': f'投稿内容{i}',
-                'type': 'video',
-                'mediaUrl': f'https://example.com/video{i}.mp4',
-                'thumbnailUrl': f'https://example.com/thumbnail{i}.jpg',
-                'likes': i * 10,
-                'comments': i * 5,
-                'shares': i * 2,
-                'isSpotlighted': False,
-                'createdAt': '2024-01-01T00:00:00Z'
-            }
-            for i in range(1, min(limit, 10) + 1)
-        ]
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'posts': mock_posts,
-                'pagination': {
-                    'currentPage': page,
-                    'totalPages': 10,
-                    'totalItems': 200,
-                    'hasNext': page < 10,
-                    'hasPrev': page > 1
-                }
-            }
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'SERVER_ERROR',
-                'message': str(e)
-            }
-        }), 500
-
-@posts_bp.route('/<post_id>', methods=['GET'])
-def get_post(post_id):
-    """
-    投稿詳細取得
-    
-    Args:
-        post_id (str): 投稿ID
-    
-    Returns:
-        JSON: 投稿詳細情報
-    """
-    try:
-        # TODO: DB担当メンバーが投稿詳細取得処理を実装
-        
-        # モックデータ
-        mock_post = {
-            'id': post_id,
-            'userId': 'user_123',
-            'username': 'テストユーザー',
-            'userAvatar': 'https://example.com/avatar.jpg',
-            'title': '投稿タイトル',
-            'content': '投稿内容',
-            'type': 'video',
-            'mediaUrl': 'https://example.com/video.mp4',
-            'thumbnailUrl': 'https://example.com/thumbnail.jpg',
-            'likes': 150,
-            'comments': 25,
-            'shares': 10,
-            'isSpotlighted': False,
-            'createdAt': '2024-01-01T00:00:00Z'
-        }
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'post': mock_post
-            }
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'SERVER_ERROR',
-                'message': str(e)
-            }
-        }), 500
-
-@posts_bp.route('', methods=['POST'])
-@jwt_required
-def create_post():
-    """
-    投稿作成（認証必須）
+    新しいコンテンツを投稿
     
     Request Body:
-        {
-            "title": "投稿タイトル",
-            "content": "投稿内容",
-            "type": "text",
-            "mediaUrl": null,
-            "thumbnailUrl": null
-        }
+    {
+        "userID": "string (required)",
+        "contentpath": "string (required)",
+        "link": "string (required)",
+        "title": "string (required)",
+        "spotlightnum": "number (optional, default: 0)"
+    }
     
-    Returns:
-        JSON: 作成された投稿情報
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "userID": "string",
+            "contentpath": "string",
+            "link": "string",
+            "title": "string",
+            "spotlightnum": "number",
+            "posttimestamp": "string",
+            "playnum": "number"
+        }
+    }
     """
     try:
         data = request.get_json()
-        user = request.user  # jwt_requiredデコレータから取得
         
-        # バリデーション
-        title = data.get('title')
-        content = data.get('content')
-        post_type = data.get('type', 'text')
-        
-        if not all([title, content]):
+        if not data:
             return jsonify({
                 'success': False,
                 'error': {
-                    'code': 'VALIDATION_ERROR',
-                    'message': 'Title and content are required'
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body is required'
                 }
             }), 400
         
-        # TODO: DB担当メンバーが投稿作成処理を実装
-        # - データベースへの保存
-        # - メディアファイルの処理
+        # 必須フィールドのチェック
+        required_fields = ['userID', 'contentpath', 'link', 'title']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_FIELD',
+                        'message': f'{field} is required'
+                    }
+                }), 400
         
-        # モックレスポンス
-        new_post = {
-            'id': 'post_new_123',
-            'userId': user.get('user_id', 'user_123'),
-            'username': user.get('nickname', 'テストユーザー'),
-            'userAvatar': 'https://example.com/avatar.jpg',
-            'title': title,
-            'content': content,
-            'type': post_type,
-            'mediaUrl': data.get('mediaUrl'),
-            'thumbnailUrl': data.get('thumbnailUrl'),
-            'likes': 0,
-            'comments': 0,
-            'shares': 0,
-            'isSpotlighted': False,
-            'createdAt': '2024-01-01T00:00:00Z'
-        }
+        # フィールド長のチェック
+        if len(data['contentpath']) > 128:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_FIELD',
+                    'message': 'contentpath must be 128 characters or less'
+                }
+            }), 400
+        
+        if len(data['link']) > 128:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_FIELD',
+                    'message': 'link must be 128 characters or less'
+                }
+            }), 400
+        
+        if len(data['title']) > 128:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_FIELD',
+                    'message': 'title must be 128 characters or less'
+                }
+            }), 400
+        
+        # コンテンツを作成
+        content = Content.create(
+            user_id=data['userID'],
+            content_path=data['contentpath'],
+            link=data['link'],
+            title=data['title'],
+            spotlight_num=data.get('spotlightnum', 0)
+        )
         
         return jsonify({
             'success': True,
-            'data': {
-                'post': new_post
-            }
+            'data': content
         }), 201
         
     except Exception as e:
@@ -192,37 +109,82 @@ def create_post():
             'success': False,
             'error': {
                 'code': 'SERVER_ERROR',
-                'message': str(e)
+                'message': f'Failed to create content: {str(e)}'
             }
         }), 500
 
-@posts_bp.route('/<post_id>/spotlight', methods=['POST'])
-@jwt_required
-def spotlight_post(post_id):
+@posts_bp.route('/', methods=['GET'])
+def get_all_content():
     """
-    スポットライト実行（認証必須）
+    すべてのコンテンツを取得（ページネーション対応）
     
-    Args:
-        post_id (str): 投稿ID
+    Query Parameters:
+    - limit: 取得件数 (default: 20, max: 100)
+    - offset: オフセット (default: 0)
+    - sort: ソート順 ('newest', 'oldest', 'popular') (default: 'newest')
     
-    Returns:
-        JSON: 更新された投稿情報
+    Response:
+    {
+        "success": true,
+        "data": [
+            {
+                "contentID": "number",
+                "userID": "string",
+                "contentpath": "string",
+                "link": "string",
+                "title": "string",
+                "spotlightnum": "number",
+                "posttimestamp": "string",
+                "playnum": "number",
+                "username": "string",
+                "iconimgpath": "string"
+            }
+        ],
+        "pagination": {
+            "limit": "number",
+            "offset": "number",
+            "total": "number"
+        }
+    }
     """
     try:
-        user = request.user
+        # クエリパラメータの取得
+        limit = min(int(request.args.get('limit', 20)), 100)  # 最大100件
+        offset = int(request.args.get('offset', 0))
+        sort = request.args.get('sort', 'newest')
         
-        # TODO: DB担当メンバーがスポットライト処理を実装
-        # - スポットライトフラグの更新
-        # - スポットライト数のインクリメント
+        # ソート順の設定
+        sort_options = {
+            'newest': 'c.posttimestamp DESC',
+            'oldest': 'c.posttimestamp ASC',
+            'popular': 'c.playnum DESC, c.posttimestamp DESC'
+        }
+        order_by = sort_options.get(sort, 'c.posttimestamp DESC')
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # 総件数を取得
+                cursor.execute("SELECT COUNT(*) FROM content")
+                total = cursor.fetchone()['count']
+                
+                # コンテンツ一覧を取得
+                cursor.execute(f"""
+                    SELECT c.*, u.username, u.iconimgpath
+                    FROM content c
+                    JOIN "user" u ON c.userID = u.userID
+                    ORDER BY {order_by}
+                    LIMIT %s OFFSET %s
+                """, (limit, offset))
+                
+                contents = [dict(row) for row in cursor.fetchall()]
         
         return jsonify({
             'success': True,
-            'data': {
-                'post': {
-                    'id': post_id,
-                    'isSpotlighted': True,
-                    'likes': 151
-                }
+            'data': contents,
+            'pagination': {
+                'limit': limit,
+                'offset': offset,
+                'total': total
             }
         }), 200
         
@@ -231,35 +193,134 @@ def spotlight_post(post_id):
             'success': False,
             'error': {
                 'code': 'SERVER_ERROR',
-                'message': str(e)
+                'message': f'Failed to get content: {str(e)}'
             }
         }), 500
 
-@posts_bp.route('/<post_id>/spotlight', methods=['DELETE'])
-@jwt_required
-def remove_spotlight(post_id):
+@posts_bp.route('/<int:content_id>', methods=['GET'])
+def get_content(content_id):
     """
-    スポットライト解除（認証必須）
+    特定のコンテンツを取得
     
-    Args:
-        post_id (str): 投稿ID
+    Path Parameters:
+    - content_id: コンテンツID
     
-    Returns:
-        JSON: 更新された投稿情報
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "userID": "string",
+            "contentpath": "string",
+            "link": "string",
+            "title": "string",
+            "spotlightnum": "number",
+            "posttimestamp": "string",
+            "playnum": "number",
+            "username": "string",
+            "iconimgpath": "string"
+        }
+    }
     """
     try:
-        user = request.user
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT c.*, u.username, u.iconimgpath
+                    FROM content c
+                    JOIN "user" u ON c.userID = u.userID
+                    WHERE c.contentID = %s
+                """, (content_id,))
+                
+                content = cursor.fetchone()
         
-        # TODO: DB担当メンバーがスポットライト解除処理を実装
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'CONTENT_NOT_FOUND',
+                    'message': 'Content not found'
+                }
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': dict(content)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to get content: {str(e)}'
+            }
+        }), 500
+
+@posts_bp.route('/<int:content_id>/play', methods=['POST'])
+def play_content(content_id):
+    """
+    コンテンツを再生（再生回数を増加）
+    
+    Path Parameters:
+    - content_id: コンテンツID
+    
+    Request Body:
+    {
+        "userID": "string (optional)"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "playnum": "number"
+        }
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('userID')
+        
+        # コンテンツの存在確認
+        content = Content.get_by_id(content_id)
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'CONTENT_NOT_FOUND',
+                    'message': 'Content not found'
+                }
+            }), 404
+        
+        # 再生回数を増加
+        success = Content.increment_play_count(content_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'UPDATE_FAILED',
+                    'message': 'Failed to increment play count'
+                }
+            }), 500
+        
+        # 再生履歴に追加（ユーザーIDが提供されている場合）
+        if user_id:
+            try:
+                PlayHistory.add_play(user_id, content_id)
+            except Exception:
+                # 再生履歴の追加に失敗しても再生回数の更新は成功とする
+                pass
+        
+        # 更新されたコンテンツ情報を取得
+        updated_content = Content.get_by_id(content_id)
         
         return jsonify({
             'success': True,
             'data': {
-                'post': {
-                    'id': post_id,
-                    'isSpotlighted': False,
-                    'likes': 150
-                }
+                'contentID': content_id,
+                'playnum': updated_content['playnum']
             }
         }), 200
         
@@ -268,7 +329,254 @@ def remove_spotlight(post_id):
             'success': False,
             'error': {
                 'code': 'SERVER_ERROR',
-                'message': str(e)
+                'message': f'Failed to play content: {str(e)}'
             }
         }), 500
 
+@posts_bp.route('/<int:content_id>/spotlight', methods=['POST'])
+def spotlight_content(content_id):
+    """
+    コンテンツにスポットライトを付与/削除
+    
+    Path Parameters:
+    - content_id: コンテンツID
+    
+    Request Body:
+    {
+        "userID": "string (required)",
+        "spotlight": "boolean (required)"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "userID": "string",
+            "spotlightflag": "boolean",
+            "bookmarkflag": "boolean"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body is required'
+                }
+            }), 400
+        
+        if 'userID' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'userID is required'
+                }
+            }), 400
+        
+        if 'spotlight' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'spotlight is required'
+                }
+            }), 400
+        
+        # コンテンツの存在確認
+        content = Content.get_by_id(content_id)
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'CONTENT_NOT_FOUND',
+                    'message': 'Content not found'
+                }
+            }), 404
+        
+        # スポットライトフラグを設定
+        result = ContentUser.set_spotlight(content_id, data['userID'], data['spotlight'])
+        
+        # スポットライト数を更新
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM contentuser 
+                    WHERE contentID = %s AND spotlightflag = TRUE
+                """, (content_id,))
+                spotlight_count = cursor.fetchone()['count']
+                
+                Content.update_spotlight_count(content_id, spotlight_count)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to spotlight content: {str(e)}'
+            }
+        }), 500
+
+@posts_bp.route('/<int:content_id>/bookmark', methods=['POST'])
+def bookmark_content(content_id):
+    """
+    コンテンツをブックマーク/ブックマーク解除
+    
+    Path Parameters:
+    - content_id: コンテンツID
+    
+    Request Body:
+    {
+        "userID": "string (required)",
+        "bookmark": "boolean (required)"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "userID": "string",
+            "spotlightflag": "boolean",
+            "bookmarkflag": "boolean"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body is required'
+                }
+            }), 400
+        
+        if 'userID' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'userID is required'
+                }
+            }), 400
+        
+        if 'bookmark' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'bookmark is required'
+                }
+            }), 400
+        
+        # コンテンツの存在確認
+        content = Content.get_by_id(content_id)
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'CONTENT_NOT_FOUND',
+                    'message': 'Content not found'
+                }
+            }), 404
+        
+        # ブックマークフラグを設定
+        result = ContentUser.set_bookmark(content_id, data['userID'], data['bookmark'])
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to bookmark content: {str(e)}'
+            }
+        }), 500
+
+@posts_bp.route('/<int:content_id>/status', methods=['GET'])
+def get_content_status(content_id):
+    """
+    ユーザーのコンテンツ状態を取得（スポットライト・ブックマーク）
+    
+    Path Parameters:
+    - content_id: コンテンツID
+    
+    Query Parameters:
+    - userID: ユーザーID (required)
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "contentID": "number",
+            "userID": "string",
+            "spotlightflag": "boolean",
+            "bookmarkflag": "boolean"
+        }
+    }
+    """
+    try:
+        user_id = request.args.get('userID')
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PARAMETER',
+                    'message': 'userID parameter is required'
+                }
+            }), 400
+        
+        # コンテンツの存在確認
+        content = Content.get_by_id(content_id)
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'CONTENT_NOT_FOUND',
+                    'message': 'Content not found'
+                }
+            }), 404
+        
+        # ユーザーのコンテンツ状態を取得
+        status = ContentUser.get_user_content_status(content_id, user_id)
+        
+        if not status:
+            # 状態が存在しない場合はデフォルト値を返す
+            status = {
+                'contentid': content_id,
+                'userid': user_id,
+                'spotlightflag': False,
+                'bookmarkflag': False
+            }
+        
+        return jsonify({
+            'success': True,
+            'data': status
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to get content status: {str(e)}'
+            }
+        }), 500

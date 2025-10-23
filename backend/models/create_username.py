@@ -206,7 +206,7 @@ DB_PASSWORD = "kcsf"  # ←適宜変更
 DB_HOST = "localhost"
 DB_PORT = "5432"
 
-def register_username():
+def register_username(userID,token):
     """ユーザ名が存在しなければ登録する"""
     try:
         # PostgreSQLへ接続
@@ -235,7 +235,7 @@ def register_username():
 
         # 登録処理
         userID = str("testUser" + str(random.randint(1, 1000000)))
-        cur.execute("INSERT INTO \"user\" (userID,username,iconimgpath) VALUES (%s,%s,%s)", (userID,username,'spotlight/imgpath/001.png'))
+        cur.execute("INSERT INTO \"user\" (userID,username,token) VALUES (%s,%s,%s)", (userID,username,token))
         conn.commit()
         print(f"'{username}' を新規登録しました。")
 

@@ -16,6 +16,8 @@ from routes.comments import comments_bp
 from routes.search import search_bp
 from routes.users import users_bp
 from routes.notifications import notifications_bp
+from routes.playlists import playlists_bp
+from routes.playhistory import playhistory_bp
 
 def create_app(config_name='default'):
     """
@@ -49,6 +51,8 @@ def create_app(config_name='default'):
     app.register_blueprint(search_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(playlists_bp)
+    app.register_blueprint(playhistory_bp)
     
     # ヘルスチェックエンドポイント
     @app.route('/api/health', methods=['GET'])
@@ -85,6 +89,8 @@ def create_app(config_name='default'):
                     'search': '/api/search',
                     'users': '/api/users',
                     'notifications': '/api/notifications',
+                    'playlists': '/api/playlists',
+                    'playhistory': '/api/playhistory',
                     'health': '/api/health'
                 }
             }
@@ -165,7 +171,22 @@ if __name__ == '__main__':
     print("  - GET  /api/search")
     print("  - GET  /api/users/<user_id>")
     print("  - PUT  /api/users/<user_id>")
+    print("  - GET  /api/users/<user_id>/profile")
+    print("  - GET  /api/users/<user_id>/stats")
     print("  - GET  /api/notifications")
+    print("  - GET  /api/notifications/count")
+    print("  - DELETE /api/notifications/<notification_id>")
+    print("  - DELETE /api/notifications/clear")
+    print("  - POST /api/playlists")
+    print("  - GET  /api/playlists/user/<user_id>")
+    print("  - GET  /api/playlists/<playlist_id>/contents")
+    print("  - POST /api/playlists/<playlist_id>/contents")
+    print("  - DELETE /api/playlists/<playlist_id>/contents/<content_id>")
+    print("  - DELETE /api/playlists/<playlist_id>")
+    print("  - GET  /api/playhistory")
+    print("  - POST /api/playhistory")
+    print("  - DELETE /api/playhistory/clear")
+    print("  - GET  /api/playhistory/stats")
     print("=" * 60)
     print("\nPress CTRL+C to quit\n")
     
