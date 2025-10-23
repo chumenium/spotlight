@@ -18,9 +18,9 @@ class FirebaseConfig {
   static const bool enableGoogleSignIn = true;
   
   /// Apple Sign-Inの有効化
-  static const bool enableAppleSignIn = true;
+  static const bool enableAppleSignIn = false;  // 使用しない
   
-  /// Twitter Sign-Inの有効化
+  /// Twitter Sign-Inの有効化（X）
   static const bool enableTwitterSignIn = true;
   
   /// 匿名ログインの有効化
