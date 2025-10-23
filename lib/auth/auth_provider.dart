@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:twitter_login/twitter_login.dart';
-import 'dart:io' show Platform;
 import '../config/firebase_config.dart';
-import '../config/auth_config.dart';
-import '../services/auth_service.dart';
+import 'auth_config.dart';
+import 'auth_service.dart';
 
 /// アプリ内で使用するユーザーモデル
 /// 
@@ -114,10 +112,7 @@ class AuthProvider extends ChangeNotifier {
   /// Google Sign-Inが利用可能か
   bool get canUseGoogle => FirebaseConfig.enableGoogleSignIn;
 
-  /// Apple Sign-Inが利用可能か（iOSのみ）
-  bool get canUseApple => FirebaseConfig.enableAppleSignIn && Platform.isIOS;
-
-  /// Twitter Sign-Inが利用可能か
+  /// Twitter Sign-Inが利用可能か（X）
   bool get canUseTwitter => FirebaseConfig.enableTwitterSignIn;
 
   // ==========================================================================
@@ -292,136 +287,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ==========================================================================
-  // Apple Sign-In
+  // Twitter Sign-In（X）
   // ==========================================================================
 
-  /// Apple Sign-Inでログイン（iOSのみ）
+  /// Twitter Sign-Inでログイン（X経由、Firebase Authentication使用）
   /// 
-  /// Apple認証フローを使用してログインします
-  /// 
-  /// 処理の流れ:
-  /// 1. Apple Sign-Inダイアログを表示
-  /// 2. Face ID/Touch ID/パスワードで認証
-  /// 3. Apple認証情報（identityToken、authorizationCode）を取得
-  /// 4. Firebase Authenticationに認証情報を送信
-  /// 5. Firebase UIDが自動的に生成される（新規ユーザーの場合）
-  /// 6. 初回ログイン時のみ、名前を取得してFirebaseに保存
-  /// 7. authStateChangesリスナーが発火し、ユーザー情報が更新される
-  /// 
-  /// 戻り値:
-  /// - true: ログイン成功
-  /// - false: ログイン失敗またはキャンセル
-  /// 
-  /// 取得される情報:
-  /// - Firebase UID（自動生成、変更されない一意のID）
-  /// - メールアドレス（ユーザーが隠すことも可能）
-  /// - 名前（初回ログイン時のみ）
-  /// 
-  /// 注意:
-  /// - iOSでのみ利用可能
-  /// - App Store申請時、他のソーシャルログインがある場合は必須
-  /// - ユーザーがメールアドレスを隠すことを選択できる
-  Future<bool> loginWithApple() async {
-    // 設定で無効化されている場合はエラー
-    if (!FirebaseConfig.enableAppleSignIn) {
-      _errorMessage = 'Apple Sign-Inは現在無効になっています';
-      return false;
-    }
-
-    // iOSでない場合はエラー
-    if (!Platform.isIOS) {
-      _errorMessage = 'Apple Sign-InはiOSでのみ利用可能です';
-      return false;
-    }
-
-    try {
-      // ローディング開始
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Apple] Sign-In開始');
-      }
-
-      // STEP 1: Apple認証情報を取得
-      // Face ID/Touch ID/パスワードでの認証が求められます
-      final appleCredential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,     // メールアドレスを要求
-          AppleIDAuthorizationScopes.fullName,  // 名前を要求（初回のみ提供）
-        ],
-      );
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Apple] 認証情報取得完了');
-      }
-
-      // STEP 2: Firebaseの認証情報を作成
-      // Apple IDのトークンをFirebaseで使用できる形式に変換
-      final oauthCredential = firebase_auth.OAuthProvider('apple.com').credential(
-        idToken: appleCredential.identityToken,
-        accessToken: appleCredential.authorizationCode,
-      );
-
-      // STEP 3: Firebaseにサインイン
-      // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
-      final userCredential = await _firebaseAuth.signInWithCredential(oauthCredential);
-
-      // STEP 4: 初回ログイン時、Apple から取得した名前をFirebaseに保存
-      // 注意: Appleは名前を初回ログイン時のみ提供します
-      // 2回目以降のログインでは名前が提供されないため、初回に保存が重要です
-      if (appleCredential.givenName != null && appleCredential.familyName != null) {
-        final displayName = '${appleCredential.familyName} ${appleCredential.givenName}';
-        await userCredential.user?.updateDisplayName(displayName);
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Apple] 表示名を更新: $displayName');
-        }
-      }
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Apple] Sign-In成功');
-      }
-
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } on firebase_auth.FirebaseAuthException catch (e) {
-      // Firebase認証エラー
-      _isLoading = false;
-      _errorMessage = AuthService.getAuthErrorMessage(e);
-      if (kDebugMode) {
-        debugPrint('🔐 [Apple] Firebaseエラー: ${e.code} - ${e.message}');
-      }
-      notifyListeners();
-      return false;
-    } catch (e) {
-      // その他のエラー
-      _isLoading = false;
-      _errorMessage = 'Apple Sign-Inに失敗しました';
-      if (kDebugMode) {
-        debugPrint('🔐 [Apple] 予期しないエラー: $e');
-      }
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // ==========================================================================
-  // Twitter Sign-In
-  // ==========================================================================
-
-  /// Twitter Sign-Inでログイン
-  /// 
-  /// Twitter認証フローを使用してログインします
+  /// Twitter（X）認証フローを使用してFirebase経由でログインします
   /// 
   /// 処理の流れ:
   /// 1. Twitterサインインフローを開始（ブラウザまたはアプリ内WebViewが開く）
   /// 2. ユーザーがTwitterアカウントでログイン
   /// 3. アプリの権限を許可
   /// 4. Twitter認証情報（accessToken、secret）を取得
-  /// 5. Firebase Authenticationに認証情報を送信
-  /// 6. Firebase UIDが自動的に生成される（新規ユーザーの場合）
+  /// 5. **Firebase Authenticationに認証情報を送信** ← Firebase経由
+  /// 6. **Firebase UIDが自動的に生成される**（新規ユーザーの場合）
   /// 7. authStateChangesリスナーが発火し、ユーザー情報が更新される
   /// 
   /// 戻り値:
@@ -437,6 +316,7 @@ class AuthProvider extends ChangeNotifier {
   /// 注意:
   /// - Twitter Developer PortalでAPI KeyとAPI Secret Keyの設定が必要
   /// - カスタムURLスキーム（spotlight://）の設定が必要
+  /// - **すべてFirebase Authentication経由で処理されます**
   Future<bool> loginWithTwitter() async {
     // 設定で無効化されている場合はエラー
     if (!FirebaseConfig.enableTwitterSignIn) {
@@ -469,8 +349,9 @@ class AuthProvider extends ChangeNotifier {
           secret: authResult.authTokenSecret!,
         );
 
-        // STEP 3: Firebaseにサインイン
+        // STEP 3: Firebase Authenticationにサインイン（Firebase経由）
         // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
+        // すべての認証処理はFirebase Authentication経由で行われます
         // authStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
         await _firebaseAuth.signInWithCredential(twitterAuthCredential);
 

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../providers/auth_provider.dart';
+import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
 import '../main.dart';
 
 /// ソーシャルログイン専用画面
-/// Google、Apple、Twitterでのログインをサポート
+/// Google、Twitter（X）でのログインをサポート
+/// すべてFirebase Authentication経由で処理されます
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
 
@@ -30,19 +31,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     }
   }
 
-  Future<void> _handleAppleLogin() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
-    final success = await authProvider.loginWithApple();
-
-    if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-      );
-    } else if (mounted && authProvider.errorMessage != null) {
-      _showErrorSnackBar(authProvider.errorMessage!);
-    }
-  }
 
   Future<void> _handleTwitterLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -152,33 +140,17 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                 
                 if (authProvider.canUseGoogle) const SizedBox(height: 16),
                 
-                // Apple Sign-Inボタン（iOSのみ）
-                if (authProvider.canUseApple)
-                  _SocialLoginButton(
-                    onPressed: authProvider.isLoading ? null : _handleAppleLogin,
-                    icon: const Icon(
-                      Icons.apple,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    label: 'Appleでログイン',
-                    backgroundColor: Colors.black,
-                    textColor: Colors.white,
-                  ),
-                
-                if (authProvider.canUseApple) const SizedBox(height: 16),
-                
-                // Twitterログインボタン
+                // Twitterログインボタン（X）
                 if (authProvider.canUseTwitter)
                   _SocialLoginButton(
                     onPressed: authProvider.isLoading ? null : _handleTwitterLogin,
                     icon: const Icon(
-                      Icons.tag,  // Twitterアイコンの代わり（カスタムアイコン推奨）
+                      Icons.tag,  // Xアイコンの代わり（カスタムアイコン推奨）
                       color: Colors.white,
                       size: 24,
                     ),
-                    label: 'Twitterでログイン',
-                    backgroundColor: const Color(0xFF1DA1F2),
+                    label: 'X（Twitter）でログイン',
+                    backgroundColor: Colors.black,  // Xのブランドカラー
                     textColor: Colors.white,
                   ),
                 

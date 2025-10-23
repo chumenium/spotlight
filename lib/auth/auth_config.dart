@@ -6,13 +6,18 @@ class AuthConfig {
   AuthConfig._();
 
   // ==========================================================================
-  // Twitter API設定
+  // Twitter（X）API設定
   // ==========================================================================
   
-  /// Twitter API Key
+  /// Twitter API Key（Firebase Authentication経由で使用）
   /// 
   /// Twitter Developer Portalで取得したAPI Keyを設定してください
   /// https://developer.twitter.com/
+  /// 
+  /// Firebase経由の認証フロー:
+  /// 1. Twitter認証情報を取得
+  /// 2. Firebase Authenticationに送信
+  /// 3. Firebase UIDが自動生成される
   /// 
   /// セキュリティ注意:
   /// - 本番環境では環境変数から読み込んでください
@@ -20,10 +25,10 @@ class AuthConfig {
   /// - .gitignoreに追加することを推奨します
   static const String twitterApiKey = String.fromEnvironment(
     'TWITTER_API_KEY',
-    defaultValue: 'YOUR_TWITTER_API_KEY', // 開発用デフォルト値
+    defaultValue: 'S9UAZafuVnVYtrm63kKNZCjyx', // ← 実際のAPI Keyを直接記載（開発用）
   );
 
-  /// Twitter API Secret Key
+  /// Twitter API Secret Key（Firebase Authentication経由で使用）
   /// 
   /// Twitter Developer Portalで取得したAPI Secret Keyを設定してください
   /// 
@@ -32,7 +37,7 @@ class AuthConfig {
   /// - 本番環境では環境変数から読み込んでください
   static const String twitterApiSecretKey = String.fromEnvironment(
     'TWITTER_API_SECRET_KEY',
-    defaultValue: 'YOUR_TWITTER_API_SECRET_KEY', // 開発用デフォルト値
+    defaultValue: 'Z1hLwKToAOiqtPMduAy8e4HF4CsdkTF2tlPrfQ2tIeXcbeYlCp', // ← 実際のSecret Keyを記載
   );
 
   /// Twitter OAuth Callback URL
