@@ -80,9 +80,21 @@ CREATE TABLE playlistdetail (
 
 --------------------------------コピペOK----------------------------------------------
 
+drop table serchhistory;
+drop table playhistory;
+drop table playlistdetail;
+drop table playlist;
+drop table contentuser;
+drop table comment;
+drop table content;
+drop table "user";
+
 CREATE TABLE "user" (
-    userID SERIAL PRIMARY KEY,
-    iconimgpath VARCHAR(128)
+    userID VARCHAR(512) PRIMARY KEY,
+    username VARCHAR(30),
+    iconimgpath VARCHAR(128),
+    token TEXT,
+    notificationenabled BOOLEAN DEFAULT FALSE
 );
 CREATE TABLE content (
     contentID SERIAL PRIMARY KEY,
@@ -91,12 +103,13 @@ CREATE TABLE content (
     link VARCHAR(128),
     title VARCHAR(128),
     posttimestamp TIMESTAMP,
-    userID INTEGER REFERENCES "user"(userID)
+    playnum INTEGER DEFAULT 0,
+    userID VARCHAR(512) REFERENCES "user"(userID)
 );
 CREATE TABLE comment (
     contentID INTEGER REFERENCES content(contentID),
     commentID SERIAL,
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     commenttimestamp TIMESTAMP,
     commenttext TEXT,
     parentcommentID INTEGER,
@@ -106,24 +119,32 @@ CREATE TABLE comment (
 );
 CREATE TABLE contentuser (
     contentID INTEGER REFERENCES content(contentID),
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     spotlightflag BOOLEAN,
     bookmarkflag BOOLEAN,
     PRIMARY KEY (contentID, userID)
 );
 CREATE TABLE playlist (
-    userID INTEGER REFERENCES "user"(userID),
+    userID VARCHAR(512) REFERENCES "user"(userID),
     playlistID SERIAL,
     PRIMARY KEY (userID, playlistID)
 );
 CREATE TABLE playlistdetail (
-    userID INTEGER,
+    userID VARCHAR(512),
     playlistID INTEGER,
     contentID INTEGER REFERENCES content(contentID),
     PRIMARY KEY (userID, playlistID, contentID),
     FOREIGN KEY (userID, playlistID) REFERENCES playlist(userID, playlistID)
 );
-ALTER TABLE content
-ADD COLUMN playnum INTEGER DEFAULT 0;
-ALTER TABLE "user"
-ADD COLUMN username VARCHAR(30);
+CREATE TABLE serchhistory (
+    userID VARCHAR(512),
+    serchID SERIAL,
+    serchword TEXT,
+    PRIMARY KEY (userID, serchID)
+);
+CREATE TABLE playhistory (
+    userID VARCHAR(512),
+    playID SERIAL,
+    contentID INTEGER REFERENCES content(contentID),
+    PRIMARY KEY (userID, playID)
+);
