@@ -11,11 +11,14 @@ class AppConfig {
   // APIのベースURL（将来的に使用）
   static String get apiBaseUrl {
     if (isDevelopment) {
-      return 'http://localhost:5000/api';
+      return 'http://10.22.107.221:5000/api'; // 開発環境のバックエンドサーバー
     } else {
       return 'https://api.spotlight.app'; // 本番環境のURL
     }
   }
+  
+  // バックエンドサーバーのURL
+  static String get backendUrl => 'http://10.22.107.221:5000';
   
   // デバッグログの表示制御
   static bool get showDebugLog => isDevelopment;

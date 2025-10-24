@@ -6,9 +6,11 @@ import 'package:twitter_login/twitter_login.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/firebase_config.dart';
+import '../config/app_config.dart';
 import 'auth_config.dart';
 import 'auth_service.dart';
 import '../services/jwt_service.dart';
+import '../services/fcm_service.dart';
 
 /// アプリ内で使用するユーザーモデル
 /// 
@@ -487,33 +489,57 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// バックエンドからJWTトークンを取得
+  /// バックエンドサーバーにJWTトークンとFCMトークンを送信
   /// 
-  /// Firebase IDトークンをバックエンドに送信してJWTトークンを取得します
+  /// Firebase IDトークンとFCMトークンをバックエンドサーバーに送信します
   /// 
   /// 戻り値:
-  /// - String: JWTトークン（成功の場合）
+  /// - Map<String, dynamic>: レスポンスデータ（成功の場合）
   /// - null: 失敗の場合
-  Future<String?> getJwtTokenFromBackend() async {
+  Future<Map<String, dynamic>?> sendTokensToBackend() async {
     try {
+      // Firebase IDトークンを取得
       final firebaseIdToken = await getFirebaseIdToken();
       if (firebaseIdToken == null) {
+        if (kDebugMode) {
+          debugPrint('🔐 Firebase IDトークンが取得できません');
+        }
         return null;
       }
 
+      // FCMトークンを取得（失敗しても続行）
+      final fcmToken = await FcmService.getFcmToken();
+      if (fcmToken == null) {
+        if (kDebugMode) {
+          debugPrint('🔔 FCMトークンが取得できません（モックトークンを使用）');
+        }
+      }
+
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 JWTトークン取得: Firebase IDトークンをバックエンドに送信');
+        debugPrint('🔐 トークン送信開始:');
+        debugPrint('  Firebase IDトークン: ${firebaseIdToken.substring(0, 50)}...');
+        debugPrint('  FCMトークン: ${fcmToken?.substring(0, 50) ?? 'null'}...');
+        debugPrint('  送信先: ${AppConfig.backendUrl}/api/auth/firebase');
       }
       
-      // バックエンドのエンドポイントにリクエストを送信
+      // バックエンドサーバーにリクエストを送信
       final response = await http.post(
-        Uri.parse('http://localhost:5000/api/auth/firebase'), // TODO: AppConfigから取得
+        Uri.parse('${AppConfig.backendUrl}/api/auth/firebase'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'id_token': firebaseIdToken}),
+        body: jsonEncode({
+          'id_token': firebaseIdToken,
+          'token': fcmToken ?? 'mock_fcm_token_123', // FCMトークンが取得できない場合はモックを使用
+        }),
       );
+      
+      if (kDebugMode) {
+        debugPrint('🔐 レスポンス受信: ${response.statusCode}');
+        debugPrint('🔐 レスポンス内容: ${response.body}');
+      }
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        
         if (data['success'] == true) {
           final jwtToken = data['data']['jwt'];
           final userInfo = data['data']['user'];
@@ -523,24 +549,46 @@ class AuthProvider extends ChangeNotifier {
           await JwtService.saveUserInfo(userInfo);
           
           if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('🔐 JWTトークン取得成功: ローカルに保存完了');
+            debugPrint('🔐 トークン送信成功:');
+            debugPrint('  JWTトークン: ${jwtToken.substring(0, 50)}...');
+            debugPrint('  ユーザー情報: ${userInfo.toString()}');
           }
           
-          return jwtToken;
+          return data;
+        } else {
+          if (kDebugMode) {
+            debugPrint('🔐 サーバーエラー: ${data['error']}');
+          }
         }
-      }
-      
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン取得失敗: ${response.statusCode}');
+      } else {
+        if (kDebugMode) {
+          debugPrint('🔐 HTTPエラー: ${response.statusCode}');
+          debugPrint('🔐 エラー内容: ${response.body}');
+        }
       }
       
       return null;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('🔐 JWTトークン取得エラー: $e');
+        debugPrint('🔐 トークン送信エラー: $e');
       }
       return null;
     }
+  }
+
+  /// バックエンドからJWTトークンを取得（旧メソッド - 互換性のため残す）
+  /// 
+  /// Firebase IDトークンをバックエンドに送信してJWTトークンを取得します
+  /// 
+  /// 戻り値:
+  /// - String: JWTトークン（成功の場合）
+  /// - null: 失敗の場合
+  Future<String?> getJwtTokenFromBackend() async {
+    final result = await sendTokensToBackend();
+    if (result != null && result['data'] != null) {
+      return result['data']['jwt'] as String?;
+    }
+    return null;
   }
 
   /// ログアウト

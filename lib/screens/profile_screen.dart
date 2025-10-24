@@ -5,6 +5,7 @@ import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'spotlight_list_screen.dart';
 import 'help_screen.dart';
+import 'jwt_test_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 
@@ -570,6 +571,18 @@ class ProfileScreen extends StatelessWidget {
             icon: Icons.info_outline,
             title: 'アプリについて',
             onTap: () {},
+          ),
+          _buildMenuTile(
+            icon: Icons.security,
+            title: 'JWTトークンテスト',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const JwtTestScreen(),
+                ),
+              );
+            },
           ),
         ],
       ),
