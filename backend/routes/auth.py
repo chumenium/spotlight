@@ -13,10 +13,14 @@ import psycopg2
 from functools import wraps
 
 # ====== 設定 ======
-JWT_SECRET = "your_secret_key"
-JWT_ALGORITHM = "HS256"
-JWT_EXP_HOURS = 24
-GOOGLE_CLIENT_ID = "YOUR_FIREBASE_CLIENT_ID.apps.googleusercontent.com"
+from config import config
+
+# 現在の環境設定を取得
+current_config = config['default']
+JWT_SECRET = current_config.JWT_SECRET
+JWT_ALGORITHM = current_config.JWT_ALGORITHM
+JWT_EXP_HOURS = current_config.JWT_EXP_HOURS
+GOOGLE_CLIENT_ID = current_config.GOOGLE_CLIENT_ID
 # ====== JWT認証デコレーター ======
 def jwt_required(f):
     @wraps(f)
@@ -42,35 +46,86 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 # ====== Firebase認証 → DB登録 → JWT発行 ======
 @auth_bp.route("/firebase", methods=["POST"])
 def firebase_auth():
-    data = request.get_json()
-    id_token_str = data.get("id_token")   # Flutterで生成された名前
-    token = data.get("token")                 # 通知トークン（FCM）
-
-    if not id_token_str:
-        return jsonify({"error": "id_token is required"}), 400
-
+    """
+    Firebase認証エンドポイント
+    
+    Firebase IDトークンを受け取ってJWTトークンを発行します
+    
+    Request Body:
+        {
+            "id_token": "firebase_id_token_here",
+            "token": "fcm_notification_token" (optional)
+        }
+    
+    Returns:
+        JSON: JWTトークンとユーザー情報
+    """
     try:
-        # Firebaseトークン検証
+        data = request.get_json()
+        id_token_str = data.get("id_token")
+        fcm_token = data.get("token")  # FCM通知トークン（オプション）
+
+        if not id_token_str:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'VALIDATION_ERROR',
+                    'message': 'id_token is required'
+                }
+            }), 400
+
+        # Firebase IDトークンの検証
         idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request())
         firebase_uid = idinfo["sub"]
-
-        create_username(firebase_uid,token)
-
-        # JWT発行
-        jwt_token = jwt.encode({
-            "firebase_uid": firebase_uid,
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXP_HOURS)
-        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
         
+        # ユーザー情報を取得
+        email = idinfo.get("email", "")
+        name = idinfo.get("name", "")
+        picture = idinfo.get("picture", "")
+
+        # データベースにユーザー情報を保存（FCMトークンも含む）
+        create_username(firebase_uid, fcm_token)
+
+        # JWTトークンを生成
+        jwt_payload = {
+            "firebase_uid": firebase_uid,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXP_HOURS)
+        }
+        
+        jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
         return jsonify({
-            "status": "success",
-            "jwt": jwt_token,
-            "firebase_uid": firebase_uid
-        })
+            'success': True,
+            'data': {
+                'jwt': jwt_token,
+                'user': {
+                    'firebase_uid': firebase_uid,
+                    'email': email,
+                    'name': name,
+                    'picture': picture
+                }
+            }
+        }), 200
 
-    except ValueError:
-        return jsonify({"error": "Invalid Firebase ID token"}), 400
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'AUTHENTICATION_ERROR',
+                'message': 'Invalid Firebase ID token'
+            }
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': str(e)
+            }
+        }), 500
 
 
 # ====== 通知トークン更新 ======

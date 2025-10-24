@@ -45,7 +45,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 20),
             
             // 統計・ヘルプセクション
-            _buildStatsAndHelpSection(),
+            _buildStatsAndHelpSection(context),
             
             const SizedBox(height: 20),
             
