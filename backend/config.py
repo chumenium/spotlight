@@ -36,6 +36,14 @@ class Config:
     # API設定
     API_RATE_LIMIT = '1000 per hour'
     API_RATE_LIMIT_PER_METHOD = '200 per hour'
+    
+    # JWT設定
+    JWT_SECRET = os.getenv('JWT_SECRET', 'dev-jwt-secret-change-in-production')
+    JWT_ALGORITHM = 'HS256'
+    JWT_EXP_HOURS = int(os.getenv('JWT_EXP_HOURS', '24'))
+    
+    # Google認証設定
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 
 class DevelopmentConfig(Config):
     """開発環境設定"""

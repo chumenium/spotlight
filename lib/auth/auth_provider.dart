@@ -3,9 +3,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:twitter_login/twitter_login.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../config/firebase_config.dart';
 import 'auth_config.dart';
 import 'auth_service.dart';
+import '../services/jwt_service.dart';
 
 /// アプリ内で使用するユーザーモデル
 /// 
@@ -451,6 +454,95 @@ class AuthProvider extends ChangeNotifier {
   // ログアウト
   // ==========================================================================
 
+  /// Firebase IDトークンを取得
+  /// 
+  /// 現在ログイン中のユーザーのFirebase IDトークンを取得します
+  /// このトークンをバックエンドに送信してJWTトークンを取得するために使用します
+  /// 
+  /// 戻り値:
+  /// - String: Firebase IDトークン（ログイン済みの場合）
+  /// - null: 未ログインまたはトークン取得失敗の場合
+  Future<String?> getFirebaseIdToken() async {
+    try {
+      final user = _firebaseAuth.currentUser;
+      if (user == null) {
+        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+          debugPrint('🔐 Firebase IDトークン取得失敗: ユーザー未ログイン');
+        }
+        return null;
+      }
+
+      final idToken = await user.getIdToken();
+      
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('🔐 Firebase IDトークン取得成功');
+      }
+      
+      return idToken;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔐 Firebase IDトークン取得エラー: $e');
+      }
+      return null;
+    }
+  }
+
+  /// バックエンドからJWTトークンを取得
+  /// 
+  /// Firebase IDトークンをバックエンドに送信してJWTトークンを取得します
+  /// 
+  /// 戻り値:
+  /// - String: JWTトークン（成功の場合）
+  /// - null: 失敗の場合
+  Future<String?> getJwtTokenFromBackend() async {
+    try {
+      final firebaseIdToken = await getFirebaseIdToken();
+      if (firebaseIdToken == null) {
+        return null;
+      }
+
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('🔐 JWTトークン取得: Firebase IDトークンをバックエンドに送信');
+      }
+      
+      // バックエンドのエンドポイントにリクエストを送信
+      final response = await http.post(
+        Uri.parse('http://localhost:5000/api/auth/firebase'), // TODO: AppConfigから取得
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id_token': firebaseIdToken}),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          final jwtToken = data['data']['jwt'];
+          final userInfo = data['data']['user'];
+          
+          // JWTトークンとユーザー情報をローカルに保存
+          await JwtService.saveJwtToken(jwtToken);
+          await JwtService.saveUserInfo(userInfo);
+          
+          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+            debugPrint('🔐 JWTトークン取得成功: ローカルに保存完了');
+          }
+          
+          return jwtToken;
+        }
+      }
+      
+      if (kDebugMode) {
+        debugPrint('🔐 JWTトークン取得失敗: ${response.statusCode}');
+      }
+      
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔐 JWTトークン取得エラー: $e');
+      }
+      return null;
+    }
+  }
+
   /// ログアウト
   /// 
   /// すべての認証プロバイダーからサインアウトします
@@ -487,6 +579,9 @@ class AuthProvider extends ChangeNotifier {
 
     // ユーザー情報をクリア
     _currentUser = null;
+    
+    // JWTトークンとユーザー情報をローカルから削除
+    await JwtService.clearAll();
 
     if (kDebugMode && AuthConfig.enableAuthDebugLog) {
       debugPrint('🔐 ログアウト完了: ゲストモード=${isGuest}');
