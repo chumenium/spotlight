@@ -513,7 +513,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsAndHelpSection() {
+  Widget _buildStatsAndHelpSection(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
