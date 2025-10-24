@@ -1,16 +1,17 @@
 """
 認証関連のエンドポイント
-ユーザー登録、ログイン、Google認証など
+ユーザー登録、ログイン、Firebase認証など
 """
 from flask import Blueprint, request, jsonify
 from backend.models.create_username import create_username
 from utils.auth import generate_jwt_token, verify_google_token
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
 import jwt
 import datetime
 import psycopg2
 from functools import wraps
+import os
 
 # ====== 設定 ======
 from config import config
@@ -21,6 +22,37 @@ JWT_SECRET = current_config.JWT_SECRET
 JWT_ALGORITHM = current_config.JWT_ALGORITHM
 JWT_EXP_HOURS = current_config.JWT_EXP_HOURS
 GOOGLE_CLIENT_ID = current_config.GOOGLE_CLIENT_ID
+
+# ====== Firebase Admin SDK初期化 ======
+def initialize_firebase():
+    """Firebase Admin SDKを初期化"""
+    try:
+        # Firebase Admin SDKが既に初期化されているかチェック
+        if firebase_admin._apps:
+            print("✅ Firebase Admin SDK already initialized")
+            return True
+        
+        # Firebase Admin SDKの設定ファイルパス
+        firebase_config_path = os.path.join(os.path.dirname(__file__), '..', 'spotlight-597c4-firebase-adminsdk-fbsvc-8820bfe6ef.json')
+        
+        if os.path.exists(firebase_config_path):
+            # 設定ファイルから初期化
+            cred = credentials.Certificate(firebase_config_path)
+            firebase_admin.initialize_app(cred)
+            print("✅ Firebase Admin SDK initialized with config file")
+            return True
+        else:
+            # 環境変数から初期化（本番環境用）
+            firebase_admin.initialize_app()
+            print("✅ Firebase Admin SDK initialized with environment variables")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Firebase Admin SDK initialization failed: {e}")
+        return False
+
+# Firebase Admin SDKを初期化
+firebase_initialized = initialize_firebase()
 # ====== JWT認証デコレーター ======
 def jwt_required(f):
     @wraps(f)
@@ -74,14 +106,34 @@ def firebase_auth():
                 }
             }), 400
 
-        # Firebase IDトークンの検証
-        idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request())
-        firebase_uid = idinfo["sub"]
+        # Firebase Admin SDKでIDトークンを検証
+        if not firebase_initialized:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'SERVER_ERROR',
+                    'message': 'Firebase Admin SDK not initialized'
+                }
+            }), 500
         
-        # ユーザー情報を取得
-        email = idinfo.get("email", "")
-        name = idinfo.get("name", "")
-        picture = idinfo.get("picture", "")
+        try:
+            # Firebase Admin SDKでIDトークンを検証
+            decoded_token = firebase_auth.verify_id_token(id_token_str)
+            firebase_uid = decoded_token['uid']
+            
+            # ユーザー情報を取得
+            email = decoded_token.get('email', '')
+            name = decoded_token.get('name', '')
+            picture = decoded_token.get('picture', '')
+            
+        except firebase_auth.InvalidIdTokenError:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'AUTHENTICATION_ERROR',
+                    'message': 'Invalid Firebase ID token'
+                }
+            }), 400
 
         # データベースにユーザー情報を保存（FCMトークンも含む）
         create_username(firebase_uid, fcm_token)
