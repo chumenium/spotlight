@@ -1,99 +1,136 @@
 """
-通知関連のエンドポイント
-通知一覧取得、既読処理など
+通知管理API
+通知の取得、管理機能を提供
 """
 from flask import Blueprint, request, jsonify
-from utils.auth import jwt_required
+from database import Notification, User
+from datetime import datetime
 
 notifications_bp = Blueprint('notifications', __name__, url_prefix='/api/notifications')
 
-@notifications_bp.route('', methods=['GET'])
-@jwt_required
+@notifications_bp.route('/', methods=['GET'])
 def get_notifications():
     """
-    通知一覧取得（認証必須）
+    ユーザーの通知一覧を取得
     
     Query Parameters:
-        page (int): ページ番号
-        limit (int): 取得件数
+    - userID: ユーザーID (required)
+    - limit: 取得件数 (default: 20, max: 100)
     
-    Returns:
-        JSON: 通知一覧とページネーション情報
-    """
-    try:
-        user = request.user
-        page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 20, type=int)
-        
-        # TODO: DB担当メンバーが通知取得処理を実装
-        
-        # モックデータ
-        mock_notifications = [
+    Response:
+    {
+        "success": true,
+        "data": [
             {
-                'id': f'notification_{i}',
-                'type': 'like',
-                'title': 'いいね通知',
-                'content': 'あなたの投稿にいいねがつきました',
-                'postId': 'post_123',
-                'userId': f'user_{i}',
-                'username': f'いいねしたユーザー{i}',
-                'isRead': False,
-                'createdAt': '2024-01-01T00:00:00Z'
+                "userID": "string",
+                "notificationID": "number",
+                "notificationtimestamp": "string",
+                "contentuserCID": "number",
+                "contentuserUID": "string",
+                "comCTID": "number",
+                "comCMID": "number",
+                "title": "string",
+                "contentpath": "string",
+                "username": "string",
+                "iconimgpath": "string"
             }
-            for i in range(1, min(limit, 5) + 1)
         ]
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'notifications': mock_notifications,
-                'pagination': {
-                    'currentPage': page,
-                    'totalPages': 5,
-                    'totalItems': 100,
-                    'hasNext': page < 5,
-                    'hasPrev': page > 1
-                }
-            }
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'SERVER_ERROR',
-                'message': str(e)
-            }
-        }), 500
-
-@notifications_bp.route('/<notification_id>/read', methods=['PUT'])
-@jwt_required
-def mark_as_read(notification_id):
-    """
-    通知既読処理（認証必須）
-    
-    Args:
-        notification_id (str): 通知ID
-    
-    Returns:
-        JSON: 更新された通知情報
+    }
     """
     try:
-        user = request.user
+        user_id = request.args.get('userID')
+        limit = min(int(request.args.get('limit', 20)), 100)
         
-        # TODO: DB担当メンバーが既読処理を実装
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PARAMETER',
+                    'message': 'userID parameter is required'
+                }
+            }), 400
         
-        # モックレスポンス
-        updated_notification = {
-            'id': notification_id,
-            'isRead': True,
-            'readAt': '2024-01-01T00:00:00Z'
+        # ユーザーの存在確認
+        user = User.get_by_id(user_id)
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'USER_NOT_FOUND',
+                    'message': 'User not found'
+                }
+            }), 404
+        
+        # 通知一覧を取得
+        notifications = Notification.get_user_notifications(user_id, limit)
+        
+        return jsonify({
+            'success': True,
+            'data': notifications
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to get notifications: {str(e)}'
+            }
+        }), 500
+
+@notifications_bp.route('/count', methods=['GET'])
+def get_notification_count():
+    """
+    ユーザーの未読通知数を取得
+    
+    Query Parameters:
+    - userID: ユーザーID (required)
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "userID": "string",
+            "unreadCount": "number"
         }
+    }
+    """
+    try:
+        user_id = request.args.get('userID')
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PARAMETER',
+                    'message': 'userID parameter is required'
+                }
+            }), 400
+        
+        # ユーザーの存在確認
+        user = User.get_by_id(user_id)
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'USER_NOT_FOUND',
+                    'message': 'User not found'
+                }
+            }), 404
+        
+        # 通知数を取得
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM notification WHERE userID = %s
+                """, (user_id,))
+                count = cursor.fetchone()['count']
         
         return jsonify({
             'success': True,
             'data': {
-                'notification': updated_notification
+                'userID': user_id,
+                'unreadCount': count
             }
         }), 200
         
@@ -102,7 +139,145 @@ def mark_as_read(notification_id):
             'success': False,
             'error': {
                 'code': 'SERVER_ERROR',
-                'message': str(e)
+                'message': f'Failed to get notification count: {str(e)}'
             }
         }), 500
 
+@notifications_bp.route('/<int:notification_id>', methods=['DELETE'])
+def delete_notification(notification_id):
+    """
+    通知を削除
+    
+    Path Parameters:
+    - notification_id: 通知ID
+    
+    Request Body:
+    {
+        "userID": "string (required)"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "message": "Notification deleted successfully"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body is required'
+                }
+            }), 400
+        
+        if 'userID' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'userID is required'
+                }
+            }), 400
+        
+        # 通知を削除
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM notification 
+                    WHERE userID = %s AND notificationID = %s
+                """, (data['userID'], notification_id))
+                conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'NOTIFICATION_NOT_FOUND',
+                    'message': 'Notification not found'
+                }
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'message': 'Notification deleted successfully'
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to delete notification: {str(e)}'
+            }
+        }), 500
+
+@notifications_bp.route('/clear', methods=['DELETE'])
+def clear_all_notifications():
+    """
+    ユーザーのすべての通知をクリア
+    
+    Request Body:
+    {
+        "userID": "string (required)"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "message": "All notifications cleared successfully"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_REQUEST',
+                    'message': 'Request body is required'
+                }
+            }), 400
+        
+        if 'userID' not in data:
+            return jsonify({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_FIELD',
+                    'message': 'userID is required'
+                }
+            }), 400
+        
+        # すべての通知をクリア
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM notification WHERE userID = %s
+                """, (data['userID'],))
+                conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'message': 'All notifications cleared successfully'
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'SERVER_ERROR',
+                'message': f'Failed to clear notifications: {str(e)}'
+            }
+        }), 500
