@@ -3,9 +3,97 @@
 ユーザー登録、ログイン、Google認証など
 """
 from flask import Blueprint, request, jsonify
+from backend.models.create_username import create_username
 from utils.auth import generate_jwt_token, verify_google_token
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+import jwt
+import datetime
+import psycopg2
+from functools import wraps
+
+# ====== 設定 ======
+JWT_SECRET = "your_secret_key"
+JWT_ALGORITHM = "HS256"
+JWT_EXP_HOURS = 24
+GOOGLE_CLIENT_ID = "YOUR_FIREBASE_CLIENT_ID.apps.googleusercontent.com"
+# ====== JWT認証デコレーター ======
+def jwt_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        request.user = payload
+        return f(*args, **kwargs)
+    return decorated_function
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+
+
+
+# ====== Firebase認証 → DB登録 → JWT発行 ======
+@auth_bp.route("/firebase", methods=["POST"])
+def firebase_auth():
+    data = request.get_json()
+    id_token_str = data.get("id_token")   # Flutterで生成された名前
+    token = data.get("token")                 # 通知トークン（FCM）
+
+    if not id_token_str:
+        return jsonify({"error": "id_token is required"}), 400
+
+    try:
+        # Firebaseトークン検証
+        idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request())
+        firebase_uid = idinfo["sub"]
+
+        create_username(firebase_uid,token)
+
+        # JWT発行
+        jwt_token = jwt.encode({
+            "firebase_uid": firebase_uid,
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXP_HOURS)
+        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        
+
+        return jsonify({
+            "status": "success",
+            "jwt": jwt_token,
+            "firebase_uid": firebase_uid
+        })
+
+    except ValueError:
+        return jsonify({"error": "Invalid Firebase ID token"}), 400
+
+
+# ====== 通知トークン更新 ======
+@auth_bp.route("/api/update_token", methods=["POST"])
+@jwt_required
+def update_token():
+    data = request.get_json()
+    new_token = data.get("token")
+    if not new_token:
+        return jsonify({"error": "token is required"}), 400
+
+    uid = request.user["firebase_uid"]
+
+    # conn = get_db_connection()
+    # cur = conn.cursor()
+    # cur.execute("UPDATE \"user\" SET token = %s WHERE userID = %s", (new_token, uid))
+    # conn.commit()
+    # cur.close()
+    # conn.close()
+
+    return jsonify({"status": "updated"})
+
+
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
