@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase secrets (DO NOT COMMIT)
+**/firebase-adminsdk-*.json
+**/*-firebase-adminsdk-*.json
+*.serviceAccountKey.json
+backend/spotlight-597c4-firebase-adminsdk-fbsvc-8820bfe6ef.json
