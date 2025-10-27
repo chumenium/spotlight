@@ -540,24 +540,49 @@ class AuthProvider extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        if (data['success'] == true) {
-          final jwtToken = data['data']['jwt'];
-          final userInfo = data['data']['user'];
-          
+        // レスポンス形式を確認（旧形式と新形式に対応）
+        String? jwtToken;
+        Map<String, dynamic>? userInfo;
+        
+        if (data['success'] == true && data['data'] != null) {
+          // 旧形式: { "success": true, "data": { "jwt": "...", "user": {...} } }
+         debugPrint('🔐 旧形式: ${data.toString()}');
+         debugPrint('🔐 旧形式: ${data['data']['jwt']['user']['firebase_uid']}');
+         debugPrint('🔐 新形式: ${data['jwt']}');
+         debugPrint('🔐 新形式: ${data['firebase_uid']}');
+         debugPrint('🔐 新形式: ${data['status']}');
+         debugPrint('🔐 新形式: ${data.toString()}');
+
+          jwtToken = data['data']['jwt'];
+          userInfo = data['data']['user'];
+        } else if (data['jwt'] != null) {
+          // 新形式: { "jwt": "...", "firebase_uid": "...", "status": "success" }
+          jwtToken = data['jwt'];
+          userInfo = {
+            'firebase_uid': data['firebase_uid'],
+            'status': data['status'],
+          };
+        }
+        
+        if (jwtToken != null) {
           // JWTトークンとユーザー情報をローカルに保存
           await JwtService.saveJwtToken(jwtToken);
-          await JwtService.saveUserInfo(userInfo);
+          if (userInfo != null) {
+            await JwtService.saveUserInfo(userInfo);
+          }
           
           if (kDebugMode && AuthConfig.enableAuthDebugLog) {
             debugPrint('🔐 トークン送信成功:');
             debugPrint('  JWTトークン: ${jwtToken.substring(0, 50)}...');
-            debugPrint('  ユーザー情報: ${userInfo.toString()}');
+            if (userInfo != null) {
+              debugPrint('  ユーザー情報: ${userInfo.toString()}');
+            }
           }
           
           return data;
         } else {
           if (kDebugMode) {
-            debugPrint('🔐 サーバーエラー: ${data['error']}');
+            debugPrint('🔐 サーバーエラー: ${data['error'] ?? '不明なエラー'}');
           }
         }
       } else {
