@@ -63,70 +63,74 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildProfileHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 40,
-            backgroundColor: Color(0xFFFF6B35),
-            child: Icon(
-              Icons.person,
-              size: 40,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+      child: Consumer<AuthProvider>(
+        builder: (context, authProvider, _) {
+          final user = authProvider.currentUser;
+          final displayName = user?.backendUsername ?? user?.username ?? 'ユーザー名';
+          
+          return Row(
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: const Color(0xFFFF6B35),
+                backgroundImage: user?.avatarUrl != null
+                    ? NetworkImage(user!.avatarUrl!)
+                    : null,
+                child: user?.avatarUrl == null
+                    ? const Icon(
+                        Icons.person,
+                        size: 40,
+                        color: Colors.white,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'ユーザー名',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // 選択されたバッジ
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF6B35),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.star,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // 選択されたバッジ
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B35),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.star,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'フォロワー: 1,234人',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[400],
-                  ),
+              ),
+              IconButton(
+                onPressed: () {
+                  // 設定画面への遷移
+                },
+                icon: const Icon(
+                  Icons.settings,
+                  color: Colors.white,
                 ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              // 設定画面への遷移
-            },
-            icon: const Icon(
-              Icons.settings,
-              color: Colors.white,
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -520,32 +524,7 @@ class ProfileScreen extends StatelessWidget {
       child: Column(
         children: [
           // 総視聴時間
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              children: [
-                Icon(
-                  Icons.timer,
-                  color: Color(0xFFFF6B35),
-                  size: 24,
-                ),
-                SizedBox(width: 12),
-                Text(
-                  '総視聴時間: 1,234時間',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          
           
           const SizedBox(height: 16),
           

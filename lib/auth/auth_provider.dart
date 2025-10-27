@@ -36,9 +36,14 @@ class User {
 
   /// ユーザー名（表示名）
   /// 
-  /// ソーシャルログインから取得した表示名
+  /// ソーシャルログインから取得した表示名、またはバックエンドから取得
   /// プロバイダーが提供しない場合は、メールアドレスから生成されます
   final String username;
+  
+  /// バックエンドから取得した本名
+  /// 
+  /// バックエンドの/testエンドポイントから取得したユーザー名
+  final String? backendUsername;
 
   /// プロフィール画像URL
   /// 
@@ -51,6 +56,7 @@ class User {
     required this.email,
     required this.username,
     this.avatarUrl,
+    this.backendUsername,
   });
 }
 
@@ -156,7 +162,7 @@ class AuthProvider extends ChangeNotifier {
   /// 
   /// パラメータ:
   /// - firebaseUser: Firebase Authenticationのユーザー情報
-  void _onAuthStateChanged(firebase_auth.User? firebaseUser) {
+  void _onAuthStateChanged(firebase_auth.User? firebaseUser) async {
     if (firebaseUser != null) {
       // Firebase UIDをそのままユーザーIDとして使用
       // このIDは変更されず、すべての認証プロバイダーで一意です
@@ -171,6 +177,9 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('🔐 ユーザーログイン: ${firebaseUser.uid}');
         debugPrint('  プロバイダー: ${firebaseUser.providerData.map((e) => e.providerId).join(', ')}');
       }
+
+      // UIDをバックエンドの/testエンドポイントに送信
+      await _sendUidToBackend(firebaseUser.uid);
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -598,6 +607,62 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('🔐 トークン送信エラー: $e');
       }
       return null;
+    }
+  }
+
+  /// バックエンドにUIDを送信
+  /// 
+  /// Firebase UIDをバックエンドの/testエンドポイントに送信します
+  /// 
+  /// パラメータ:
+  /// - uid: Firebase UID
+  Future<void> _sendUidToBackend(String uid) async {
+    try {
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('🔐 UID送信開始: $uid');
+        debugPrint('  送信先: ${AppConfig.backendUrl}/test');
+      }
+
+      final response = await http.get(
+        Uri.parse('${AppConfig.backendUrl}/test?userid=$uid'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (kDebugMode) {
+        debugPrint('🔐 UID送信完了: ${response.statusCode}');
+        debugPrint('🔐 レスポンス内容: ${response.body}');
+      }
+
+      // レスポンスからusernameを取得してユーザー情報を更新
+      if (response.statusCode == 200) {
+        try {
+          final data = jsonDecode(response.body);
+          final username = data['username'] as String?;
+          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+            debugPrint('🔐 バックエンドから受け取ったusername: $username');
+          }
+          
+          // ユーザー情報を更新
+          if (_currentUser != null && username != null) {
+            _currentUser = User(
+              id: _currentUser!.id,
+              email: _currentUser!.email,
+              username: _currentUser!.username,
+              avatarUrl: _currentUser!.avatarUrl,
+              backendUsername: username,
+            );
+            notifyListeners();
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('🔐 usernameのパースエラー: $e');
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔐 UID送信エラー: $e');
+      }
     }
   }
 
