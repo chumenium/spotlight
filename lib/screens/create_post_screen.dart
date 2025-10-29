@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import 'dart:io';
 import '../utils/spotlight_colors.dart';
 
@@ -20,7 +22,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // 画像・動画選択用
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedMedia;
-  bool get _hasMedia => _selectedMedia != null;
+  bool get _hasMedia => _selectedMedia != null || _selectedAudio != null;
+  
+  // 音声ファイル選択用
+  PlatformFile? _selectedAudio;
+  AudioPlayer? _audioPlayer;
+  bool _isAudioPlaying = false;
 
   @override
   void initState() {
@@ -40,6 +47,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 
@@ -219,10 +227,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               const SizedBox(height: 16),
               
               // 選択済みメディア表示
-              if (_hasMedia)
+              if (_selectedMedia != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _buildSelectedMediaPreview(),
+                ),
+              
+              // 選択済み音声ファイル表示
+              if (_selectedAudio != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildSelectedAudioPreview(),
                 ),
               
               // 追加オプション
@@ -241,16 +256,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   ),
                   const SizedBox(width: 16),
                   _buildOptionButton(
-                    icon: Icons.location_on_outlined,
-                    label: '位置情報',
-                    onTap: () {
-                      // TODO: 位置情報機能を実装
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('位置情報機能は準備中です'),
-                        ),
-                      );
-                    },
+                    icon: Icons.audiotrack_outlined,
+                    label: '音声',
+                    onTap: _pickAudioFile,
                   ),
                 ],
               ),
@@ -382,6 +390,233 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ),
       ],
     );
+  }
+  
+  // 音声ファイル選択メソッド
+  Future<void> _pickAudioFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _selectedAudio = result.files.single;
+          _selectedMedia = null; // メディアファイルをクリア
+        });
+        
+        // 音声プレイヤーを初期化
+        _audioPlayer = AudioPlayer();
+        try {
+          await _audioPlayer!.setFilePath(_selectedAudio!.path!);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('音声ファイルの読み込みに失敗しました: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('音声ファイルの選択に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 選択済み音声ファイルのプレビュー表示
+  Widget _buildSelectedAudioPreview() {
+    if (_selectedAudio == null) return const SizedBox.shrink();
+
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey[800],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.audiotrack,
+                    color: SpotLightColors.primaryOrange,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _selectedAudio!.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(_selectedAudio!.size / (1024 * 1024)).toStringAsFixed(1)} MB',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // 再生コントロール
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: _toggleAudioPlayback,
+                    icon: Icon(
+                      _isAudioPlaying ? Icons.pause : Icons.play_arrow,
+                      color: SpotLightColors.primaryOrange,
+                    ),
+                  ),
+                  Expanded(
+                    child: StreamBuilder<Duration>(
+                      stream: _audioPlayer?.positionStream,
+                      builder: (context, snapshot) {
+                        final position = snapshot.data ?? Duration.zero;
+                        final duration = _audioPlayer?.duration ?? Duration.zero;
+                        
+                        return Column(
+                          children: [
+                            Slider(
+                              value: duration.inMilliseconds > 0
+                                  ? position.inMilliseconds / duration.inMilliseconds
+                                  : 0.0,
+                              onChanged: (value) {
+                                if (_audioPlayer != null && duration.inMilliseconds > 0) {
+                                  final newPosition = Duration(
+                                    milliseconds: (value * duration.inMilliseconds).round(),
+                                  );
+                                  _audioPlayer!.seek(newPosition);
+                                }
+                              },
+                              activeColor: SpotLightColors.primaryOrange,
+                              inactiveColor: Colors.grey[600],
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _formatDuration(position),
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  _formatDuration(duration),
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // 削除ボタン
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: () {
+              _audioPlayer?.stop();
+              _audioPlayer?.dispose();
+              setState(() {
+                _selectedAudio = null;
+                _audioPlayer = null;
+                _isAudioPlaying = false;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // 音声の再生/停止を切り替え
+  Future<void> _toggleAudioPlayback() async {
+    if (_audioPlayer == null) return;
+
+    try {
+      if (_isAudioPlaying) {
+        await _audioPlayer!.pause();
+      } else {
+        await _audioPlayer!.play();
+      }
+      
+      // 再生状態のリスナーを追加
+      _audioPlayer!.playerStateStream.listen((state) {
+        if (mounted) {
+          setState(() {
+            _isAudioPlaying = state.playing;
+          });
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('音声の再生に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  // 時間表示用のフォーマット
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 }
 

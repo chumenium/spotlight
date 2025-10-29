@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:just_audio/just_audio.dart';
 import 'dart:math' as math;
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
@@ -27,6 +28,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   final Map<int, VideoPlayerController?> _videoControllers = {};
   int? _currentPlayingVideo;
   final Set<int> _initializedVideos = {};
+  
+  // 音声プレイヤー関連
+  final Map<int, AudioPlayer?> _audioPlayers = {};
+  int? _currentPlayingAudio;
+  final Set<int> _initializedAudios = {};
   
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
@@ -55,10 +61,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // ライフサイクル監視を追加
     WidgetsBinding.instance.addObserver(this);
     
-    // 初期表示時に現在のページが動画の場合は自動再生を開始
+    // 初期表示時に現在のページがメディアの場合は自動再生を開始
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_posts.isNotEmpty && _posts[_currentIndex].type == PostType.video) {
-        _handleVideoPageChange(_currentIndex);
+      if (_posts.isNotEmpty) {
+        _handleMediaPageChange(_currentIndex);
       }
     });
   }
@@ -80,6 +86,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     _videoControllers.clear();
     _initializedVideos.clear();
     
+    // 音声プレイヤーのリソース解放
+    for (final player in _audioPlayers.values) {
+      player?.dispose();
+    }
+    _audioPlayers.clear();
+    _initializedAudios.clear();
+    
     // ステータスバーを表示に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -89,28 +102,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    // 現在再生中の動画がある場合のみ処理
-    if (_currentPlayingVideo != null) {
-      final controller = _videoControllers[_currentPlayingVideo];
-      if (controller != null && controller.value.isInitialized) {
-        switch (state) {
-          case AppLifecycleState.paused:
-          case AppLifecycleState.inactive:
-          case AppLifecycleState.detached:
-            // アプリがバックグラウンドに行った時は動画を一時停止
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        // アプリがバックグラウンドに行った時は音声/動画を一時停止
+        if (_currentPlayingVideo != null) {
+          final controller = _videoControllers[_currentPlayingVideo];
+          if (controller != null && controller.value.isInitialized) {
             controller.pause();
-            break;
-          case AppLifecycleState.resumed:
-            // アプリがフォアグラウンドに戻った時は動画を再生
-            if (_posts[_currentIndex].type == PostType.video) {
-              controller.play();
-            }
-            break;
-          case AppLifecycleState.hidden:
-            // 何もしない
-            break;
+          }
         }
-      }
+        if (_currentPlayingAudio != null) {
+          final player = _audioPlayers[_currentPlayingAudio];
+          if (player != null) {
+            player.pause();
+          }
+        }
+        break;
+      case AppLifecycleState.resumed:
+        // アプリがフォアグラウンドに戻った時は再生
+        if (_posts[_currentIndex].type == PostType.video && _currentPlayingVideo != null) {
+          final controller = _videoControllers[_currentPlayingVideo];
+          if (controller != null && controller.value.isInitialized) {
+            controller.play();
+          }
+        }
+        if (_posts[_currentIndex].type == PostType.audio && _currentPlayingAudio != null) {
+          final player = _audioPlayers[_currentPlayingAudio];
+          if (player != null) {
+            player.play();
+          }
+        }
+        break;
+      case AppLifecycleState.hidden:
+        // 何もしない
+        break;
     }
   }
 
@@ -136,11 +163,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       controller: _pageController,
                       scrollDirection: Axis.vertical, // 縦スクロール
                       onPageChanged: (index) {
-                        setState(() {
-                          _currentIndex = index;
-                          _resetSpotlightState();
-                          _handleVideoPageChange(index);
-                        });
+                      setState(() {
+                        _currentIndex = index;
+                        _resetSpotlightState();
+                        _handleMediaPageChange(index);
+                      });
                       },
                       itemCount: _posts.length,
                       itemBuilder: (context, index) {
@@ -373,6 +400,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Widget _buildAudioContent(Post post) {
+    final postIndex = _posts.indexOf(post);
+    final player = _audioPlayers[postIndex];
+    final isPlaying = _currentPlayingAudio == postIndex && player != null;
+    
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -386,25 +417,104 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           ],
         ),
       ),
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.graphic_eq,
-              color: Colors.white,
-              size: 120,
-            ),
-            SizedBox(height: 20),
-            Text(
-              '音声投稿',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      child: GestureDetector(
+        onTap: () => _toggleAudioPlayback(postIndex),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 音声視覚化エフェクト
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: isPlaying ? 160 : 120,
+                height: isPlaying ? 160 : 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SpotLightColors.getSpotlightColor(2).withOpacity(isPlaying ? 0.3 : 0.1),
+                  border: Border.all(
+                    color: SpotLightColors.getSpotlightColor(2).withOpacity(0.8),
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                  size: isPlaying ? 80 : 60,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              const Text(
+                '音声投稿',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // 再生進捗
+              if (player != null)
+                Container(
+                  width: 250,
+                  child: StreamBuilder<Duration>(
+                    stream: player.positionStream,
+                    builder: (context, snapshot) {
+                      final position = snapshot.data ?? Duration.zero;
+                      final duration = player.duration ?? Duration.zero;
+                      
+                      return Column(
+                        children: [
+                          Slider(
+                            value: duration.inMilliseconds > 0
+                                ? position.inMilliseconds / duration.inMilliseconds
+                                : 0.0,
+                            onChanged: (value) {
+                              if (duration.inMilliseconds > 0) {
+                                final newPosition = Duration(
+                                  milliseconds: (value * duration.inMilliseconds).round(),
+                                );
+                                player.seek(newPosition);
+                              }
+                            },
+                            activeColor: SpotLightColors.getSpotlightColor(2),
+                            inactiveColor: Colors.grey[600],
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(position),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                _formatDuration(duration),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              // 音声初期化中のローディング表示
+              if (postIndex == _currentIndex && 
+                  post.type == PostType.audio &&
+                  !_initializedAudios.contains(postIndex))
+                const Padding(
+                  padding: EdgeInsets.only(top: 20),
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6B35),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1026,7 +1136,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
   }
 
-  void _handleVideoPageChange(int newIndex) {
+  void _handleMediaPageChange(int newIndex) {
     final newPost = _posts[newIndex];
     
     // 前の動画を停止
@@ -1035,6 +1145,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (prevController != null && prevController.value.isInitialized) {
         prevController.pause();
       }
+      _currentPlayingVideo = null;
+    }
+    
+    // 前の音声を停止
+    if (_currentPlayingAudio != null) {
+      final prevPlayer = _audioPlayers[_currentPlayingAudio];
+      if (prevPlayer != null) {
+        prevPlayer.pause();
+      }
+      _currentPlayingAudio = null;
     }
 
     // 新しいページが動画投稿の場合
@@ -1061,8 +1181,112 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           controller.setLooping(true);
         }
       }
-    } else {
-      _currentPlayingVideo = null;
+    } else if (newPost.type == PostType.audio) {
+      // 新しいページが音声投稿の場合
+      _currentPlayingAudio = newIndex;
+      
+      // 音声プレイヤーが初期化されていない場合は初期化
+      if (!_initializedAudios.contains(newIndex)) {
+        _initializeAudioPlayer(newIndex).then((_) {
+          if (!_isDisposed && mounted) {
+            // 初期化完了後に自動再生
+            final player = _audioPlayers[newIndex];
+            if (player != null) {
+              player.setLoopMode(LoopMode.one);
+              player.play();
+            }
+          }
+        });
+      } else {
+        // 既に初期化済みの場合は即座に再生
+        final player = _audioPlayers[newIndex];
+        if (player != null) {
+          player.setLoopMode(LoopMode.one);
+          player.play();
+        }
+      }
     }
+  }
+  
+  // 音声プレイヤー初期化メソッド
+  Future<void> _initializeAudioPlayer(int postIndex) async {
+    final post = _posts[postIndex];
+    
+    // 音声投稿でない場合は何もしない
+    if (post.type != PostType.audio || post.mediaUrl == null) {
+      return;
+    }
+
+    // すでに初期化済みの場合はスキップ
+    if (_initializedAudios.contains(postIndex)) {
+      return;
+    }
+
+    try {
+      // サンプル音声URLまたは実際のURL
+      final audioUrl = post.mediaUrl!.isEmpty 
+          ? 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav'
+          : post.mediaUrl!;
+
+      final player = AudioPlayer();
+      await player.setUrl(audioUrl);
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _audioPlayers[postIndex] = player;
+          _initializedAudios.add(postIndex);
+        });
+      }
+    } catch (e) {
+      // 音声の初期化に失敗した場合のエラーハンドリング
+      print('音声の初期化に失敗: $e');
+    }
+  }
+  
+  // 音声の再生/停止を切り替え
+  Future<void> _toggleAudioPlayback(int postIndex) async {
+    final player = _audioPlayers[postIndex];
+    
+    if (player == null) {
+      // プレイヤーが初期化されていない場合は初期化
+      await _initializeAudioPlayer(postIndex);
+      final newPlayer = _audioPlayers[postIndex];
+      if (newPlayer != null) {
+        setState(() {
+          _currentPlayingAudio = postIndex;
+        });
+        await newPlayer.play();
+      }
+      return;
+    }
+
+    try {
+      if (player.playing) {
+        await player.pause();
+      } else {
+        // 他の音声を停止
+        if (_currentPlayingAudio != null && _currentPlayingAudio != postIndex) {
+          final otherPlayer = _audioPlayers[_currentPlayingAudio];
+          if (otherPlayer != null) {
+            await otherPlayer.pause();
+          }
+        }
+        
+        setState(() {
+          _currentPlayingAudio = postIndex;
+        });
+        await player.play();
+      }
+    } catch (e) {
+      print('音声の再生に失敗: $e');
+    }
+  }
+  
+  // 時間表示用のフォーマット
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 }
