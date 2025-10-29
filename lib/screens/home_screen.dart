@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 import 'dart:math' as math;
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
@@ -11,7 +12,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
   final List<Post> _posts = List.generate(10, (index) => Post.sample(index));
@@ -21,6 +22,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isSpotlighting = false;
   AnimationController? _ambientAnimationController;
   Animation<double>? _ambientOpacityAnimation;
+  
+  // 動画プレイヤー関連
+  final Map<int, VideoPlayerController?> _videoControllers = {};
+  int? _currentPlayingVideo;
+  final Set<int> _initializedVideos = {};
   
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
@@ -45,16 +51,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       parent: _ambientAnimationController!,
       curve: Curves.easeInOut,
     ));
+    
+    // ライフサイクル監視を追加
+    WidgetsBinding.instance.addObserver(this);
+    
+    // 初期表示時に現在のページが動画の場合は自動再生を開始
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_posts.isNotEmpty && _posts[_currentIndex].type == PostType.video) {
+        _handleVideoPageChange(_currentIndex);
+      }
+    });
   }
 
   @override
   void dispose() {
     _isDisposed = true;
+    
+    // ライフサイクル監視を解除
+    WidgetsBinding.instance.removeObserver(this);
+    
     _pageController.dispose();
     _ambientAnimationController?.dispose();
+    
+    // 動画プレイヤーのリソース解放
+    for (final controller in _videoControllers.values) {
+      controller?.dispose();
+    }
+    _videoControllers.clear();
+    _initializedVideos.clear();
+    
     // ステータスバーを表示に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // 現在再生中の動画がある場合のみ処理
+    if (_currentPlayingVideo != null) {
+      final controller = _videoControllers[_currentPlayingVideo];
+      if (controller != null && controller.value.isInitialized) {
+        switch (state) {
+          case AppLifecycleState.paused:
+          case AppLifecycleState.inactive:
+          case AppLifecycleState.detached:
+            // アプリがバックグラウンドに行った時は動画を一時停止
+            controller.pause();
+            break;
+          case AppLifecycleState.resumed:
+            // アプリがフォアグラウンドに戻った時は動画を再生
+            if (_posts[_currentIndex].type == PostType.video) {
+              controller.play();
+            }
+            break;
+          case AppLifecycleState.hidden:
+            // 何もしない
+            break;
+        }
+      }
+    }
   }
 
   @override
@@ -82,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         setState(() {
                           _currentIndex = index;
                           _resetSpotlightState();
+                          _handleVideoPageChange(index);
                         });
                       },
                       itemCount: _posts.length,
@@ -150,39 +208,77 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildVideoContent(Post post) {
+    final postIndex = _posts.indexOf(post);
+    final controller = _videoControllers[postIndex];
+    
     return Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.black,
       child: Stack(
         children: [
-          // 動画プレイヤー（仮実装）
-          Center(
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey[900],
-                image: post.thumbnailUrl != null
-                    ? DecorationImage(
-                        image: NetworkImage(post.thumbnailUrl!),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
+          // 動画プレイヤー
+          if (controller != null && controller.value.isInitialized)
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
               ),
-              child: post.thumbnailUrl == null
-                  ? const Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white,
-                      size: 80,
-                    )
-                  : const Center(
-                      child: Icon(
-                        Icons.play_circle_filled,
-                        color: Colors.white,
-                        size: 80,
+            )
+          else
+            // 動画初期化中またはサムネイル表示
+            Center(
+              child: Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  image: post.thumbnailUrl != null
+                      ? DecorationImage(
+                          image: NetworkImage(post.thumbnailUrl!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: Stack(
+                  children: [
+                    if (post.thumbnailUrl == null)
+                      const Center(
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          color: Colors.white,
+                          size: 80,
+                        ),
                       ),
-                    ),
+                    // 動画初期化中のローディング表示
+                    if (postIndex == _currentIndex && 
+                        post.type == PostType.video &&
+                        !_initializedVideos.contains(postIndex))
+                      const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6B35),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          
+          // タップで一時停止/再生
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () {
+                if (controller != null && controller.value.isInitialized) {
+                  if (controller.value.isPlaying) {
+                    controller.pause();
+                  } else {
+                    controller.play();
+                  }
+                } else if (postIndex == _currentIndex && post.type == PostType.video) {
+                  // 初期化されていない場合は初期化を開始
+                  _initializeVideoController(postIndex);
+                }
+              },
             ),
           ),
         ],
@@ -894,5 +990,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  // 動画プレイヤー関連メソッド
+  Future<void> _initializeVideoController(int postIndex) async {
+    final post = _posts[postIndex];
+    
+    // 動画投稿でない場合は何もしない
+    if (post.type != PostType.video || post.mediaUrl == null) {
+      return;
+    }
+
+    // すでに初期化済みの場合はスキップ
+    if (_initializedVideos.contains(postIndex)) {
+      return;
+    }
+
+    try {
+      // サンプル動画URLまたは実際のURL
+      final videoUrl = post.mediaUrl!.isEmpty 
+          ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
+          : post.mediaUrl!;
+
+      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      await controller.initialize();
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _videoControllers[postIndex] = controller;
+          _initializedVideos.add(postIndex);
+        });
+      }
+    } catch (e) {
+      // 動画の初期化に失敗した場合のエラーハンドリング
+      print('動画の初期化に失敗: $e');
+    }
+  }
+
+  void _handleVideoPageChange(int newIndex) {
+    final newPost = _posts[newIndex];
+    
+    // 前の動画を停止
+    if (_currentPlayingVideo != null) {
+      final prevController = _videoControllers[_currentPlayingVideo];
+      if (prevController != null && prevController.value.isInitialized) {
+        prevController.pause();
+      }
+    }
+
+    // 新しいページが動画投稿の場合
+    if (newPost.type == PostType.video) {
+      _currentPlayingVideo = newIndex;
+      
+      // 動画コントローラーが初期化されていない場合は初期化
+      if (!_initializedVideos.contains(newIndex)) {
+        _initializeVideoController(newIndex).then((_) {
+          if (!_isDisposed && mounted) {
+            // 初期化完了後に自動再生
+            final controller = _videoControllers[newIndex];
+            if (controller != null && controller.value.isInitialized) {
+              controller.play();
+              controller.setLooping(true);
+            }
+          }
+        });
+      } else {
+        // 既に初期化済みの場合は即座に再生
+        final controller = _videoControllers[newIndex];
+        if (controller != null && controller.value.isInitialized) {
+          controller.play();
+          controller.setLooping(true);
+        }
+      }
+    } else {
+      _currentPlayingVideo = null;
+    }
   }
 }

@@ -32,6 +32,9 @@ dependencies:
   
   # ローカルストレージ
   shared_preferences: ^2.2.2
+  
+  # 動画再生
+  video_player: ^2.8.1
 
 dev_dependencies:
   flutter_test:
