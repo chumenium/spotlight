@@ -394,13 +394,44 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   
   // 音声ファイル選択メソッド
   Future<void> _pickAudioFile() async {
+    // プラットフォームチェック - Android端末のみ対応
+    if (!Platform.isAndroid) {
+      _showAudioFeatureDialog();
+      return;
+    }
+
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'], // 音声ファイルのみ許可
         allowMultiple: false,
+        dialogTitle: '音声ファイルを選択',
       );
 
       if (result != null && result.files.single.path != null) {
+        // ファイルが有効な音声ファイルかチェック
+        final filePath = result.files.single.path!;
+        final fileExtension = filePath.toLowerCase().split('.').last;
+        final validExtensions = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'];
+        
+        if (!validExtensions.contains(fileExtension)) {
+          _showSnackBar(
+            '音声ファイルのみ選択できます',
+            Colors.red,
+          );
+          return;
+        }
+
+        // ファイルサイズチェック（50MB制限）
+        final fileSize = File(filePath).lengthSync();
+        if (fileSize > 50 * 1024 * 1024) {
+          _showSnackBar(
+            '音声ファイルが大きすぎます（50MB以下にしてください）',
+            Colors.red,
+          );
+          return;
+        }
+
         setState(() {
           _selectedAudio = result.files.single;
           _selectedMedia = null; // メディアファイルをクリア
@@ -617,6 +648,81 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  // 音声機能ダイアログ（非Android端末用）
+  void _showAudioFeatureDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Row(
+          children: [
+            Icon(Icons.mic, color: Color(0xFFFF6B35)),
+            SizedBox(width: 8),
+            Text(
+              '音声機能',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Android端末でのみ利用可能です！',
+              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '対応フォーマット:',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            _buildFeatureItem('🎵 MP3'),
+            _buildFeatureItem('🎵 M4A'),
+            _buildFeatureItem('🎵 AAC'),
+            _buildFeatureItem('🎵 WAV'),
+            _buildFeatureItem('🎵 OGG'),
+            _buildFeatureItem('🎵 FLAC'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              '了解',
+              style: TextStyle(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        '• $text',
+        style: const TextStyle(color: Colors.white70, fontSize: 14),
+      ),
+    );
+  }
+
+  // スナックバー表示ヘルパー
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 }
 
