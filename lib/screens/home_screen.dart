@@ -327,22 +327,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black, // 不透明な背景を追加
-      padding: const EdgeInsets.all(40),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              SpotLightColors.getSpotlightColor(0).withOpacity(0.1),
-              SpotLightColors.getSpotlightColor(1).withOpacity(0.1),
-            ],
-          ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.black,
+            SpotLightColors.getSpotlightColor(0).withOpacity(0.15),
+            SpotLightColors.getSpotlightColor(1).withOpacity(0.15),
+            Colors.black,
+          ],
         ),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
@@ -369,7 +369,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             ),
           ),
         ),
-      ),
     );
   }
 
