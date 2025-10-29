@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
 
+// CreatePostModalは後でインポート時に使用
+
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
 
@@ -61,6 +63,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         );
         _textController.clear();
+        // モーダルを閉じる
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
@@ -290,6 +294,51 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// モーダル表示用のラッパーウィジェット
+class CreatePostModal extends StatelessWidget {
+  const CreatePostModal({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.95,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF121212),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+          ),
+          child: Stack(
+            children: [
+              const CreatePostScreen(),
+              // ドラッグハンドル
+              Positioned(
+                top: 10,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[600],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

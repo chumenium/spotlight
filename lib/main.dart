@@ -80,7 +80,7 @@ class MainScreen extends StatelessWidget {
             children: const [
               HomeScreen(),
               SearchScreen(),
-              CreatePostScreen(),
+              SizedBox.shrink(), // CreatePostScreenは別途モーダルで表示
               NotificationsScreen(),
               ProfileScreen(),
             ],
@@ -88,6 +88,17 @@ class MainScreen extends StatelessWidget {
           bottomNavigationBar: CustomBottomNavigationBar(
             currentIndex: navigationProvider.currentIndex,
             onTap: (index) {
+              if (index == 2) {
+                // プラスボタンの場合はモーダルで表示
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const CreatePostModal(),
+                );
+                // 現在のインデックスを変更しない
+                return;
+              }
               navigationProvider.setCurrentIndex(index);
             },
           ),
