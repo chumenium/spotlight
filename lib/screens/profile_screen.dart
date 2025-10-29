@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'spotlight_list_screen.dart';
@@ -8,9 +10,90 @@ import 'help_screen.dart';
 import 'jwt_test_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
+import '../config/app_config.dart';
+import '../services/jwt_service.dart';
+import '../models/badge.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  int _spotlightCount = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSpotlightCount();
+  }
+
+  Future<void> _fetchSpotlightCount() async {
+    if (kDebugMode) {
+      debugPrint('🌟 バッジシステム: スポットライト数取得開始');
+    }
+
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ JWTトークンが取得できません');
+        }
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📡 リクエスト送信: ${AppConfig.backendUrl}/api/users/profile');
+      }
+
+      final response = await http.get(
+        Uri.parse('${AppConfig.backendUrl}/api/users/profile'),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('📥 レスポンス受信: ${response.statusCode}');
+        debugPrint('📄 レスポンス内容: ${response.body}');
+      }
+
+      if (mounted && response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _spotlightCount = data['spotlightnum'] ?? 0;
+          _isLoading = false;
+        });
+        
+        if (kDebugMode) {
+          debugPrint('✅ スポットライト数取得成功: $_spotlightCount');
+          debugPrint('🎖️ 解放バッジ数: ${BadgeManager.getUnlockedBadges(_spotlightCount).length}/8');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ HTTPエラー: ${response.statusCode}');
+        }
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ スポットライト数取得エラー: $e');
+      }
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +149,8 @@ class ProfileScreen extends StatelessWidget {
       child: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
           final user = authProvider.currentUser;
-          final displayName = user?.backendUsername ?? user?.username ?? 'ユーザー名';
+          // バックエンドから取得したDBのusernameを優先表示
+          final displayName = user?.backendUsername ?? 'ユーザー';
           
           return Row(
             children: [
@@ -100,20 +184,8 @@ class ProfileScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // 選択されたバッジ
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B35),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.star,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
+                        // 最大のバッジを表示
+                        _buildMaxBadgeIcon(),
                       ],
                     ),
                   ],
@@ -131,6 +203,41 @@ class ProfileScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildMaxBadgeIcon() {
+    // 解放されているバッジの中で最大のバッジを取得
+    final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
+    if (unlockedBadges.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    final maxBadge = unlockedBadges.last; // 最後のバッジが最大（requiredSpotlightsが最大）
+    
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: SpotLightColors.getGradient(maxBadge.id),
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: maxBadge.badgeColor.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        maxBadge.icon,
+        color: Colors.white,
+        size: 16,
       ),
     );
   }
@@ -448,18 +555,33 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildBadgeSection() {
+    final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
+    final allBadges = BadgeManager.allBadges;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            'バッジ',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'バッジ',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                '${unlockedBadges.length}/${allBadges.length}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[400],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -468,8 +590,11 @@ class ProfileScreen extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: 8,
+            itemCount: allBadges.length,
             itemBuilder: (context, index) {
+              final badge = allBadges[index];
+              final isUnlocked = unlockedBadges.any((b) => b.id == badge.id);
+              
               return Container(
                 width: 80,
                 margin: const EdgeInsets.only(right: 12),
@@ -479,34 +604,41 @@ class ProfileScreen extends StatelessWidget {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: SpotLightColors.getGradient(index),
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        gradient: isUnlocked 
+                            ? LinearGradient(
+                                colors: SpotLightColors.getGradient(index),
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isUnlocked ? null : Colors.grey[800],
                         borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: SpotLightColors.getSpotlightColor(index).withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                        boxShadow: isUnlocked
+                            ? [
+                                BoxShadow(
+                                  color: badge.badgeColor.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : null,
                       ),
-                      child: const Icon(
-                        Icons.star,
-                        color: Colors.white,
+                      child: Icon(
+                        isUnlocked ? badge.icon : Icons.lock,
+                        color: isUnlocked ? Colors.white : Colors.grey[600],
                         size: 30,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'バッジ${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      badge.name,
+                      style: TextStyle(
+                        color: isUnlocked ? Colors.white : Colors.grey[600],
                         fontSize: 10,
                       ),
                       textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

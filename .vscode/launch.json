@@ -1,25 +1,41 @@
 {
-    // IntelliSense を使用して利用可能な属性を学べます。
-    // 既存の属性の説明をホバーして表示します。
-    // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "spotlight",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "spotlight (profile mode)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile"
+    },
+    {
+      "name": "spotlight (release mode)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release"
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/236118/Documents/spotliht/spotlight",
+      "program": "c:/Users/236118/Documents/spotliht/spotlight/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
         {
-            "name": "spotlight",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
-            "name": "spotlight (profile mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "profile"
-        },
-        {
-            "name": "spotlight (release mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "release"
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
         }
-    ]
+      ]
+    }
+  ]
 }

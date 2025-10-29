@@ -178,8 +178,8 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('  プロバイダー: ${firebaseUser.providerData.map((e) => e.providerId).join(', ')}');
       }
 
-      // UIDをバックエンドの/testエンドポイントに送信（非同期処理、awaitなし）
-      _sendUidToBackend(firebaseUser.uid);
+      // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
+      _fetchUserInfoAndTokens(firebaseUser.uid);
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -603,58 +603,98 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// バックエンドにUIDを送信
+  /// バックエンドからユーザー情報とJWTトークンを取得
   /// 
-  /// Firebase UIDをバックエンドの/testエンドポイントに送信します
+  /// 1. JWTトークンを取得して保存
+  /// 2. ユーザー名とアイコンパスを取得してユーザー情報を更新
   /// 
   /// パラメータ:
   /// - uid: Firebase UID
-  Future<void> _sendUidToBackend(String uid) async {
+  Future<void> _fetchUserInfoAndTokens(String uid) async {
     try {
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 UID送信開始: $uid');
-        debugPrint('  送信先: ${AppConfig.backendUrl}/test');
+        debugPrint('🔐 ユーザー情報取得開始: $uid');
       }
 
-      final response = await http.get(
-        Uri.parse('${AppConfig.backendUrl}/test?userid=$uid'),
-        headers: {'Content-Type': 'application/json'},
+      // 1. JWTトークンを取得
+      await sendTokensToBackend();
+
+      // 2. ユーザー名とアイコンパスを取得
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ JWTトークンが取得できません');
+        }
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/api/users/getusername'),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'firebase_uid': uid,
+        }),
       );
 
       if (kDebugMode) {
-        debugPrint('🔐 UID送信完了: ${response.statusCode}');
-        debugPrint('🔐 レスポンス内容: ${response.body}');
+        debugPrint('📥 ユーザー情報取得完了: ${response.statusCode}');
+        debugPrint('📄 レスポンス内容: ${response.body}');
       }
 
-      // レスポンスからusernameを取得してユーザー情報を更新
       if (response.statusCode == 200) {
         try {
-          final data = jsonDecode(response.body);
-          final username = data['username'] as String?;
+          final responseData = jsonDecode(response.body);
+          
           if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('🔐 バックエンドから受け取ったusername: $username');
+            debugPrint('🔐 レスポンス全体: $responseData');
           }
           
-          // ユーザー情報を更新
-          if (_currentUser != null && username != null) {
-            _currentUser = User(
-              id: _currentUser!.id,
-              email: _currentUser!.email,
-              username: _currentUser!.username,
-              avatarUrl: _currentUser!.avatarUrl,
-              backendUsername: username,
-            );
-            notifyListeners();
+          final status = responseData['status'] as String?;
+          final data = responseData['data'] as Map<String, dynamic>?;
+          
+          if (status == 'success' && data != null) {
+            final username = data['username'] as String?;
+            final iconPath = data['iconimgpath'] as String?;
+            
+            if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+              debugPrint('🔐 バックエンドから受け取った情報:');
+              debugPrint('  username: $username');
+              debugPrint('  iconPath: $iconPath');
+            }
+            
+            // ユーザー情報を更新
+            if (_currentUser != null && username != null) {
+              // iconPathが存在する場合は、serverURLと結合して完全なURLにする
+              String? fullIconUrl;
+              if (iconPath != null && iconPath.isNotEmpty) {
+                fullIconUrl = '${AppConfig.backendUrl}$iconPath';
+                if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+                  debugPrint('🔐 アイコンURL: $fullIconUrl');
+                }
+              }
+              
+              _currentUser = User(
+                id: _currentUser!.id,
+                email: _currentUser!.email,
+                username: _currentUser!.username,
+                avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
+                backendUsername: username,
+              );
+              notifyListeners();
+            }
           }
         } catch (e) {
           if (kDebugMode) {
-            debugPrint('🔐 usernameのパースエラー: $e');
+            debugPrint('🔐 ユーザー情報のパースエラー: $e');
           }
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('🔐 UID送信エラー: $e');
+        debugPrint('🔐 ユーザー情報取得エラー: $e');
       }
     }
   }
