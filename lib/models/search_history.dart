@@ -1,3 +1,4 @@
+/// 検索履歴モデル
 class SearchHistory {
   final String id;
   final String query;
@@ -11,30 +12,38 @@ class SearchHistory {
     this.resultCount,
   });
 
-  // サンプルデータ生成用ファクトリ
+  factory SearchHistory.fromJson(Map<String, dynamic> json) {
+    return SearchHistory(
+      id: json['id'] as String,
+      query: json['query'] as String,
+      searchedAt: DateTime.parse(json['searched_at'] as String),
+      resultCount: json['result_count'] as String?,
+    );
+  }
+
+  // サンプルデータ用（テスト・開発用）
   factory SearchHistory.sample(int index) {
     final queries = [
-      'Flutter開発',
+      'フラッター開発',
       'Dart言語',
       'モバイルアプリ',
-      'UI/UXデザイン',
-      'プログラミング',
-      'Web開発',
-      'React Native',
-      'Swift開発',
-      'Kotlin開発',
-      'JavaScript',
+      'UIデザイン',
+      'Firebase',
+      'バックエンド',
+      'REST API',
+      '認証システム',
     ];
     
     return SearchHistory(
-      id: 'search_$index',
+      id: 'history_$index',
       query: queries[index % queries.length],
       searchedAt: DateTime.now().subtract(Duration(hours: index)),
-      resultCount: '${(index + 1) * 10}件',
+      resultCount: '${(queries[index % queries.length].length * 10)}件',
     );
   }
 }
 
+/// 検索候補モデル
 class SearchSuggestion {
   final String id;
   final String query;
@@ -45,31 +54,41 @@ class SearchSuggestion {
     required this.id,
     required this.query,
     this.description,
-    this.isTrending = false,
+    required this.isTrending,
   });
 
-  // サンプルデータ生成用ファクトリ
+  factory SearchSuggestion.fromJson(Map<String, dynamic> json) {
+    return SearchSuggestion(
+      id: json['id'] as String? ?? json['query'],
+      query: json['query'] as String,
+      description: json['description'] as String?,
+      isTrending: json['is_trending'] as bool? ?? false,
+    );
+  }
+
+  // サンプルデータ用（テスト・開発用）
   factory SearchSuggestion.sample(int index) {
     final suggestions = [
-      {'query': 'Flutter開発', 'description': 'モバイルアプリ開発'},
-      {'query': 'Dart言語', 'description': 'プログラミング言語'},
-      {'query': 'UI/UXデザイン', 'description': 'デザイン手法'},
-      {'query': 'モバイルアプリ', 'description': 'アプリケーション'},
-      {'query': 'プログラミング', 'description': 'コーディング'},
-      {'query': 'Web開発', 'description': 'ウェブサイト制作'},
-      {'query': 'React Native', 'description': 'クロスプラットフォーム'},
-      {'query': 'Swift開発', 'description': 'iOS開発'},
-      {'query': 'Kotlin開発', 'description': 'Android開発'},
-      {'query': 'JavaScript', 'description': 'Web言語'},
+      {'query': '話題の音楽', 'isTrending': true},
+      {'query': '人気の映画', 'isTrending': true},
+      {'query': '本日のスポットライト', 'isTrending': false},
+      {'query': 'トレンド動画', 'isTrending': true},
+      {'query': 'おすすめアーティスト', 'isTrending': false},
+      {'query': '最新ニュース', 'isTrending': false},
+      {'query': 'スポーツハイライト', 'isTrending': true},
+      {'query': 'グルメ情報', 'isTrending': false},
+      {'query': '旅行先', 'isTrending': false},
+      {'query': 'テクノロジー', 'isTrending': true},
     ];
     
-    final suggestion = suggestions[index % suggestions.length];
+    final data = suggestions[index % suggestions.length];
     
     return SearchSuggestion(
       id: 'suggestion_$index',
-      query: suggestion['query']!,
-      description: suggestion['description'],
-      isTrending: index < 3, // 最初の3つをトレンドとして表示
+      query: data['query'] as String,
+      description: null,
+      isTrending: data['isTrending'] as bool,
     );
   }
 }
+

@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/post.dart';
+import '../services/post_service.dart';
 import '../utils/spotlight_colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,7 +18,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
-  final List<Post> _posts = List.generate(10, (index) => Post.sample(index));
+  List<Post> _posts = [];
+  bool _isLoading = true;
+  String? _errorMessage;
   
   // ジェスチャー関連
   double _swipeOffset = 0.0;
@@ -61,12 +65,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // ライフサイクル監視を追加
     WidgetsBinding.instance.addObserver(this);
     
-    // 初期表示時に現在のページがメディアの場合は自動再生を開始
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_posts.isNotEmpty) {
-        _handleMediaPageChange(_currentIndex);
+    // バックエンドから投稿を取得
+    _fetchPosts();
+  }
+
+  /// バックエンドから投稿を取得
+  Future<void> _fetchPosts() async {
+    try {
+      if (kDebugMode) {
+        debugPrint('📝 投稿取得を開始...');
       }
-    });
+      
+      final posts = await PostService.fetchPosts();
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _posts = posts;
+          _isLoading = false;
+          _errorMessage = posts.isEmpty ? '投稿がありません' : null;
+        });
+        
+        // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
+        if (_posts.isNotEmpty) {
+          _handleMediaPageChange(_currentIndex);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 投稿取得エラー: $e');
+      }
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '投稿の取得に失敗しました';
+        });
+      }
+    }
   }
 
   @override
@@ -122,13 +157,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         break;
       case AppLifecycleState.resumed:
         // アプリがフォアグラウンドに戻った時は再生
-        if (_posts[_currentIndex].type == PostType.video && _currentPlayingVideo != null) {
+        if (_posts[_currentIndex].postType == PostType.video && _currentPlayingVideo != null) {
           final controller = _videoControllers[_currentPlayingVideo];
           if (controller != null && controller.value.isInitialized) {
             controller.play();
           }
         }
-        if (_posts[_currentIndex].type == PostType.audio && _currentPlayingAudio != null) {
+        if (_posts[_currentIndex].postType == PostType.audio && _currentPlayingAudio != null) {
           final player = _audioPlayers[_currentPlayingAudio];
           if (player != null) {
             player.play();
@@ -145,14 +180,59 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onPanUpdate: _handlePanUpdate,
-        onPanEnd: _handlePanEnd,
-        child: Stack(
-          children: [
-            // メイン投稿表示（不透明な背景で完全に覆う）
-            Positioned.fill(
-              child: Transform.translate(
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFFF6B35),
+              ),
+            )
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.white70,
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchPosts,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF6B35),
+                        ),
+                        child: const Text('再試行'),
+                      ),
+                    ],
+                  ),
+                )
+              : _posts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '投稿がありません',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+                    )
+                  : GestureDetector(
+                      onPanUpdate: _handlePanUpdate,
+                      onPanEnd: _handlePanEnd,
+                      child: Stack(
+                        children: [
+                          // メイン投稿表示（不透明な背景で完全に覆う）
+                          Positioned.fill(
+                            child: Transform.translate(
                 offset: Offset(_swipeOffset * 0.3, 0), // スワイプに応じてズレ
                 child: Transform.rotate(
                   angle: _swipeOffset * 0.001, // スワイプに応じて左下を中心に回転
@@ -178,51 +258,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 ),
               ),
             ),
-            
-            // スポットライトアンビエントライティング（投稿の上に表示）
-            if (_isSpotlighting && _ambientOpacityAnimation != null)
-              AnimatedBuilder(
-                animation: _ambientOpacityAnimation!,
-                builder: (context, child) {
-                  return Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: Alignment.center,
-                          radius: 1.5,
-                          colors: [
-                            SpotLightColors.getSpotlightColor(0).withOpacity(0.3 * _ambientOpacityAnimation!.value),
-                            Colors.transparent,
-                          ],
+                
+                // スポットライトアンビエントライティング（投稿の上に表示）
+                if (_isSpotlighting && _ambientOpacityAnimation != null)
+                  AnimatedBuilder(
+                    animation: _ambientOpacityAnimation!,
+                    builder: (context, child) {
+                      return Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment.center,
+                              radius: 1.5,
+                              colors: [
+                                SpotLightColors.getSpotlightColor(0).withOpacity(0.3 * _ambientOpacityAnimation!.value),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            
-            // 下部の投稿者情報とコントロール
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomControls(_posts[_currentIndex]),
+                      );
+                    },
+                  ),
+                
+                // 下部の投稿者情報とコントロール
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: _buildBottomControls(_posts[_currentIndex]),
+                ),
+                
+                // 右下のコントロールボタン
+                Positioned(
+                  bottom: 120,
+                  right: 20,
+                  child: _buildRightBottomControls(_posts[_currentIndex]),
+                ),
+              ],
             ),
-            
-            // 右下のコントロールボタン
-            Positioned(
-              bottom: 120,
-              right: 20,
-              child: _buildRightBottomControls(_posts[_currentIndex]),
-            ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
   Widget _buildPostContent(Post post) {
-    switch (post.type) {
+    switch (post.postType) {
       case PostType.video:
         return _buildVideoContent(post);
       case PostType.image:
@@ -279,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     // 動画初期化中のローディング表示
                     if (postIndex == _currentIndex && 
-                        post.type == PostType.video &&
+                        post.postType == PostType.video &&
                         !_initializedVideos.contains(postIndex))
                       const Center(
                         child: CircularProgressIndicator(
@@ -301,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   } else {
                     controller.play();
                   }
-                } else if (postIndex == _currentIndex && post.type == PostType.video) {
+                } else if (postIndex == _currentIndex && post.postType == PostType.video) {
                   // 初期化されていない場合は初期化を開始
                   _initializeVideoController(postIndex);
                 }
@@ -383,15 +463,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 30),
-                Text(
-                  post.content,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 18,
-                    height: 1.6,
+                if (post.content != null)
+                  Text(
+                    post.content!,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 18,
+                      height: 1.6,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
               ],
             ),
           ),
@@ -505,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 ),
               // 音声初期化中のローディング表示
               if (postIndex == _currentIndex && 
-                  post.type == PostType.audio &&
+                  post.postType == PostType.audio &&
                   !_initializedAudios.contains(postIndex))
                 const Padding(
                   padding: EdgeInsets.only(top: 20),
@@ -560,7 +641,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               CircleAvatar(
                 radius: 20,
                 backgroundColor: SpotLightColors.getSpotlightColor(0),
-                backgroundImage: NetworkImage(post.userAvatar),
+                backgroundImage: post.userIconPath.isNotEmpty 
+                    ? NetworkImage(post.userIconPath)
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -734,9 +817,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       id: currentPost.id,
       userId: currentPost.userId,
       username: currentPost.username,
-      userAvatar: currentPost.userAvatar,
+      userIconPath: currentPost.userIconPath,
       title: currentPost.title,
       content: currentPost.content,
+      contentPath: currentPost.contentPath,
       type: currentPost.type,
       mediaUrl: currentPost.mediaUrl,
       thumbnailUrl: currentPost.thumbnailUrl,
@@ -890,9 +974,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 id: _posts[_currentIndex].id,
                                 userId: _posts[_currentIndex].userId,
                                 username: _posts[_currentIndex].username,
-                                userAvatar: _posts[_currentIndex].userAvatar,
+                                userIconPath: _posts[_currentIndex].userIconPath,
                                 title: _posts[_currentIndex].title,
                                 content: _posts[_currentIndex].content,
+                                contentPath: _posts[_currentIndex].contentPath,
                                 type: _posts[_currentIndex].type,
                                 mediaUrl: _posts[_currentIndex].mediaUrl,
                                 thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
@@ -1027,9 +1112,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       id: _posts[_currentIndex].id,
                       userId: _posts[_currentIndex].userId,
                       username: _posts[_currentIndex].username,
-                      userAvatar: _posts[_currentIndex].userAvatar,
+                      userIconPath: _posts[_currentIndex].userIconPath,
                       title: _posts[_currentIndex].title,
                       content: _posts[_currentIndex].content,
+                      contentPath: _posts[_currentIndex].contentPath,
                       type: _posts[_currentIndex].type,
                       mediaUrl: _posts[_currentIndex].mediaUrl,
                       thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
@@ -1106,7 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     final post = _posts[postIndex];
     
     // 動画投稿でない場合は何もしない
-    if (post.type != PostType.video || post.mediaUrl == null) {
+    if (post.postType != PostType.video || post.mediaUrl == null) {
       return;
     }
 
@@ -1158,7 +1244,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
 
     // 新しいページが動画投稿の場合
-    if (newPost.type == PostType.video) {
+    if (newPost.postType == PostType.video) {
       _currentPlayingVideo = newIndex;
       
       // 動画コントローラーが初期化されていない場合は初期化
@@ -1181,7 +1267,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           controller.setLooping(true);
         }
       }
-    } else if (newPost.type == PostType.audio) {
+    } else if (newPost.postType == PostType.audio) {
       // 新しいページが音声投稿の場合
       _currentPlayingAudio = newIndex;
       
@@ -1213,7 +1299,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     final post = _posts[postIndex];
     
     // 音声投稿でない場合は何もしない
-    if (post.type != PostType.audio || post.mediaUrl == null) {
+    if (post.postType != PostType.audio || post.mediaUrl == null) {
       return;
     }
 

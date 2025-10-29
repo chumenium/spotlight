@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/search_history.dart';
+import '../models/post.dart';
+import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -13,11 +16,14 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
+  bool _isLoadingHistory = false;
   
-  // サンプルデータ
-  final List<SearchHistory> _searchHistory = List.generate(8, (index) => SearchHistory.sample(index));
-  final List<SearchSuggestion> _allSuggestions = List.generate(10, (index) => SearchSuggestion.sample(index));
+  // バックエンドから取得
+  List<SearchHistory> _searchHistory = [];
+  List<SearchSuggestion> _allSuggestions = [];
   List<SearchSuggestion> _filteredSuggestions = [];
+  List<Post> _searchResults = [];
+  String? _searchQuery;
   
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
@@ -27,6 +33,37 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _filteredSuggestions = _allSuggestions;
     _searchController.addListener(_onSearchChanged);
+    
+    // バックエンドから検索履歴を取得
+    _fetchSearchHistory();
+  }
+
+  /// バックエンドから検索履歴を取得
+  Future<void> _fetchSearchHistory() async {
+    setState(() {
+      _isLoadingHistory = true;
+    });
+
+    try {
+      final history = await SearchService.fetchSearchHistory();
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _searchHistory = history;
+          _isLoadingHistory = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔍 検索履歴取得エラー: $e');
+      }
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+        });
+      }
+    }
   }
 
   @override
@@ -53,40 +90,36 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  void _performSearch(String query) {
+  void _performSearch(String query) async {
     if (query.trim().isEmpty) return;
     
     if (!_isDisposed && mounted) {
       setState(() {
         _isSearching = true;
+        _searchQuery = query;
       });
     }
     
-    // 検索履歴に追加（実際のアプリでは永続化）
-    final newHistory = SearchHistory(
-      id: 'search_${DateTime.now().millisecondsSinceEpoch}',
-      query: query,
-      searchedAt: DateTime.now(),
-      resultCount: '${(query.length * 10)}件',
-    );
-    
-    if (!_isDisposed && mounted) {
-      setState(() {
-        _searchHistory.insert(0, newHistory);
-        if (_searchHistory.length > 20) {
-          _searchHistory.removeLast();
-        }
-      });
-    }
-    
-    // 検索結果画面への遷移（仮実装）
-    Future.delayed(const Duration(milliseconds: 500), () {
+    try {
+      final results = await SearchService.searchPosts(query);
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔍 検索エラー: $e');
+      }
+      
       if (!_isDisposed && mounted) {
         setState(() {
           _isSearching = false;
         });
       }
-    });
+    }
   }
 
   @override
@@ -164,6 +197,14 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildSearchContent() {
+    if (_isLoadingHistory) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFFFF6B35),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,34 +214,186 @@ class _SearchScreenState extends State<SearchScreen> {
             _buildSectionHeader('検索履歴'),
             _buildSearchHistory(),
             const SizedBox(height: 20),
+          ] else ...[
+            _buildSectionHeader('検索履歴'),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '検索履歴がありません',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
           
           // おすすめ検索
           _buildSectionHeader('おすすめ検索'),
-          _buildSuggestions(),
+          if (_allSuggestions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'おすすめ検索がありません',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                ),
+              ),
+            )
+          else
+            _buildSuggestions(),
         ],
       ),
     );
   }
 
   Widget _buildSearchResults() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            color: Color(0xFFFF6B35),
-          ),
-          SizedBox(height: 16),
-          Text(
-            '検索中...',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
+    if (_isSearching) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: Color(0xFFFF6B35),
             ),
+            SizedBox(height: 16),
+            Text(
+              '検索中...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              color: Colors.white70,
+              size: 64,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '「$_searchQuery」の検索結果はありません',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return ListView.builder(
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        final post = _searchResults[index];
+        return _buildSearchResultItem(post);
+      },
+    );
+  }
+
+  Widget _buildSearchResultItem(Post post) {
+    return ListTile(
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
+            ? Image.network(
+                post.thumbnailUrl!,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 56,
+                    height: 56,
+                    color: Colors.grey[800],
+                    child: Icon(
+                      Icons.image,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                },
+              )
+            : Container(
+                width: 56,
+                height: 56,
+                color: Colors.grey[800],
+                child: Icon(
+                  Icons.image,
+                  color: Colors.grey[600],
+                ),
+              ),
+      ),
+      title: Text(
+        post.title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(
+                Icons.flashlight_on,
+                size: 14,
+                color: SpotLightColors.getSpotlightColor(0),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${post.likes}',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Icon(
+                Icons.play_circle_outline,
+                size: 14,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${post.playNum}',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                _getTimeAgo(post.createdAt),
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ],
       ),
+      onTap: () {
+        // 検索結果の投稿詳細に遷移（後で実装）
+      },
     );
   }
 
