@@ -35,6 +35,9 @@ dependencies:
   
   # 動画再生
   video_player: ^2.8.1
+  
+  # 画像・動画選択
+  image_picker: ^1.0.5
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../utils/spotlight_colors.dart';
 
 // CreatePostModalは後でインポート時に使用
@@ -14,6 +16,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _isPosting = false;
+  
+  // 画像・動画選択用
+  final ImagePicker _imagePicker = ImagePicker();
+  XFile? _selectedMedia;
+  bool get _hasMedia => _selectedMedia != null;
 
   @override
   void initState() {
@@ -211,33 +218,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               
               const SizedBox(height: 16),
               
+              // 選択済みメディア表示
+              if (_hasMedia)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildSelectedMediaPreview(),
+                ),
+              
               // 追加オプション
               Row(
                 children: [
                   _buildOptionButton(
                     icon: Icons.image_outlined,
                     label: '写真',
-                    onTap: () {
-                      // TODO: 画像選択機能を実装
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('画像機能は準備中です'),
-                        ),
-                      );
-                    },
+                    onTap: () => _pickMedia(ImageSource.gallery, isVideo: false),
                   ),
                   const SizedBox(width: 16),
                   _buildOptionButton(
                     icon: Icons.videocam_outlined,
                     label: '動画',
-                    onTap: () {
-                      // TODO: 動画選択機能を実装
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('動画機能は準備中です'),
-                        ),
-                      );
-                    },
+                    onTap: () => _pickMedia(ImageSource.gallery, isVideo: true),
                   ),
                   const SizedBox(width: 16),
                   _buildOptionButton(
@@ -294,6 +294,93 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // メディア選択メソッド
+  Future<void> _pickMedia(ImageSource source, {required bool isVideo}) async {
+    try {
+      final XFile? pickedFile = isVideo
+          ? await _imagePicker.pickVideo(source: source)
+          : await _imagePicker.pickImage(source: source);
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedMedia = pickedFile;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('メディアの選択に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 選択済みメディアのプレビュー表示
+  Widget _buildSelectedMediaPreview() {
+    if (_selectedMedia == null) return const SizedBox.shrink();
+
+    final isVideo = _selectedMedia!.path.toLowerCase().endsWith('.mp4') || 
+                    _selectedMedia!.path.toLowerCase().endsWith('.mov') ||
+                    _selectedMedia!.path.toLowerCase().endsWith('.avi') ||
+                    _selectedMedia!.path.toLowerCase().endsWith('.mkv') ||
+                    _selectedMedia!.path.toLowerCase().endsWith('.webm') ||
+                    _selectedMedia!.mimeType?.startsWith('video/') == true;
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: isVideo
+              ? Container(
+                  width: double.infinity,
+                  height: 200,
+                  color: Colors.grey[800],
+                  child: const Center(
+                    child: Icon(
+                      Icons.video_file,
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+                )
+              : Image.file(
+                  File(_selectedMedia!.path),
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
+        ),
+        // 削除ボタン
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedMedia = null;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
