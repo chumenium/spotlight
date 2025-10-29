@@ -555,13 +555,6 @@ class AuthProvider extends ChangeNotifier {
         
         if (data['success'] == true && data['data'] != null) {
           // 旧形式: { "success": true, "data": { "jwt": "...", "user": {...} } }
-         debugPrint('🔐 旧形式: ${data.toString()}');
-         debugPrint('🔐 旧形式: ${data['data']['jwt']['user']['firebase_uid']}');
-         debugPrint('🔐 新形式: ${data['jwt']}');
-         debugPrint('🔐 新形式: ${data['firebase_uid']}');
-         debugPrint('🔐 新形式: ${data['status']}');
-         debugPrint('🔐 新形式: ${data.toString()}');
-
           jwtToken = data['data']['jwt'];
           userInfo = data['data']['user'];
         } else if (data['jwt'] != null) {
