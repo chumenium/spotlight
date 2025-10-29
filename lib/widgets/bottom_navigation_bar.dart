@@ -13,9 +13,10 @@ class CustomBottomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 70,
-      decoration: const BoxDecoration(
+    return SizedBox(
+      height: 80,
+      child: Container(
+        decoration: const BoxDecoration(
         color: Color(0xFF1E1E1E),
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(20),
@@ -29,11 +30,11 @@ class CustomBottomNavigationBar extends StatelessWidget {
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               Expanded(
@@ -75,6 +76,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

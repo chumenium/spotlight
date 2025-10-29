@@ -162,7 +162,7 @@ class AuthProvider extends ChangeNotifier {
   /// 
   /// パラメータ:
   /// - firebaseUser: Firebase Authenticationのユーザー情報
-  void _onAuthStateChanged(firebase_auth.User? firebaseUser) async {
+  void _onAuthStateChanged(firebase_auth.User? firebaseUser) {
     if (firebaseUser != null) {
       // Firebase UIDをそのままユーザーIDとして使用
       // このIDは変更されず、すべての認証プロバイダーで一意です
@@ -178,8 +178,8 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('  プロバイダー: ${firebaseUser.providerData.map((e) => e.providerId).join(', ')}');
       }
 
-      // UIDをバックエンドの/testエンドポイントに送信
-      await _sendUidToBackend(firebaseUser.uid);
+      // UIDをバックエンドの/testエンドポイントに送信（非同期処理、awaitなし）
+      _sendUidToBackend(firebaseUser.uid);
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {

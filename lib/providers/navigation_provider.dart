@@ -31,4 +31,11 @@ class NavigationProvider with ChangeNotifier {
   void navigateToProfile() {
     setCurrentIndex(4);
   }
+
+
+  /// ナビゲーション状態をリセット
+  void reset() {
+    _currentIndex = 0;
+    notifyListeners();
+  }
 }

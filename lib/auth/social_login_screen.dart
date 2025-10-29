@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
-import '../main.dart';
+import '../providers/navigation_provider.dart';
 
 /// ソーシャルログイン専用画面
 /// Google、Twitter（X）でのログインをサポート
@@ -23,9 +23,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-      );
+      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
@@ -38,9 +38,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final success = await authProvider.loginWithTwitter();
 
     if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-      );
+      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
@@ -50,9 +50,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     authProvider.skipLogin();
     
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const MainScreen()),
-    );
+    // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    navigationProvider.reset();
   }
 
   void _showErrorSnackBar(String message) {
