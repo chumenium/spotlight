@@ -15,11 +15,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    // Firebase初期化
+    // Firebase初期化（FCMトークン初期化も含む）
     await FirebaseService.instance.initialize();
-    print('✅ Firebase初期化完了');
+    debugPrint('✅ Firebase & FCM初期化完了');
   } catch (e) {
-    print('❌ Firebase初期化エラー: $e');
+    debugPrint('❌ Firebase/FCM初期化エラー: $e');
   }
   
   runApp(const SpotLightApp());

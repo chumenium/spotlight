@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'fcm_service.dart';
 
 /// Firebase初期化と設定を管理するサービスクラス
 class FirebaseService {
@@ -15,6 +16,7 @@ class FirebaseService {
   /// 
   /// アプリ起動時に一度だけ呼び出す必要があります。
   /// main()関数から呼び出してください。
+  /// FCMトークンの初期化も含まれます。
   Future<void> initialize() async {
     if (_initialized) {
       if (kDebugMode) {
@@ -33,11 +35,37 @@ class FirebaseService {
       if (kDebugMode) {
         debugPrint('✅ Firebase initialized successfully');
       }
+
+      // FCMトークンの自動初期化
+      await _initializeFcm();
+      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Firebase initialization failed: $e');
       }
       rethrow;
+    }
+  }
+
+  /// FCMトークンを初期化
+  /// 
+  /// Firebase初期化後に自動的に呼び出されます。
+  Future<void> _initializeFcm() async {
+    try {
+      final fcmToken = await FcmService.initializeNotifications();
+      if (fcmToken != null) {
+        if (kDebugMode) {
+          debugPrint('✅ FCMトークン初期化完了');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('⚠️ FCMトークン初期化をスキップ（通知機能は利用できません）');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ FCM初期化エラー（続行）: $e');
+      }
     }
   }
 
