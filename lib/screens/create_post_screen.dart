@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
 import '../utils/spotlight_colors.dart';
+import '../services/post_service.dart';
 
 // テキストオーバーレイ用のモデル
 class TextOverlay {
@@ -211,16 +212,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final img.Image? decoded = img.decodeImage(sourceBytes);
     if (decoded == null) return Uint8List(0);
     // 320x320 へ収まるよう縮小
-    final resized = img.copyResize(decoded, width: 320, height: 320, fit: img.Interpolation.average);
+    final resized = img.copyResize(
+      decoded,
+      width: 320,
+      height: 320,
+      interpolation: img.Interpolation.linear,
+    );
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
   }
 
   // 動画/音声の簡易サムネイル（プレースホルダ）
   Uint8List _generatePlaceholderThumbnail(int width, int height, {required String label}) {
     final canvas = img.Image(width: width, height: height);
-    img.fill(canvas, img.ColorRgb8(30, 30, 30));
+    img.fill(canvas, color: img.ColorRgb8(30, 30, 30));
     img.drawRect(canvas, x1: 0, y1: height - 6, x2: width, y2: height, color: img.ColorRgb8(255, 107, 53));
-    img.drawStringCentered(canvas, img.arial_24, label, color: img.ColorRgb8(255, 255, 255));
+    final font = img.arial24;
+    // BitmapFontにmeasure APIがないため、おおよその文字幅/高さでセンタリング
+    final approxCharWidth = 14; // arial24 推定
+    final approxHeight = 24;    // arial24 高さ
+    final textWidth = approxCharWidth * label.runes.length;
+    final tx = ((width - textWidth) / 2).round();
+    final ty = ((height - approxHeight) / 2).round();
+    img.drawString(
+      canvas,
+      label,
+      x: tx,
+      y: ty,
+      font: font,
+      color: img.ColorRgb8(255, 255, 255),
+    );
     return Uint8List.fromList(img.encodeJpg(canvas, quality: 85));
   }
 
