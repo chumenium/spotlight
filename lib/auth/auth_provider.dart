@@ -145,6 +145,12 @@ class AuthProvider extends ChangeNotifier {
     // Firebase Authの状態変化を監視
     // ユーザーがログイン/ログアウトすると自動的に通知されます
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+    
+    // Google Sign-In初期化状態をデバッグ出力
+    if (kDebugMode) {
+      debugPrint('🔐 AuthProvider初期化完了');
+      debugPrint('🔐 Google Sign-In設定: スコープ=${AuthConfig.googleScopes}');
+    }
   }
 
   /// TwitterLoginインスタンスを取得（遅延初期化）
@@ -256,13 +262,34 @@ class AuthProvider extends ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+      if (kDebugMode) {
         debugPrint('🔐 [Google] Sign-In開始');
+        debugPrint('🔐 [Google] 設定確認:');
+        debugPrint('  - Firebase Google Sign-In有効: ${FirebaseConfig.enableGoogleSignIn}');
+        debugPrint('  - Google Sign-Inスコープ: ${AuthConfig.googleScopes}');
+        debugPrint('  - パッケージ名: com.example.spotlight');
+        debugPrint('  - AuthDebugLog有効: ${AuthConfig.enableAuthDebugLog}');
+        
+        // Google Sign-Inの現在の状態を確認
+        try {
+          final currentUser = await _googleSignIn.signInSilently();
+          debugPrint('  - 既存のGoogle Sign-Inユーザー: ${currentUser?.email ?? 'なし'}');
+        } catch (e) {
+          debugPrint('  - Google Sign-In状態確認エラー: $e');
+        }
       }
 
       // STEP 1: Googleサインインフローを開始
       // Google Sign-Inダイアログが表示され、ユーザーがアカウントを選択
+      if (kDebugMode) {
+        debugPrint('🔐 [Google] GoogleSignIn.signIn()を呼び出し中...');
+      }
+      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      
+      if (kDebugMode) {
+        debugPrint('🔐 [Google] GoogleSignIn.signIn()完了: ${googleUser != null ? 'ユーザー取得成功' : 'ユーザー取得失敗またはキャンセル'}');
+      }
       
       if (googleUser == null) {
         // ユーザーがサインインをキャンセルした場合
