@@ -93,6 +93,8 @@ class AuthProvider extends ChangeNotifier {
   /// Google認証フローの管理に使用
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: AuthConfig.googleScopes,
+    // WebクライアントIDを明示的に指定（google-services.jsonから取得）
+    serverClientId: '185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com',
   );
   
   /// Twitter Sign-Inのインスタンス
@@ -274,8 +276,17 @@ class AuthProvider extends ChangeNotifier {
         try {
           final currentUser = await _googleSignIn.signInSilently();
           debugPrint('  - 既存のGoogle Sign-Inユーザー: ${currentUser?.email ?? 'なし'}');
+          debugPrint('  - WebクライアントID: 185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com');
         } catch (e) {
           debugPrint('  - Google Sign-In状態確認エラー: $e');
+        }
+        
+        // Google Play Servicesの状態確認
+        try {
+          final isAvailable = await _googleSignIn.isSignedIn();
+          debugPrint('  - Google Play Services利用可能: $isAvailable');
+        } catch (e) {
+          debugPrint('  - Google Play Services確認エラー: $e');
         }
       }
 
