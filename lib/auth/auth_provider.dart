@@ -11,6 +11,7 @@ import 'auth_config.dart';
 import 'auth_service.dart';
 import '../services/jwt_service.dart';
 import '../services/fcm_service.dart';
+import '../services/user_service.dart';
 
 /// アプリ内で使用するユーザーモデル
 /// 
@@ -51,12 +52,19 @@ class User {
   /// プロバイダーが提供しない場合はnull
   final String? avatarUrl;
 
+  /// バックエンドから取得したアイコンパス
+  /// 
+  /// バックエンドのDBに保存されているアイコンパス
+  /// バックエンドで処理されたURLが含まれる場合がある
+  final String? iconPath;
+
   User({
     required this.id,
     required this.email,
     required this.username,
     this.avatarUrl,
     this.backendUsername,
+    this.iconPath,
   });
 }
 
@@ -668,6 +676,7 @@ class AuthProvider extends ChangeNotifier {
             // ユーザー情報を更新
             if (_currentUser != null && username != null) {
               // iconPathが存在する場合は、serverURLと結合して完全なURLにする
+              // iconPathはバックエンドでusername_icon.png形式で生成される
               String? fullIconUrl;
               if (iconPath != null && iconPath.isNotEmpty) {
                 fullIconUrl = '${AppConfig.backendUrl}$iconPath';
@@ -682,6 +691,7 @@ class AuthProvider extends ChangeNotifier {
                 username: _currentUser!.username,
                 avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
                 backendUsername: username,
+                iconPath: iconPath,
               );
               notifyListeners();
             }
@@ -760,6 +770,99 @@ class AuthProvider extends ChangeNotifier {
 
     // 画面更新を通知
     notifyListeners();
+  }
+
+  /// ユーザー情報を更新
+  /// 
+  /// アイコン更新後にユーザー情報を再取得して更新するために使用
+  /// 
+  /// パラメータ:
+  /// - username: バックエンドで生成された一意で変更不可なusername（nullの場合は現在の値を維持）
+  /// - iconPath: アイコンパス（iconimgpath、nullの場合は現在の値を維持）
+  /// 
+  /// 注意:
+  /// - iconPathはバックエンドのiconimgpathフィールドに対応
+  /// - 空文字列の場合はアイコンを削除
+  /// - idはFirebase UIDで変更不可
+  /// - backendUsernameはバックエンドで生成された一意で変更不可なusername
+  Future<void> updateUserInfo({String? username, String? iconPath}) async {
+    if (_currentUser == null) return;
+
+    try {
+      String? fullIconUrl;
+      String? finalIconPath;
+      
+      if (iconPath != null) {
+        if (iconPath.isEmpty) {
+          // 空文字列の場合はアイコンを削除
+          finalIconPath = null;
+          fullIconUrl = null;
+        } else {
+          // iconPathはバックエンドでusername_icon.png形式で生成される
+          finalIconPath = iconPath;
+          fullIconUrl = '${AppConfig.backendUrl}$iconPath';
+        }
+      } else if (_currentUser!.iconPath != null && _currentUser!.iconPath!.isNotEmpty) {
+        finalIconPath = _currentUser!.iconPath;
+        fullIconUrl = '${AppConfig.backendUrl}${_currentUser!.iconPath}';
+      } else {
+        finalIconPath = _currentUser!.iconPath;
+      }
+
+      _currentUser = User(
+        id: _currentUser!.id, // Firebase UID（変更不可）
+        email: _currentUser!.email,
+        username: _currentUser!.username,
+        avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
+        backendUsername: username ?? _currentUser!.backendUsername, // バックエンドで生成された一意で変更不可なusername
+        iconPath: finalIconPath, // iconimgpath
+      );
+
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔐 ユーザー情報更新エラー: $e');
+      }
+    }
+  }
+
+  /// バックエンドから最新のユーザー情報を再取得して更新
+  /// 
+  /// アイコン変更後などに呼び出して、最新のユーザー情報（iconimgpath含む）をバックエンドから取得して反映
+  /// 
+  /// 注意:
+  /// - iconimgpathはバックエンドでusername_icon.png形式で生成される
+  /// - 取得したiconimgpathから完全なアイコンURL（${backendUrl}${iconimgpath}）を生成
+  /// 
+  /// 戻り値:
+  /// - bool: 更新成功の場合true
+  Future<bool> refreshUserInfoFromBackend() async {
+    if (_currentUser == null) return false;
+
+    try {
+      final userInfo = await UserService.refreshUserInfo(_currentUser!.id);
+      
+      if (userInfo != null) {
+        final username = userInfo['username'] as String?;
+        final iconPath = userInfo['iconimgpath'] as String?; // バックエンドで生成（username_icon.png形式）
+        
+        if (kDebugMode) {
+          debugPrint('🔐 最新ユーザー情報取得: username=$username, iconPath=$iconPath');
+          if (iconPath != null) {
+            debugPrint('🔐 アイコンURL: ${AppConfig.backendUrl}$iconPath');
+          }
+        }
+        
+        await updateUserInfo(username: username, iconPath: iconPath);
+        return true;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔐 ユーザー情報再取得エラー: $e');
+      }
+    }
+    
+    return false;
   }
 }
 
