@@ -7,6 +7,65 @@ import '../services/jwt_service.dart';
 
 /// 投稿APIサービス
 class PostService {
+  /// 最小情報で投稿を作成（type, title, link のみ）
+  static Future<Map<String, dynamic>?> createContentMinimal({
+    required String type, // "video" | "image" | "audio" | "text"
+    required String title,
+    String? link,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/add';
+
+      if (kDebugMode) {
+        debugPrint('📝 最小投稿URL: $url');
+      }
+
+      final Map<String, dynamic> body = {
+        'type': type,
+        'title': title,
+      };
+      if (link != null && link.isNotEmpty) {
+        body['link'] = link;
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (kDebugMode) {
+          debugPrint('📝 最小投稿レスポンス: ${responseData.toString()}');
+        }
+        if (responseData['status'] == 'success') {
+          return responseData['data'];
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 最小投稿エラー: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 最小投稿例外: $e');
+      }
+    }
+
+    return null;
+  }
   /// バックエンドから投稿一覧を取得
   static Future<List<Post>> fetchPosts({
     int page = 1,

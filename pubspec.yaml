@@ -39,6 +39,9 @@ dependencies:
   # 画像・動画選択
   image_picker: ^1.0.5
   
+  # 画像処理（JPEGエンコード/縮小/描画）
+  image: ^4.1.7
+  
   # ファイル選択
   file_picker: ^8.2.4
   
