@@ -42,6 +42,40 @@ class UserService {
       if (kDebugMode) {
         debugPrint('📤 アイコン変更URL: $url');
         debugPrint('📤 username: $username');
+        debugPrint('📤 base64画像サイズ: ${base64Image.length} 文字');
+        debugPrint('📤 base64画像プレビュー: ${base64Image.substring(0, base64Image.length > 50 ? 50 : base64Image.length)}...');
+      }
+
+      // リクエストボディを構築
+      final requestData = <String, dynamic>{
+        'username': username,
+        'iconimg': base64Image,
+      };
+      
+      if (kDebugMode) {
+        debugPrint('📤 送信データ確認:');
+        debugPrint('  - username: ${requestData['username']}');
+        debugPrint('  - iconimg存在: ${requestData['iconimg'] != null}');
+        debugPrint('  - iconimgサイズ: ${requestData['iconimg']?.length ?? 0}');
+        debugPrint('  - iconimg先頭50文字: ${requestData['iconimg']?.substring(0, 50) ?? 'null'}...');
+      }
+      
+      final jsonBody = jsonEncode(requestData);
+      
+      if (kDebugMode) {
+        debugPrint('📤 JSON化後のbodyサイズ: ${jsonBody.length}');
+        debugPrint('📤 JSON化後のbody（最初の300文字）: ${jsonBody.substring(0, jsonBody.length > 300 ? 300 : jsonBody.length)}...');
+        
+        // JSONが正しく構築されているかチェック
+        try {
+          final decoded = jsonDecode(jsonBody);
+          debugPrint('📤 JSON検証: デコード成功');
+          debugPrint('  - デコード後username: ${decoded['username']}');
+          debugPrint('  - デコード後iconimg存在: ${decoded['iconimg'] != null}');
+          debugPrint('  - デコード後iconimgサイズ: ${decoded['iconimg']?.length ?? 0}');
+        } catch (e) {
+          debugPrint('❌ JSON検証エラー: $e');
+        }
       }
 
       final response = await http.post(
@@ -50,10 +84,7 @@ class UserService {
           'Authorization': 'Bearer $jwtToken',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'username': username,
-          'iconimg': base64Image,
-        }),
+        body: jsonBody,
       );
 
       if (response.statusCode == 200) {

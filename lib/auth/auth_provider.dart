@@ -361,9 +361,21 @@ class AuthProvider extends ChangeNotifier {
       // エラーコード別の詳細メッセージ
       switch (e.code) {
         case 'sign_in_failed':
-          errorMessage = 'Google Sign-Inの設定に問題があります。開発者にお問い合わせください。';
+          // Google Play Services の状態を再確認
+          try {
+            final isSignedIn = await _googleSignIn.isSignedIn();
+            if (kDebugMode) {
+              debugPrint('🔐 [Google] エラー時のGoogle Play Services状態: $isSignedIn');
+            }
+          } catch (gpsError) {
+            if (kDebugMode) {
+              debugPrint('🔐 [Google] Google Play Services確認エラー: $gpsError');
+            }
+          }
+          
+          errorMessage = 'Google Play Servicesが利用できません。デバイスの設定でGoogle Play Servicesを更新してください。';
           if (kDebugMode) {
-            debugPrint('🔐 [Google] SHA-1フィンガープリントまたはクライアント設定を確認してください');
+            debugPrint('🔐 [Google] Google Play Servicesの更新が必要です');
           }
           break;
         case 'network_error':

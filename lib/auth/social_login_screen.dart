@@ -243,6 +243,34 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     textColor: Colors.white,
                   ),
                 
+                // 開発モードのみ表示：開発用ログインボタン
+                if (AppConfig.canSkipAuth) ...[
+                  const SizedBox(height: 24),
+                  _SocialLoginButton(
+                    onPressed: authProvider.isLoading ? null : _handleSkip,
+                    icon: const Icon(
+                      Icons.developer_mode,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    label: '🚀 開発モード（ログインスキップ）',
+                    backgroundColor: Colors.purple.shade600,
+                    textColor: Colors.white,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '※ 開発・テスト用機能です',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+                
                 const SizedBox(height: 32),
                 
                 // ローディングインジケーター
@@ -288,20 +316,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   ),
                 ),
                 
-                // 開発モードのみ表示：スキップボタン
-                if (AppConfig.canSkipAuth) ...[
-                  const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: _handleSkip,
-                    child: Text(
-                      '⚠️ スキップ（開発モード）',
-                      style: TextStyle(
-                        color: Colors.yellow[700],
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

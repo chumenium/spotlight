@@ -28,6 +28,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   final ImagePicker _imagePicker = ImagePicker();
   
+  // アイコン画像のキャッシュ
+  String? _cachedAvatarUrl;
+  ImageProvider? _cachedImageProvider;
+  bool _imageLoadError = false;
+  
+  /// アイコン画像プロバイダーを取得（キャッシュ機能付き）
+  ImageProvider? _getAvatarImageProvider(String? avatarUrl) {
+    // URLが変更された場合のみキャッシュを更新
+    if (avatarUrl != _cachedAvatarUrl) {
+      _cachedAvatarUrl = avatarUrl;
+      _imageLoadError = false; // URLが変更されたらエラー状態をリセット
+      
+      if (avatarUrl != null && avatarUrl.isNotEmpty) {
+        try {
+          // URLの妥当性をチェック
+          final uri = Uri.tryParse(avatarUrl);
+          if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+            _cachedImageProvider = NetworkImage(avatarUrl);
+            
+            if (kDebugMode) {
+              debugPrint('🖼️ アイコン画像キャッシュ更新: $avatarUrl');
+            }
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ 無効なURL形式: $avatarUrl');
+            }
+            _cachedImageProvider = null;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ NetworkImage作成エラー: $e');
+          }
+          _cachedImageProvider = null;
+        }
+      } else {
+        _cachedImageProvider = null;
+      }
+    }
+    
+    return _cachedImageProvider;
+  }
+  
+  /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
+  void _clearIconCache() {
+    _cachedAvatarUrl = null;
+    _cachedImageProvider = null;
+    _imageLoadError = false;
+    
+    if (kDebugMode) {
+      debugPrint('🗑️ アイコンキャッシュをクリアしました');
+    }
+  }
+  
   // 安全なメッセージ表示のためのヘルパーメソッド
   void _showSafeSnackBar(String message, {Color? backgroundColor}) {
     if (mounted) {
@@ -64,10 +117,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ローディングダイアログの状態管理
+  bool _isLoadingDialogShown = false;
+
   // 安全なローディングダイアログ表示
   void _showSafeLoadingDialog() {
-    if (mounted) {
+    if (mounted && !_isLoadingDialogShown) {
       try {
+        _isLoadingDialogShown = true;
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -79,8 +136,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       } catch (e) {
+        _isLoadingDialogShown = false;
         if (kDebugMode) {
           debugPrint('⚠️ ローディングダイアログ表示に失敗: $e');
+        }
+      }
+    }
+  }
+
+  // 安全なローディングダイアログを閉じる
+  void _closeSafeLoadingDialog() {
+    if (mounted && _isLoadingDialogShown) {
+      try {
+        _isLoadingDialogShown = false;
+        Navigator.of(context).pop();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
         }
       }
     }
@@ -208,19 +280,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               GestureDetector(
                 onTap: () => _showIconMenu(context, authProvider),
-                child: CircleAvatar(
-                  radius: 40,
-                  backgroundColor: const Color(0xFFFF6B35),
-                  backgroundImage: user?.avatarUrl != null
-                      ? NetworkImage(user!.avatarUrl!)
-                      : null,
-                  child: user?.avatarUrl == null
-                      ? const Icon(
-                          Icons.person,
-                          size: 40,
-                          color: Colors.white,
-                        )
-                      : null,
+                child: Builder(
+                  builder: (context) {
+                    final imageProvider = !_imageLoadError ? _getAvatarImageProvider(user?.avatarUrl) : null;
+                    final hasValidImage = imageProvider != null && !_imageLoadError;
+                    
+                    return CircleAvatar(
+                      radius: 40,
+                      backgroundColor: const Color(0xFFFF6B35),
+                      backgroundImage: imageProvider,
+                      onBackgroundImageError: hasValidImage 
+                          ? (exception, stackTrace) {
+                              if (kDebugMode) {
+                                debugPrint('❌ アイコン画像読み込みエラー: $exception');
+                                debugPrint('URL: ${user?.avatarUrl}');
+                                
+                                // エラーの種類を詳細に記録
+                                if (exception.toString().contains('Failed host lookup')) {
+                                  debugPrint('🌐 ネットワーク接続エラー: ホスト名解決失敗');
+                                } else if (exception.toString().contains('Connection closed')) {
+                                  debugPrint('🔌 接続エラー: 接続が閉じられました');
+                                } else {
+                                  debugPrint('❓ その他のエラー: $exception');
+                                }
+                              }
+                              
+                              // エラー状態を安全に更新
+                              if (mounted) {
+                                setState(() {
+                                  _imageLoadError = true;
+                                });
+                              }
+                            }
+                          : null,
+                      child: !hasValidImage
+                          ? const Icon(
+                              Icons.person,
+                              size: 40,
+                              color: Colors.white,
+                            )
+                          : null,
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 16),
@@ -962,37 +1063,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final username = user?.backendUsername;
       
       if (username == null) {
-        // ローディングダイアログを安全に閉じる
+        _closeSafeLoadingDialog();
         if (mounted) {
-          try {
-            Navigator.of(context, rootNavigator: true).pop();
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
-            }
-          }
-          
           _showSafeSnackBar('ユーザー名が取得できません');
         }
         return;
       }
 
       final iconPath = await UserService.uploadIcon(username, imageFile);
-
-      // ローディングダイアログを安全に閉じる
-      if (mounted) {
-        try {
-          Navigator.of(context, rootNavigator: true).pop();
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
-          }
-        }
-      }
+      _closeSafeLoadingDialog();
       
       if (!mounted) return;
 
       if (iconPath != null) {
+        // アイコンキャッシュをクリア（新しいアイコンを反映するため）
+        _clearIconCache();
+        
         // バックエンドから最新のユーザー情報を再取得して反映
         final refreshed = await authProvider.refreshUserInfoFromBackend();
         
@@ -1015,17 +1101,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         debugPrint('❌ アイコンアップロードエラー: $e');
       }
       
-      // ローディングダイアログを安全に閉じる
+      _closeSafeLoadingDialog();
+      
       if (mounted) {
-        try {
-          Navigator.of(context, rootNavigator: true).pop();
-        } catch (navError) {
-          if (kDebugMode) {
-            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $navError');
-          }
-        }
-        
-        // エラーメッセージを表示
         _showSafeSnackBar('エラーが発生しました: $e');
       }
     }
@@ -1035,48 +1113,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _deleteIcon(BuildContext context, AuthProvider authProvider) async {
     // 確認ダイアログを表示
     final confirmed = await _showSafeDialog<bool>(
-      AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
-          'アイコンを削除',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'アイコンを削除しますか？',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              try {
-                Navigator.of(context, rootNavigator: true).pop(false);
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ ダイアログクローズエラー: $e');
-                }
-              }
-            },
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+      Builder(
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: const Color(0xFF2A2A2A),
+          title: const Text(
+            'アイコンを削除',
+            style: TextStyle(color: Colors.white),
           ),
-          TextButton(
-            onPressed: () {
-              try {
-                Navigator.of(context, rootNavigator: true).pop(true);
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ ダイアログクローズエラー: $e');
-                }
-              }
-            },
-            child: const Text(
-              '削除',
-              style: TextStyle(color: Colors.red),
-            ),
+          content: const Text(
+            'アイコンを削除しますか？',
+            style: TextStyle(color: Colors.white70),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(
+                'キャンセル',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(
+                '削除',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -1091,53 +1155,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final username = user?.backendUsername;
     
     if (username == null) {
-      // ローディングダイアログを安全に閉じる
+      _closeSafeLoadingDialog();
       if (mounted) {
-        try {
-          Navigator.of(context, rootNavigator: true).pop();
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
-          }
-        }
-        
         _showSafeSnackBar('ユーザー名が取得できません');
       }
       return;
     }
 
     final success = await UserService.deleteIcon(username);
-
-    // ローディングダイアログを安全に閉じる
-    if (mounted) {
-      try {
-        Navigator.of(context, rootNavigator: true).pop();
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
-        }
-      }
-    }
+    _closeSafeLoadingDialog();
     
     if (!mounted) return;
 
     if (success) {
-      // バックエンドから最新のユーザー情報を再取得して反映
-      final refreshed = await authProvider.refreshUserInfoFromBackend();
+      // アイコンキャッシュをクリア（アイコン削除を反映するため）
+      _clearIconCache();
+      
+      // デフォルトアイコンの処理
+      await _setDefaultIcon(authProvider);
       
       if (mounted) {
-        if (refreshed) {
-          _showSafeSnackBar('アイコンを削除しました', backgroundColor: Colors.green);
-        } else {
-          // 再取得に失敗した場合は、空文字列で更新（削除を指示）
-          await authProvider.updateUserInfo(iconPath: '');
-          _showSafeSnackBar('アイコンを削除しました', backgroundColor: Colors.green);
+        _showSafeSnackBar('アイコンをデフォルトに変更しました', backgroundColor: Colors.green);
+        
+        if (kDebugMode) {
+          debugPrint('✅ アイコン削除完了: デフォルトアイコンに変更');
         }
       }
     } else {
       if (mounted) {
         _showSafeSnackBar('アイコンの削除に失敗しました');
       }
+    }
+  }
+
+  /// デフォルトアイコンを設定
+  Future<void> _setDefaultIcon(AuthProvider authProvider) async {
+    // アイコンを削除（nullに設定）してローカルのデフォルトアイコンを表示
+    await authProvider.updateUserInfo(iconPath: null);
+    
+    // アイコンキャッシュもクリアしてデフォルトアイコンを確実に表示
+    _clearIconCache();
+    
+    if (kDebugMode) {
+      debugPrint('🖼️ デフォルトアイコンに設定しました（ローカルアイコンを使用）');
     }
   }
 }
