@@ -26,8 +26,25 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
-  bool _isLoading = true;
   final ImagePicker _imagePicker = ImagePicker();
+  
+  // 安全なメッセージ表示のためのヘルパーメソッド
+  void _showSafeSnackBar(String message, {Color? backgroundColor}) {
+    if (mounted) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: backgroundColor ?? Colors.red,
+          ),
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ SnackBar表示に失敗: $e - メッセージ: $message');
+        }
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -46,9 +63,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (kDebugMode) {
           debugPrint('❌ JWTトークンが取得できません');
         }
-        setState(() {
-          _isLoading = false;
-        });
         return;
       }
 
@@ -73,7 +87,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final data = jsonDecode(response.body);
         setState(() {
           _spotlightCount = data['spotlightnum'] ?? 0;
-          _isLoading = false;
         });
         
         if (kDebugMode) {
@@ -84,17 +97,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (kDebugMode) {
           debugPrint('❌ HTTPエラー: ${response.statusCode}');
         }
-        setState(() {
-          _isLoading = false;
-        });
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ スポットライト数取得エラー: $e');
       }
-      setState(() {
-        _isLoading = false;
-      });
+      // エラー時の処理（特に状態更新は不要）
     }
   }
 
@@ -920,21 +928,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final username = user?.backendUsername;
       
       if (username == null) {
-        if (!mounted) return;
-        Navigator.pop(context); // ローディングを閉じる
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('ユーザー名が取得できません'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        // ローディングダイアログを安全に閉じる
+        if (mounted) {
+          try {
+            Navigator.of(context, rootNavigator: true).pop();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
+            }
+          }
+          
+          _showSafeSnackBar('ユーザー名が取得できません');
+        }
         return;
       }
 
       final iconPath = await UserService.uploadIcon(username, imageFile);
 
+      // ローディングダイアログを安全に閉じる
+      if (mounted) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
+          }
+        }
+      }
+      
       if (!mounted) return;
-      Navigator.pop(context); // ローディングを閉じる
 
       if (iconPath != null) {
         // バックエンドから最新のユーザー情報を再取得して反映
@@ -942,42 +964,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
         
         if (mounted) {
           if (refreshed) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('アイコンを設定しました'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
           } else {
             // 再取得に失敗した場合は、レスポンスのiconPathを使用
             await authProvider.updateUserInfo(iconPath: iconPath);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('アイコンを設定しました'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
           }
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('アイコンの設定に失敗しました'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showSafeSnackBar('アイコンの設定に失敗しました');
         }
       }
     } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ アイコンアップロードエラー: $e');
+      }
+      
+      // ローディングダイアログを安全に閉じる
       if (mounted) {
-        Navigator.pop(context); // ローディングを閉じる
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('エラーが発生しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (navError) {
+          if (kDebugMode) {
+            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $navError');
+          }
+        }
+        
+        // エラーメッセージを表示
+        _showSafeSnackBar('エラーが発生しました: $e');
       }
     }
   }
@@ -1033,21 +1048,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final username = user?.backendUsername;
     
     if (username == null) {
-      if (!mounted) return;
-      Navigator.pop(context); // ローディングを閉じる
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ユーザー名が取得できません'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // ローディングダイアログを安全に閉じる
+      if (mounted) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
+          }
+        }
+        
+        _showSafeSnackBar('ユーザー名が取得できません');
+      }
       return;
     }
 
     final success = await UserService.deleteIcon(username);
 
+    // ローディングダイアログを安全に閉じる
+    if (mounted) {
+      try {
+        Navigator.of(context, rootNavigator: true).pop();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
+        }
+      }
+    }
+    
     if (!mounted) return;
-    Navigator.pop(context); // ローディングを閉じる
 
     if (success) {
       // バックエンドから最新のユーザー情報を再取得して反映
@@ -1055,31 +1084,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       if (mounted) {
         if (refreshed) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('アイコンを削除しました'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          _showSafeSnackBar('アイコンを削除しました', backgroundColor: Colors.green);
         } else {
           // 再取得に失敗した場合は、空文字列で更新（削除を指示）
           await authProvider.updateUserInfo(iconPath: '');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('アイコンを削除しました'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          _showSafeSnackBar('アイコンを削除しました', backgroundColor: Colors.green);
         }
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('アイコンの削除に失敗しました'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSafeSnackBar('アイコンの削除に失敗しました');
       }
     }
   }

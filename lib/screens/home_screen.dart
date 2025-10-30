@@ -157,13 +157,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         break;
       case AppLifecycleState.resumed:
         // アプリがフォアグラウンドに戻った時は再生
-        if (_posts[_currentIndex].postType == PostType.video && _currentPlayingVideo != null) {
+        if (_posts.isNotEmpty && 
+            _currentIndex < _posts.length && 
+            _posts[_currentIndex].postType == PostType.video && 
+            _currentPlayingVideo != null) {
           final controller = _videoControllers[_currentPlayingVideo];
           if (controller != null && controller.value.isInitialized) {
             controller.play();
           }
         }
-        if (_posts[_currentIndex].postType == PostType.audio && _currentPlayingAudio != null) {
+        if (_posts.isNotEmpty && 
+            _currentIndex < _posts.length && 
+            _posts[_currentIndex].postType == PostType.audio && 
+            _currentPlayingAudio != null) {
           final player = _audioPlayers[_currentPlayingAudio];
           if (player != null) {
             player.play();
