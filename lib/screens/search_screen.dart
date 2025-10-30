@@ -20,7 +20,7 @@ class _SearchScreenState extends State<SearchScreen> {
   
   // バックエンドから取得
   List<SearchHistory> _searchHistory = [];
-  List<SearchSuggestion> _allSuggestions = [];
+  final List<SearchSuggestion> _allSuggestions = [];
   List<SearchSuggestion> _filteredSuggestions = [];
   List<Post> _searchResults = [];
   String? _searchQuery;

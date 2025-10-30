@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'spotlight_list_screen.dart';
@@ -12,6 +14,7 @@ import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
+import '../services/user_service.dart';
 import '../models/badge.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -24,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   bool _isLoading = true;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -154,19 +158,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           
           return Row(
             children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: const Color(0xFFFF6B35),
-                backgroundImage: user?.avatarUrl != null
-                    ? NetworkImage(user!.avatarUrl!)
-                    : null,
-                child: user?.avatarUrl == null
-                    ? const Icon(
-                        Icons.person,
-                        size: 40,
-                        color: Colors.white,
-                      )
-                    : null,
+              GestureDetector(
+                onTap: () => _showIconMenu(context, authProvider),
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundColor: const Color(0xFFFF6B35),
+                  backgroundImage: user?.avatarUrl != null
+                      ? NetworkImage(user!.avatarUrl!)
+                      : null,
+                  child: user?.avatarUrl == null
+                      ? const Icon(
+                          Icons.person,
+                          size: 40,
+                          color: Colors.white,
+                        )
+                      : null,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -189,15 +196,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ],
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  // 設定画面への遷移
-                },
-                icon: const Icon(
-                  Icons.settings,
-                  color: Colors.white,
                 ),
               ),
             ],
@@ -833,5 +831,256 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
       ),
     );
+  }
+
+  /// アイコンメニューを表示
+  void _showIconMenu(BuildContext context, AuthProvider authProvider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF2A2A2A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(
+                  Icons.image_outlined,
+                  color: Colors.white,
+                ),
+                title: const Text(
+                  'アイコンを設定',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickAndUploadIcon(context, authProvider);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.red,
+                ),
+                title: const Text(
+                  'アイコンを削除',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteIcon(context, authProvider);
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 画像を選択してアップロード
+  Future<void> _pickAndUploadIcon(BuildContext context, AuthProvider authProvider) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      if (!mounted) return;
+
+      // ローディング表示
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final imageFile = File(pickedFile.path);
+      final user = authProvider.currentUser;
+      final username = user?.backendUsername;
+      
+      if (username == null) {
+        if (!mounted) return;
+        Navigator.pop(context); // ローディングを閉じる
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ユーザー名が取得できません'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final iconPath = await UserService.uploadIcon(username, imageFile);
+
+      if (!mounted) return;
+      Navigator.pop(context); // ローディングを閉じる
+
+      if (iconPath != null) {
+        // バックエンドから最新のユーザー情報を再取得して反映
+        final refreshed = await authProvider.refreshUserInfoFromBackend();
+        
+        if (mounted) {
+          if (refreshed) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('アイコンを設定しました'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else {
+            // 再取得に失敗した場合は、レスポンスのiconPathを使用
+            await authProvider.updateUserInfo(iconPath: iconPath);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('アイコンを設定しました'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('アイコンの設定に失敗しました'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // ローディングを閉じる
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('エラーが発生しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// アイコンを削除
+  Future<void> _deleteIcon(BuildContext context, AuthProvider authProvider) async {
+    // 確認ダイアログを表示
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'アイコンを削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'アイコンを削除しますか？',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    if (!mounted) return;
+
+    // ローディング表示
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final user = authProvider.currentUser;
+    final username = user?.backendUsername;
+    
+    if (username == null) {
+      if (!mounted) return;
+      Navigator.pop(context); // ローディングを閉じる
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ユーザー名が取得できません'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await UserService.deleteIcon(username);
+
+    if (!mounted) return;
+    Navigator.pop(context); // ローディングを閉じる
+
+    if (success) {
+      // バックエンドから最新のユーザー情報を再取得して反映
+      final refreshed = await authProvider.refreshUserInfoFromBackend();
+      
+      if (mounted) {
+        if (refreshed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('アイコンを削除しました'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          // 再取得に失敗した場合は、空文字列で更新（削除を指示）
+          await authProvider.updateUserInfo(iconPath: '');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('アイコンを削除しました'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('アイコンの削除に失敗しました'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
