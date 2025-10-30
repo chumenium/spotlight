@@ -46,6 +46,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // 安全なダイアログ表示のためのヘルパーメソッド
+  Future<T?> _showSafeDialog<T>(Widget dialog) async {
+    if (!mounted) return null;
+    
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: true, // バックボタンで閉じられるように変更
+        builder: (context) => dialog,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ ダイアログ表示に失敗: $e');
+      }
+      return null;
+    }
+  }
+
+  // 安全なローディングダイアログ表示
+  void _showSafeLoadingDialog() {
+    if (mounted) {
+      try {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => WillPopScope(
+            onWillPop: () async => false, // バックボタンを無効化
+            child: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ ローディングダイアログ表示に失敗: $e');
+        }
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -915,13 +955,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
 
       // ローディング表示
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      _showSafeLoadingDialog();
 
       final imageFile = File(pickedFile.path);
       final user = authProvider.currentUser;
@@ -1000,9 +1034,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// アイコンを削除
   Future<void> _deleteIcon(BuildContext context, AuthProvider authProvider) async {
     // 確認ダイアログを表示
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final confirmed = await _showSafeDialog<bool>(
+      AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text(
           'アイコンを削除',
@@ -1014,14 +1047,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () {
+              try {
+                Navigator.of(context, rootNavigator: true).pop(false);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ ダイアログクローズエラー: $e');
+                }
+              }
+            },
             child: const Text(
               'キャンセル',
               style: TextStyle(color: Colors.grey),
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () {
+              try {
+                Navigator.of(context, rootNavigator: true).pop(true);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ ダイアログクローズエラー: $e');
+                }
+              }
+            },
             child: const Text(
               '削除',
               style: TextStyle(color: Colors.red),
@@ -1036,13 +1085,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
 
     // ローディング表示
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
+    _showSafeLoadingDialog();
 
     final user = authProvider.currentUser;
     final username = user?.backendUsername;

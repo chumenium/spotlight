@@ -31,6 +31,24 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleSignUp() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Google新規登録もloginWithGoogleを使用（Firebase側で自動的に新規/既存を判定）
+    final success = await authProvider.loginWithGoogle();
+
+    if (success && mounted) {
+      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
+      
+      // 新規登録成功のメッセージを表示
+      _showSuccessSnackBar('アカウントが作成されました！');
+    } else if (mounted && authProvider.errorMessage != null) {
+      _showErrorSnackBar(authProvider.errorMessage!);
+    }
+  }
+
 
   Future<void> _handleTwitterLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -60,6 +78,19 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
@@ -112,17 +143,17 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                 ),
                 const SizedBox(height: 80),
                 
-                // ログインメッセージ
+                // ログインセクション
                 Text(
-                  'ログインして始めましょう',
+                  'ログイン',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: Colors.grey[300],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 
                 // Googleログインボタン
                 if (authProvider.canUseGoogle)
@@ -138,7 +169,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     textColor: Colors.black87,
                   ),
                 
-                if (authProvider.canUseGoogle) const SizedBox(height: 16),
+                if (authProvider.canUseGoogle) const SizedBox(height: 12),
                 
                 // Twitterログインボタン（X）
                 if (authProvider.canUseTwitter)
@@ -151,6 +182,64 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     ),
                     label: 'X（Twitter）でログイン',
                     backgroundColor: Colors.black,  // Xのブランドカラー
+                    textColor: Colors.white,
+                  ),
+                
+                const SizedBox(height: 32),
+                
+                // 区切り線
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 1,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'または',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Container(
+                        height: 1,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 32),
+                
+                // 新規登録セクション
+                Text(
+                  'アカウント新規登録',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[300],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Google新規登録ボタン
+                if (authProvider.canUseGoogle)
+                  _SocialLoginButton(
+                    onPressed: authProvider.isLoading ? null : _handleGoogleSignUp,
+                    icon: SvgPicture.asset(
+                      'assets/images/google_logo.svg',
+                      width: 24,
+                      height: 24,
+                    ),
+                    label: 'Googleでアカウント作成',
+                    backgroundColor: SpotLightColors.primaryOrange,
                     textColor: Colors.white,
                   ),
                 
