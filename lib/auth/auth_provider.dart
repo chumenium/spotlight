@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:twitter_login/twitter_login.dart';
@@ -90,7 +91,9 @@ class AuthProvider extends ChangeNotifier {
   
   /// Google Sign-Inのインスタンス
   /// Google認証フローの管理に使用
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: AuthConfig.googleScopes,
+  );
   
   /// Twitter Sign-Inのインスタンス
   /// Twitter Developer Portalで取得したAPIキーで初期化されます
@@ -305,6 +308,37 @@ class AuthProvider extends ChangeNotifier {
       if (kDebugMode) {
         debugPrint('🔐 [Google] Firebaseエラー: ${e.code} - ${e.message}');
       }
+      notifyListeners();
+      return false;
+    } on PlatformException catch (e) {
+      // Google Sign-In プラットフォームエラー
+      _isLoading = false;
+      String errorMessage = 'Googleログインに失敗しました';
+      
+      if (kDebugMode) {
+        debugPrint('🔐 [Google] プラットフォームエラー: ${e.code} - ${e.message}');
+        debugPrint('🔐 [Google] エラー詳細: ${e.details}');
+      }
+      
+      // エラーコード別の詳細メッセージ
+      switch (e.code) {
+        case 'sign_in_failed':
+          errorMessage = 'Google Sign-Inの設定に問題があります。開発者にお問い合わせください。';
+          if (kDebugMode) {
+            debugPrint('🔐 [Google] SHA-1フィンガープリントまたはクライアント設定を確認してください');
+          }
+          break;
+        case 'network_error':
+          errorMessage = 'ネットワークエラーが発生しました。接続を確認してください。';
+          break;
+        case 'sign_in_canceled':
+          errorMessage = 'ログインがキャンセルされました。';
+          break;
+        default:
+          errorMessage = 'Googleログインでエラーが発生しました: ${e.message ?? e.code}';
+      }
+      
+      _errorMessage = errorMessage;
       notifyListeners();
       return false;
     } catch (e) {
