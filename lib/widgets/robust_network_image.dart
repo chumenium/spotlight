@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// ネットワークエラーに強い画像ウィジェット
 ///
-/// 動画と同じシンプルなアプローチで実装
+/// 動画と同じようにFlutterの最適化されたImage.networkを使用
+/// プログレッシブJPEGやストリーミング読み込みをサポート
+/// 大量コンテンツ対応のため、ディスプレイサイズに合わせて画像を最適化
 class RobustNetworkImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
   final Widget? placeholder;
   final Widget? errorWidget;
-  final int maxRetries;
-  final Duration timeout;
-  final int maxSizeBytes; // 最大ファイルサイズ（バイト）
+  final int? maxWidth;
+  final int? maxHeight;
 
   const RobustNetworkImage({
     super.key,
@@ -21,9 +20,8 @@ class RobustNetworkImage extends StatefulWidget {
     this.fit = BoxFit.contain,
     this.placeholder,
     this.errorWidget,
-    this.maxRetries = 3, // 動画と同じシンプルなリトライ回数
-    this.timeout = const Duration(seconds: 30),
-    this.maxSizeBytes = 10 * 1024 * 1024, // デフォルト10MB
+    this.maxWidth,
+    this.maxHeight,
   });
 
   @override
@@ -31,185 +29,147 @@ class RobustNetworkImage extends StatefulWidget {
 }
 
 class _RobustNetworkImageState extends State<RobustNetworkImage> {
-  Uint8List? _imageBytes;
-  bool _isLoading = true;
-  String? _errorMessage;
+  ImageProvider? _imageProvider;
+  int? _cacheWidth;
+  int? _cacheHeight;
+  bool _hasInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _loadImage();
+    // initState()ではMediaQueryにアクセスできないため、デフォルト値を設定
+    _cacheWidth = widget.maxWidth ?? 1080;
+    _cacheHeight = widget.maxHeight ?? 1920;
+    _createImageProvider();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // didChangeDependencies()でMediaQueryにアクセス可能
+    if (!_hasInitialized) {
+      _calculateCacheSize();
+      _preloadImage();
+      _hasInitialized = true;
+    }
   }
 
   @override
   void didUpdateWidget(RobustNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
-      // URLが変更された場合は再読み込み
-      _loadImage();
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.maxWidth != widget.maxWidth ||
+        oldWidget.maxHeight != widget.maxHeight) {
+      _calculateCacheSize();
+      _createImageProvider();
+      _preloadImage();
     }
   }
 
-  /// 動画と同じシンプルなアプローチ: リトライ付きHTTPリクエスト
-  Future<void> _loadImage() async {
-    if (!mounted) return;
+  /// ディスプレイサイズに基づいてキャッシュサイズを計算
+  /// didChangeDependencies()またはbuild()から呼び出す（MediaQueryにアクセス可能な状態で）
+  void _calculateCacheSize() {
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final devicePixelRatio = mediaQuery.devicePixelRatio;
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    // ディスプレイサイズの1.5倍（Retina対応）を上限として、指定された最大サイズを適用
+    _cacheWidth = widget.maxWidth ??
+        (screenSize.width * devicePixelRatio * 1.5).round().clamp(360, 2160);
+    _cacheHeight = widget.maxHeight ??
+        (screenSize.height * devicePixelRatio * 1.5).round().clamp(640, 3840);
+  }
 
-    // 動画と同じシンプルなリトライロジック
-    for (int attempt = 0; attempt <= widget.maxRetries; attempt++) {
-      if (!mounted) return;
+  /// 画像プロバイダーを作成
+  void _createImageProvider() {
+    _imageProvider = NetworkImage(
+      widget.imageUrl,
+      headers: {
+        'Accept': 'image/webp,image/avif,image/*, */*;q=0.8', // WebP/AVIFを優先
+        'User-Agent': 'Flutter-Spotlight/1.0',
+      },
+    );
+  }
 
-      try {
-        if (kDebugMode && attempt > 0) {
-          debugPrint(
-              '🔄 画像読み込みリトライ ${attempt}/${widget.maxRetries}: ${widget.imageUrl}');
-        }
+  /// 画像を事前読み込み（キャッシュに保存、最適化されたサイズで）
+  Future<void> _preloadImage() async {
+    if (_imageProvider == null) return;
 
-        final client = http.Client();
-        try {
-          final response = await client.get(
-            Uri.parse(widget.imageUrl),
-            headers: {
-              'Accept': 'image/*, */*',
-              'User-Agent': 'Flutter-Spotlight/1.0',
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0',
-            },
-          ).timeout(widget.timeout);
-
-          client.close();
-
-          if (response.statusCode == 200) {
-            // サイズ制限チェック
-            if (response.bodyBytes.length > widget.maxSizeBytes) {
-              throw Exception(
-                  '画像が大きすぎます: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(1)} MB (制限: ${(widget.maxSizeBytes / 1024 / 1024).toStringAsFixed(1)} MB)');
-            }
-
-            if (!mounted) return;
-
-            setState(() {
-              _imageBytes = response.bodyBytes;
-              _isLoading = false;
-              _errorMessage = null;
-            });
-
-            if (kDebugMode) {
-              debugPrint(
-                  '✅ 画像読み込み成功: ${widget.imageUrl} (${response.bodyBytes.length} bytes)');
-            }
-
-            return;
-          } else if (response.statusCode == 404) {
-            // 404の場合はリトライしない
-            if (kDebugMode) {
-              debugPrint('❌ 画像が存在しません (404): ${widget.imageUrl}');
-            }
-
-            if (!mounted) return;
-            setState(() {
-              _isLoading = false;
-              _errorMessage = 'ファイルが見つかりません (404)';
-            });
-            return;
-          } else {
-            throw Exception('HTTPエラー: ${response.statusCode}');
-          }
-        } catch (e) {
-          client.close();
-          rethrow;
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint(
-              '❌ 画像読み込みエラー (試行${attempt + 1}/${widget.maxRetries + 1}): $e');
-        }
-
-        if (attempt == widget.maxRetries) {
-          // 最後のリトライも失敗
-          if (!mounted) return;
-
-          final errorStr = e.toString();
-          final is404Error = errorStr.contains('404') ||
-              errorStr.contains('ファイルが見つかりません') ||
-              errorStr.contains('存在しません');
-
-          setState(() {
-            _isLoading = false;
-            _errorMessage = errorStr;
-          });
-
-          if (is404Error) {
-            if (kDebugMode) {
-              debugPrint('⛔ 404エラーのため、リトライを終了: ${widget.imageUrl}');
-            }
-          }
-          return;
-        }
-
-        // 次のリトライまで待機（指数バックオフ）
-        final delayMs = 500 * (attempt + 1); // 0.5秒、1秒、1.5秒...
-        await Future.delayed(Duration(milliseconds: delayMs));
+    try {
+      await precacheImage(
+        _imageProvider!,
+        context,
+        size: _cacheWidth != null && _cacheHeight != null
+            ? Size(_cacheWidth!.toDouble(), _cacheHeight!.toDouble())
+            : null,
+      );
+      if (kDebugMode) {
+        debugPrint(
+            '✅ 画像キャッシュ完了: ${widget.imageUrl} (${_cacheWidth}x${_cacheHeight})');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 画像キャッシュエラー: $e');
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return widget.placeholder ??
-          const Center(
-            child: CircularProgressIndicator(
-              color: Color(0xFFFF6B35),
-            ),
-          );
-    }
-
-    if (_errorMessage != null || _imageBytes == null) {
-      return widget.errorWidget ??
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.broken_image, color: Colors.white38, size: 64),
-                const SizedBox(height: 16),
-                const Text(
-                  '画像を読み込めません',
-                  style: TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _errorMessage ?? 'Unknown error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // 手動で再試行
-                    _loadImage();
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('再試行'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6B35),
-                  ),
-                ),
-              ],
-            ),
-          );
-    }
-
-    return Image.memory(
-      _imageBytes!,
+    // FlutterのImage.networkを使用（動画と同じように最適化された読み込み）
+    // プログレッシブJPEGやストリーミング読み込みを自動でサポート
+    // cacheWidth/cacheHeightでメモリ使用量を最適化
+    return Image.network(
+      widget.imageUrl,
       fit: widget.fit,
+      cacheWidth: _cacheWidth,
+      cacheHeight: _cacheHeight,
+      headers: {
+        'Accept': 'image/webp,image/avif,image/*, */*;q=0.8', // WebP/AVIFを優先
+        'User-Agent': 'Flutter-Spotlight/1.0',
+      },
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        // 同期的に読み込まれた場合は即座に表示
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child;
+        }
+        // 読み込み中はプレースホルダーを表示
+        return widget.placeholder ??
+            const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFFF6B35),
+              ),
+            );
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        // 読み込み中はプレースホルダーを表示
+        if (loadingProgress == null) {
+          // 読み込み完了
+          if (kDebugMode) {
+            debugPrint('✅ 画像読み込み完了: ${widget.imageUrl}');
+          }
+          return child;
+        }
+        // 読み込み中はプレースホルダーを表示
+        return widget.placeholder ??
+            const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFFF6B35),
+              ),
+            );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('❌ 画像読み込みエラー: $error');
+        }
+        // エラー時もプレースホルダーを表示し続ける（エラーウィジェットは表示しない）
+        return widget.placeholder ??
+            const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFFF6B35),
+              ),
+            );
+      },
     );
   }
 }
