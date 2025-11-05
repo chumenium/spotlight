@@ -34,7 +34,11 @@ class IconUpdateService {
   /// プロフィール画面でアイコン変更後に呼び出す
   void notifyIconUpdate(String username, {String? iconPath}) {
     if (kDebugMode) {
-      debugPrint('🔔 アイコン更新通知: $username -> ${iconPath ?? "default"}');
+      if (iconPath == null) {
+        debugPrint('🔔 アイコン更新通知: $username -> default_icon.jpg (削除)');
+      } else {
+        debugPrint('🔔 アイコン更新通知: $username -> $iconPath (変更)');
+      }
     }
     
     _controller.add(IconUpdateEvent(

@@ -76,6 +76,9 @@ class _RobustNetworkImageState extends State<RobustNetworkImage> {
             headers: {
               'Accept': 'image/*, */*',
               'User-Agent': 'Flutter-Spotlight/1.0',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0',
             },
           ).timeout(widget.timeout);
 

@@ -125,6 +125,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       debugPrint('🔔 アイコン更新を検知: ${event.username} -> ${event.iconPath ?? "default"}');
     }
     
+    // 古いアイコンURLをFlutterの画像キャッシュから削除
+    for (int i = 0; i < _posts.length; i++) {
+      if (_posts[i].username == event.username && _posts[i].userIconUrl != null) {
+        try {
+          final oldUrl = _posts[i].userIconUrl!;
+          // NetworkImageのキャッシュをクリア
+          final oldImage = NetworkImage(oldUrl);
+          oldImage.evict();
+          
+          if (kDebugMode) {
+            debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ キャッシュ削除エラー: $e');
+          }
+        }
+      }
+    }
+    
     // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
     setState(() {
       _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;

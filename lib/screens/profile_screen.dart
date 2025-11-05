@@ -15,6 +15,7 @@ import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
 import '../services/user_service.dart';
+import '../services/icon_update_service.dart';
 import '../models/badge.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -72,6 +73,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   void _clearIconCache() {
+    // NetworkImageのキャッシュもクリア
+    if (_cachedImageProvider != null) {
+      try {
+        _cachedImageProvider!.evict();
+        if (kDebugMode) {
+          debugPrint('🗑️ NetworkImageキャッシュをクリアしました');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ NetworkImageキャッシュクリアエラー: $e');
+        }
+      }
+    }
+    
     _cachedAvatarUrl = null;
     _cachedImageProvider = null;
     _imageLoadError = false;
@@ -1076,13 +1091,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
 
       if (iconPath != null) {
+        if (kDebugMode) {
+          debugPrint('📸 アイコンアップロード成功: $iconPath');
+        }
+        
         // アイコンキャッシュをクリア（新しいアイコンを反映するため）
         _clearIconCache();
+        
+        // サーバー側で画像処理が完了するまで待機（500ms）
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (kDebugMode) {
+          debugPrint('⏳ サーバー側の画像処理を待機しました');
+        }
         
         // バックエンドから最新のユーザー情報を再取得して反映
         final refreshed = await authProvider.refreshUserInfoFromBackend();
         
+        if (kDebugMode) {
+          debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
+        }
+        
+        // さらに少し待機してから通知（画像が確実に利用可能になるまで）
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        if (kDebugMode) {
+          debugPrint('📤 アイコン更新通知を送信: username=$username, iconPath=$iconPath');
+        }
+        
+        // 他の画面にアイコン更新を通知（ホーム画面など）
+        IconUpdateService().notifyIconUpdate(
+          username,
+          iconPath: iconPath,
+        );
+        
         if (mounted) {
+          // 画面を強制的に再構築して新しいアイコンを表示
+          setState(() {});
+          
+          if (kDebugMode) {
+            debugPrint('🔄 プロフィール画面を再構築しました');
+          }
+          
           if (refreshed) {
             _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
           } else {
@@ -1168,13 +1218,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
 
     if (success) {
+      if (kDebugMode) {
+        debugPrint('🗑️ アイコン削除成功');
+      }
+      
       // アイコンキャッシュをクリア（アイコン削除を反映するため）
       _clearIconCache();
       
       // デフォルトアイコンの処理
       await _setDefaultIcon(authProvider);
       
+      // サーバー側で処理が完了するまで待機（300ms）
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      if (kDebugMode) {
+        debugPrint('📤 アイコン削除通知を送信: username=$username, iconPath=null (default)');
+      }
+      
+      // 他の画面にアイコン削除を通知（ホーム画面など）
+      IconUpdateService().notifyIconUpdate(
+        username,
+        iconPath: null, // nullでdefault_icon.jpgを使用
+      );
+      
       if (mounted) {
+        // 画面を強制的に再構築してデフォルトアイコンを表示
+        setState(() {});
+        
+        if (kDebugMode) {
+          debugPrint('🔄 プロフィール画面を再構築しました（デフォルトアイコン）');
+        }
+        
         _showSafeSnackBar('アイコンをデフォルトに変更しました', backgroundColor: Colors.green);
         
         if (kDebugMode) {
