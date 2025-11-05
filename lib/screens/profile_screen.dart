@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'history_list_screen.dart';
@@ -16,6 +17,7 @@ import '../config/app_config.dart';
 import '../services/jwt_service.dart';
 import '../services/user_service.dart';
 import '../services/icon_update_service.dart';
+import '../widgets/robust_network_image.dart';
 import '../models/badge.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -29,68 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   final ImagePicker _imagePicker = ImagePicker();
   
-  // アイコン画像のキャッシュ
-  String? _cachedAvatarUrl;
-  ImageProvider? _cachedImageProvider;
-  bool _imageLoadError = false;
-  
-  /// アイコン画像プロバイダーを取得（キャッシュ機能付き）
-  ImageProvider? _getAvatarImageProvider(String? avatarUrl) {
-    // URLが変更された場合のみキャッシュを更新
-    if (avatarUrl != _cachedAvatarUrl) {
-      _cachedAvatarUrl = avatarUrl;
-      _imageLoadError = false; // URLが変更されたらエラー状態をリセット
-      
-      if (avatarUrl != null && avatarUrl.isNotEmpty) {
-        try {
-          // URLの妥当性をチェック
-          final uri = Uri.tryParse(avatarUrl);
-          if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-            _cachedImageProvider = NetworkImage(avatarUrl);
-            
-            if (kDebugMode) {
-              debugPrint('🖼️ アイコン画像キャッシュ更新: $avatarUrl');
-            }
-          } else {
-            if (kDebugMode) {
-              debugPrint('❌ 無効なURL形式: $avatarUrl');
-            }
-            _cachedImageProvider = null;
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ NetworkImage作成エラー: $e');
-          }
-          _cachedImageProvider = null;
-        }
-      } else {
-        _cachedImageProvider = null;
-      }
-    }
-    
-    return _cachedImageProvider;
-  }
-  
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   void _clearIconCache() {
-    // NetworkImageのキャッシュもクリア
-    if (_cachedImageProvider != null) {
-      try {
-        _cachedImageProvider!.evict();
-        if (kDebugMode) {
-          debugPrint('🗑️ NetworkImageキャッシュをクリアしました');
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ NetworkImageキャッシュクリアエラー: $e');
-        }
-      }
-    }
-    
-    _cachedAvatarUrl = null;
-    _cachedImageProvider = null;
-    _imageLoadError = false;
-    
     if (kDebugMode) {
       debugPrint('🗑️ アイコンキャッシュをクリアしました');
     }
@@ -297,44 +239,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => _showIconMenu(context, authProvider),
                 child: Builder(
                   builder: (context) {
-                    final imageProvider = !_imageLoadError ? _getAvatarImageProvider(user?.avatarUrl) : null;
-                    final hasValidImage = imageProvider != null && !_imageLoadError;
-                    
                     return CircleAvatar(
                       radius: 40,
                       backgroundColor: const Color(0xFFFF6B35),
-                      backgroundImage: imageProvider,
-                      onBackgroundImageError: hasValidImage 
-                          ? (exception, stackTrace) {
-                              if (kDebugMode) {
-                                debugPrint('❌ アイコン画像読み込みエラー: $exception');
-                                debugPrint('URL: ${user?.avatarUrl}');
-                                
-                                // エラーの種類を詳細に記録
-                                if (exception.toString().contains('Failed host lookup')) {
-                                  debugPrint('🌐 ネットワーク接続エラー: ホスト名解決失敗');
-                                } else if (exception.toString().contains('Connection closed')) {
-                                  debugPrint('🔌 接続エラー: 接続が閉じられました');
-                                } else {
-                                  debugPrint('❓ その他のエラー: $exception');
-                                }
-                              }
-                              
-                              // エラー状態を安全に更新
-                              if (mounted) {
-                                setState(() {
-                                  _imageLoadError = true;
-                                });
-                              }
-                            }
-                          : null,
-                      child: !hasValidImage
-                          ? const Icon(
-                              Icons.person,
-                              size: 40,
-                              color: Colors.white,
-                            )
-                          : null,
+                      child: ClipOval(
+                        child: RobustNetworkImage(
+                          imageUrl: user?.avatarUrl ?? '${AppConfig.backendUrl}/icon/default_icon.jpg',
+                          fit: BoxFit.cover,
+                          maxWidth: 160,
+                          maxHeight: 160,
+                          placeholder: Container(),
+                          errorWidget: Container(),
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -1095,14 +1012,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint('📸 アイコンアップロード成功: $iconPath');
         }
         
-        // アイコンキャッシュをクリア（新しいアイコンを反映するため）
-        _clearIconCache();
-        
-        // サーバー側で画像処理が完了するまで待機（500ms）
-        await Future.delayed(const Duration(milliseconds: 500));
+        // 4. 画像のURLを取得
+        final newIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
         
         if (kDebugMode) {
-          debugPrint('⏳ サーバー側の画像処理を待機しました');
+          debugPrint('🔗 新しいアイコンURL: $newIconUrl');
+        }
+        
+        // 古いキャッシュをクリア
+        _clearIconCache();
+        
+        // 5. フロントにURLを元に画像を設定 & 6. キャッシュを更新
+        // サーバー側で画像処理が完了するまで少し待機
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        try {
+          if (kDebugMode) {
+            debugPrint('📥 新しい画像を事前ロード中...');
+          }
+          
+          // 新しい画像を事前にロードしてキャッシュに保存
+          final newImage = NetworkImage(newIconUrl);
+          final imageStream = newImage.resolve(const ImageConfiguration());
+          
+          // 画像ロード完了を待機
+          final completer = Completer<void>();
+          late ImageStreamListener listener;
+          
+          listener = ImageStreamListener(
+            (ImageInfo image, bool synchronousCall) {
+              if (!completer.isCompleted) {
+                completer.complete();
+              }
+              imageStream.removeListener(listener);
+            },
+            onError: (exception, stackTrace) {
+              if (!completer.isCompleted) {
+                completer.completeError(exception);
+              }
+              imageStream.removeListener(listener);
+            },
+          );
+          
+          imageStream.addListener(listener);
+          
+          // 最大3秒待機
+          await completer.future.timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              imageStream.removeListener(listener);
+              if (kDebugMode) {
+                debugPrint('⚠️ 画像ロードタイムアウト（キャッシュなしで続行）');
+              }
+            },
+          );
+          
+          if (kDebugMode) {
+            debugPrint('✅ 新しい画像をキャッシュに保存しました');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 画像事前ロードエラー: $e（続行します）');
+          }
         }
         
         // バックエンドから最新のユーザー情報を再取得して反映
@@ -1110,13 +1081,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         
         if (kDebugMode) {
           debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
-        }
-        
-        // さらに少し待機してから通知（画像が確実に利用可能になるまで）
-        await Future.delayed(const Duration(milliseconds: 300));
-        
-        if (kDebugMode) {
-          debugPrint('📤 アイコン更新通知を送信: username=$username, iconPath=$iconPath');
         }
         
         // 他の画面にアイコン更新を通知（ホーム画面など）
@@ -1133,6 +1097,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             debugPrint('🔄 プロフィール画面を再構築しました');
           }
           
+          // 7. レスポンスメッセージ表示
           if (refreshed) {
             _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
           } else {
@@ -1153,8 +1118,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       _closeSafeLoadingDialog();
       
+      // 7. エラーメッセージ表示
       if (mounted) {
-        _showSafeSnackBar('エラーが発生しました: $e');
+        String errorMessage = 'エラーが発生しました';
+        
+        // エラーの種類に応じてメッセージをカスタマイズ
+        if (e.toString().contains('timeout') || e.toString().contains('タイムアウト')) {
+          errorMessage = '通信がタイムアウトしました';
+        } else if (e.toString().contains('network') || e.toString().contains('ネットワーク')) {
+          errorMessage = 'ネットワークエラーが発生しました';
+        } else if (e.toString().contains('404')) {
+          errorMessage = 'サーバーが見つかりません';
+        } else if (e.toString().contains('500')) {
+          errorMessage = 'サーバーエラーが発生しました';
+        }
+        
+        _showSafeSnackBar(errorMessage, backgroundColor: Colors.red);
       }
     }
   }
@@ -1256,8 +1235,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } else {
+      // 7. エラーメッセージ表示
       if (mounted) {
-        _showSafeSnackBar('アイコンの削除に失敗しました');
+        _showSafeSnackBar('アイコンの削除に失敗しました', backgroundColor: Colors.red);
       }
     }
   }

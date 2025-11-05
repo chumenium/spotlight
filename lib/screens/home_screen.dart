@@ -26,6 +26,12 @@ class _HomeScreenState extends State<HomeScreen>
   List<Post> _posts = [];
   bool _isLoading = true;
   String? _errorMessage;
+  
+  // 遅延読み込み関連
+  bool _isLoadingMore = false;
+  bool _hasMorePosts = true;
+  static const int _initialLoadCount = 3; // 初回読み込み件数
+  static const int _batchLoadCount = 2; // 追加読み込み件数
 
   // ジェスチャー関連
   double _swipeOffset = 0.0;
@@ -48,7 +54,13 @@ class _HomeScreenState extends State<HomeScreen>
 
   // アイコン更新イベントのリスナー
   StreamSubscription<IconUpdateEvent>? _iconUpdateSubscription;
-
+  
+  // リアルタイム更新用
+  Timer? _updateTimer;
+  bool _isUpdating = false;
+  static const Duration _updateInterval = Duration(seconds: 30); // 30秒ごとに更新（頻度を下げる）
+  final Set<String> _fetchedContentIds = {}; // 取得済みのコンテンツID
+  
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
 
@@ -88,24 +100,36 @@ class _HomeScreenState extends State<HomeScreen>
 
     // バックエンドから投稿を取得
     _fetchPosts();
+    
+    // リアルタイム更新を開始
+    _startAutoUpdate();
   }
 
-  /// バックエンドから投稿を取得
+  /// バックエンドから投稿を取得（初回読み込み）
   Future<void> _fetchPosts() async {
     try {
       if (kDebugMode) {
-        debugPrint('📝 投稿取得を開始...');
+        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件）...');
       }
-
-      final posts = await PostService.fetchPosts();
-
+      
+      final posts = await PostService.fetchPosts(limit: _initialLoadCount);
+      
       if (!_isDisposed && mounted) {
         setState(() {
           _posts = posts;
           _isLoading = false;
           _errorMessage = posts.isEmpty ? '投稿がありません' : null;
+          
+          // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
+          _hasMorePosts = posts.length >= _initialLoadCount;
+          
+          // 取得済みコンテンツIDを記録
+          _fetchedContentIds.clear();
+          for (final post in posts) {
+            _fetchedContentIds.add(post.id);
+          }
         });
-
+        
         // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
         if (_posts.isNotEmpty) {
           _handleMediaPageChange(_currentIndex);
@@ -115,13 +139,101 @@ class _HomeScreenState extends State<HomeScreen>
       if (kDebugMode) {
         debugPrint('📝 投稿取得エラー: $e');
       }
-
+      
       if (!_isDisposed && mounted) {
         setState(() {
           _isLoading = false;
           _errorMessage = '投稿の取得に失敗しました';
         });
       }
+    }
+  }
+  
+  /// 追加の投稿を読み込む（遅延読み込み）
+  Future<void> _loadMorePosts() async {
+    if (_isLoadingMore || !_hasMorePosts || _posts.isEmpty) return;
+    
+    _isLoadingMore = true;
+    
+    try {
+      // 最後の投稿のnextContentIdを使用
+      final lastPost = _posts.last;
+      if (lastPost.nextContentId == null) {
+        // nextContentIdがnullの場合は、これ以上投稿がない
+        setState(() {
+          _hasMorePosts = false;
+        });
+        _isLoadingMore = false;
+        return;
+      }
+      
+      if (kDebugMode) {
+        debugPrint('📝 追加読み込み開始: $_batchLoadCount件');
+      }
+      
+      // 次のコンテンツIDから追加読み込み
+      final morePosts = await PostService.fetchPosts(limit: _batchLoadCount);
+      
+      if (!_isDisposed && mounted && morePosts.isNotEmpty) {
+        setState(() {
+          _posts.addAll(morePosts);
+          
+          // 取得済みコンテンツIDを記録
+          for (final post in morePosts) {
+            _fetchedContentIds.add(post.id);
+          }
+          
+          // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
+          _hasMorePosts = morePosts.length >= _batchLoadCount;
+        });
+        
+        if (kDebugMode) {
+          debugPrint('📝 追加読み込み完了: ${morePosts.length}件（合計: ${_posts.length}件）');
+        }
+      } else {
+        setState(() {
+          _hasMorePosts = false;
+        });
+      }
+    } catch (e) {
+      // エラーは無視（サイレント）
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+  
+  /// 手動で投稿を更新（プルリフレッシュ）
+  Future<void> _refreshPosts() async {
+    if (_isUpdating) return;
+    
+    _isUpdating = true;
+    
+    try {
+      // 初回読み込みと同じ件数を取得
+      final posts = await PostService.fetchPosts(limit: _initialLoadCount);
+      
+      if (!_isDisposed && mounted && posts.isNotEmpty) {
+        setState(() {
+          _posts = posts;
+          _errorMessage = null;
+          _hasMorePosts = posts.length >= _initialLoadCount;
+          
+          // 取得済みコンテンツIDを更新
+          _fetchedContentIds.clear();
+          for (final post in posts) {
+            _fetchedContentIds.add(post.id);
+          }
+        });
+        
+        // 現在のページがメディアの場合は自動再生を開始
+        if (_posts.isNotEmpty && _currentIndex < _posts.length) {
+          _handleMediaPageChange(_currentIndex);
+        }
+      }
+    } catch (e) {
+      // エラーは無視（ログも出力しない）
+    } finally {
+      _isUpdating = false;
     }
   }
 
@@ -197,16 +309,57 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  /// リアルタイム更新を開始
+  void _startAutoUpdate() {
+    _updateTimer = Timer.periodic(_updateInterval, (timer) {
+      if (!_isDisposed && mounted) {
+        _updatePostsInBackground();
+      }
+    });
+  }
+  
+  /// バックグラウンドで投稿を更新（新規投稿のチェックのみ）
+  Future<void> _updatePostsInBackground() async {
+    if (_isUpdating || _isLoading) return;
+    
+    _isUpdating = true;
+    
+    try {
+      // 最初の1件だけ取得して新規投稿をチェック
+      final posts = await PostService.fetchPosts(limit: 1);
+      
+      if (!_isDisposed && mounted && posts.isNotEmpty) {
+        final newPost = posts.first;
+        
+        // 既に取得済みのコンテンツIDかチェック
+        if (!_fetchedContentIds.contains(newPost.id)) {
+          // 新規投稿を先頭に追加
+          setState(() {
+            _posts.insert(0, newPost);
+            _fetchedContentIds.add(newPost.id);
+          });
+        }
+      }
+    } catch (e) {
+      // エラーは無視（ログも出力しない）
+    } finally {
+      _isUpdating = false;
+    }
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
-
+    
+    // リアルタイム更新を停止
+    _updateTimer?.cancel();
+    
     // アイコン更新イベントのリスナーを解除
     _iconUpdateSubscription?.cancel();
-
+    
     // ライフサイクル監視を解除
     WidgetsBinding.instance.removeObserver(this);
-
+    
     _pageController.dispose();
     _ambientAnimationController?.dispose();
 
@@ -232,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
+    
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
@@ -250,27 +403,33 @@ class _HomeScreenState extends State<HomeScreen>
             player.pause();
           }
         }
+        // リアルタイム更新を停止
+        _updateTimer?.cancel();
         break;
       case AppLifecycleState.resumed:
         // アプリがフォアグラウンドに戻った時は再生
-        if (_posts.isNotEmpty &&
-            _currentIndex < _posts.length &&
-            _posts[_currentIndex].postType == PostType.video &&
+        if (_posts.isNotEmpty && 
+            _currentIndex < _posts.length && 
+            _posts[_currentIndex].postType == PostType.video && 
             _currentPlayingVideo != null) {
           final controller = _videoControllers[_currentPlayingVideo];
           if (controller != null && controller.value.isInitialized) {
             controller.play();
           }
         }
-        if (_posts.isNotEmpty &&
-            _currentIndex < _posts.length &&
-            _posts[_currentIndex].postType == PostType.audio &&
+        if (_posts.isNotEmpty && 
+            _currentIndex < _posts.length && 
+            _posts[_currentIndex].postType == PostType.audio && 
             _currentPlayingAudio != null) {
           final player = _audioPlayers[_currentPlayingAudio];
           if (player != null) {
             player.play();
           }
         }
+        // リアルタイム更新を再開
+        _startAutoUpdate();
+        // 即座に更新を実行
+        _updatePostsInBackground();
         break;
       case AppLifecycleState.hidden:
         // 何もしない
@@ -288,11 +447,11 @@ class _HomeScreenState extends State<HomeScreen>
                 color: Color(0xFFFF6B35),
               ),
             )
-          : _errorMessage != null
-              ? RefreshIndicator(
-                  onRefresh: _fetchPosts,
-                  color: const Color(0xFFFF6B35),
-                  child: SingleChildScrollView(
+              : _errorMessage != null
+                  ? RefreshIndicator(
+                      onRefresh: _refreshPosts,
+                      color: const Color(0xFFFF6B35),
+                      child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: SizedBox(
                       height: MediaQuery.of(context).size.height,
@@ -327,11 +486,11 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                 )
-              : _posts.isEmpty
-                  ? RefreshIndicator(
-                      onRefresh: _fetchPosts,
-                      color: const Color(0xFFFF6B35),
-                      child: SingleChildScrollView(
+                  : _posts.isEmpty
+                      ? RefreshIndicator(
+                          onRefresh: _refreshPosts,
+                          color: const Color(0xFFFF6B35),
+                          child: SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         child: SizedBox(
                           height: MediaQuery.of(context).size.height,
@@ -392,9 +551,25 @@ class _HomeScreenState extends State<HomeScreen>
                                         _resetSpotlightState();
                                         _handleMediaPageChange(index);
                                       });
+                                      
+                                      // 遅延読み込み: 残り2件以下になったら追加読み込み
+                                      if (_hasMorePosts && index >= _posts.length - 2) {
+                                        _loadMorePosts();
+                                      }
                                     },
-                                    itemCount: _posts.length,
+                                    itemCount: _hasMorePosts ? _posts.length + 1 : _posts.length,
                                     itemBuilder: (context, index) {
+                                      // 最後の項目はローディングインジケーター
+                                      if (index >= _posts.length) {
+                                        return Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              color: Color(0xFFFF6B35),
+                                            ),
+                                          ),
+                                        );
+                                      }
                                       return _buildPostContent(_posts[index]);
                                     },
                                   ),
@@ -822,18 +997,18 @@ class _HomeScreenState extends State<HomeScreen>
               CircleAvatar(
                 radius: 20,
                 backgroundColor: SpotLightColors.getSpotlightColor(0),
-                child: post.userIconUrl != null
-                    ? ClipOval(
-                        key: ValueKey(
-                            '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
-                        child: RobustNetworkImage(
-                          imageUrl: post.userIconUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: const Icon(Icons.person,
-                              color: Colors.white, size: 20),
-                        ),
-                      )
-                    : const Icon(Icons.person, color: Colors.white, size: 20),
+                child: ClipOval(
+                  key: ValueKey(
+                      '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
+                  child: RobustNetworkImage(
+                    imageUrl: post.userIconUrl ?? '${AppConfig.backendUrl}/icon/default_icon.jpg',
+                    fit: BoxFit.cover,
+                    maxWidth: 80,
+                    maxHeight: 80,
+                    placeholder: Container(),
+                    errorWidget: Container(),
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

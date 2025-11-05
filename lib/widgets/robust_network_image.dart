@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// ネットワークエラーに強い画像ウィジェット
 ///
@@ -103,14 +102,8 @@ class _RobustNetworkImageState extends State<RobustNetworkImage> {
             ? Size(_cacheWidth!.toDouble(), _cacheHeight!.toDouble())
             : null,
       );
-      if (kDebugMode) {
-        debugPrint(
-            '✅ 画像キャッシュ完了: ${widget.imageUrl} (${_cacheWidth}x${_cacheHeight})');
-      }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ 画像キャッシュエラー: $e');
-      }
+      // エラーは無視（サイレント）
     }
   }
 
@@ -144,31 +137,14 @@ class _RobustNetworkImageState extends State<RobustNetworkImage> {
       loadingBuilder: (context, child, loadingProgress) {
         // 読み込み中はプレースホルダーを表示
         if (loadingProgress == null) {
-          // 読み込み完了
-          if (kDebugMode) {
-            debugPrint('✅ 画像読み込み完了: ${widget.imageUrl}');
-          }
           return child;
         }
         // 読み込み中はプレースホルダーを表示
-        return widget.placeholder ??
-            const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFFF6B35),
-              ),
-            );
+        return widget.placeholder ?? Container();
       },
       errorBuilder: (context, error, stackTrace) {
-        if (kDebugMode) {
-          debugPrint('❌ 画像読み込みエラー: $error');
-        }
-        // エラー時もプレースホルダーを表示し続ける（エラーウィジェットは表示しない）
-        return widget.placeholder ??
-            const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFFF6B35),
-              ),
-            );
+        // エラーは無視（サイレント）- errorWidgetまたはplaceholderを表示
+        return widget.errorWidget ?? widget.placeholder ?? Container();
       },
     );
   }
