@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/post.dart';
 import '../services/post_service.dart';
+import '../services/icon_update_service.dart';
+import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
 
@@ -39,6 +42,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   int? _currentPlayingAudio;
   final Set<int> _initializedAudios = {};
   
+  // アイコンキャッシュ管理（username -> 更新タイムスタンプ）
+  final Map<String, int> _iconCacheKeys = {};
+  
+  // アイコン更新イベントのリスナー
+  StreamSubscription<IconUpdateEvent>? _iconUpdateSubscription;
+  
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
 
@@ -65,6 +74,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     
     // ライフサイクル監視を追加
     WidgetsBinding.instance.addObserver(this);
+    
+    // アイコン更新イベントをリッスン
+    _iconUpdateSubscription = IconUpdateService().onIconUpdate.listen(_onIconUpdated);
     
     // バックエンドから投稿を取得
     _fetchPosts();
@@ -105,9 +117,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
   }
 
+  /// アイコン更新イベントを受信したときの処理
+  void _onIconUpdated(IconUpdateEvent event) {
+    if (!mounted) return;
+    
+    if (kDebugMode) {
+      debugPrint('🔔 アイコン更新を検知: ${event.username} -> ${event.iconPath ?? "default"}');
+    }
+    
+    // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
+    setState(() {
+      _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;
+      
+      // 投稿リスト内のアイコンURLを更新
+      for (int i = 0; i < _posts.length; i++) {
+        if (_posts[i].username == event.username) {
+          // アイコンが削除された場合はdefault_icon.jpgに変更
+          final newIconPath = event.iconPath ?? 'default_icon.jpg';
+          final newIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+          
+          if (kDebugMode) {
+            debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
+          }
+          
+          _posts[i] = Post(
+            id: _posts[i].id,
+            userId: _posts[i].userId,
+            username: _posts[i].username,
+            userIconPath: newIconPath,
+            userIconUrl: newIconUrl,
+            title: _posts[i].title,
+            content: _posts[i].content,
+            contentPath: _posts[i].contentPath,
+            type: _posts[i].type,
+            mediaUrl: _posts[i].mediaUrl,
+            thumbnailUrl: _posts[i].thumbnailUrl,
+            likes: _posts[i].likes,
+            playNum: _posts[i].playNum,
+            link: _posts[i].link,
+            comments: _posts[i].comments,
+            shares: _posts[i].shares,
+            isSpotlighted: _posts[i].isSpotlighted,
+            isText: _posts[i].isText,
+            nextContentId: _posts[i].nextContentId,
+            createdAt: _posts[i].createdAt,
+          );
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
+    
+    // アイコン更新イベントのリスナーを解除
+    _iconUpdateSubscription?.cancel();
     
     // ライフサイクル監視を解除
     WidgetsBinding.instance.removeObserver(this);
@@ -461,7 +526,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     imageUrl: imageUrl,
                     fit: BoxFit.contain,
                     maxRetries: 2,
-                    timeout: const Duration(seconds: 30),
+                    timeout: const Duration(seconds: 60),
+                    maxSizeBytes: 5 * 1024 * 1024, // 5MBまで許容
                     placeholder: const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -742,12 +808,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               CircleAvatar(
                 radius: 20,
                 backgroundColor: SpotLightColors.getSpotlightColor(0),
-                backgroundImage: post.userIconUrl != null
-                    ? NetworkImage(post.userIconUrl!)
-                    : null,
-                child: post.userIconUrl == null
-                    ? const Icon(Icons.person, color: Colors.white, size: 20)
-                    : null,
+                child: post.userIconUrl != null
+                    ? ClipOval(
+                        key: ValueKey('${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
+                        child: RobustNetworkImage(
+                          imageUrl: post.userIconUrl!,
+                          fit: BoxFit.cover,
+                          maxRetries: 2,
+                          timeout: const Duration(seconds: 10),
+                          placeholder: const Icon(Icons.person, color: Colors.white, size: 20),
+                          errorWidget: const Icon(Icons.person, color: Colors.white, size: 20),
+                        ),
+                      )
+                    : const Icon(Icons.person, color: Colors.white, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1057,10 +1130,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(
                       children: [
-                        const CircleAvatar(
+                        CircleAvatar(
                           radius: 16,
-                          backgroundColor: Color(0xFFFF6B35),
-                          child: Icon(Icons.person, size: 16, color: Colors.white),
+                          backgroundColor: const Color(0xFFFF6B35),
+                          child: const Icon(Icons.person, size: 16, color: Colors.white),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -1132,10 +1205,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 16,
-            backgroundColor: Color(0xFFFF6B35),
-            child: Icon(Icons.person, size: 16, color: Colors.white),
+            backgroundColor: const Color(0xFFFF6B35),
+            child: const Icon(Icons.person, size: 16, color: Colors.white),
           ),
           const SizedBox(width: 10),
           Expanded(
