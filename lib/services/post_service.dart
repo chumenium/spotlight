@@ -66,11 +66,14 @@ class PostService {
 
     return null;
   }
-  /// バックエンドから投稿一覧を取得
+  /// バックエンドから投稿一覧を取得（/api/content/detailを連続呼び出し）
+  /// 
+  /// 初回はcontentID=0から始めて、nextcontentidを使って連続的に取得します
   static Future<List<Post>> fetchPosts({
-    int page = 1,
     int limit = 20,
   }) async {
+    final List<Post> posts = [];
+    
     try {
       final jwtToken = await JwtService.getJwtToken();
       
@@ -81,43 +84,102 @@ class PostService {
         return [];
       }
 
-      final url = '${AppConfig.apiBaseUrl}/posts?page=$page&limit=$limit';
+      // 初回はcontentID=0から開始
+      int currentContentId = 0;
       
       if (kDebugMode) {
-        debugPrint('📝 投稿取得URL: $url');
+        debugPrint('📝 投稿取得開始: limit=$limit');
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $jwtToken',
-        },
-      );
+      // 指定された数まで連続的に取得
+      for (int i = 0; i < limit; i++) {
+        final url = '${AppConfig.apiBaseUrl}/content/detail';
+        
+        if (kDebugMode) {
+          debugPrint('📝 投稿詳細取得[$i]: contentID=$currentContentId, URL=$url');
+        }
 
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-        
-        if (kDebugMode) {
-          debugPrint('📝 投稿レスポンス: ${responseData.toString()}');
-        }
-        
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
-          final List<dynamic> postsJson = responseData['data'];
-          return postsJson.map((json) => Post.fromJson(json)).toList();
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 投稿取得エラー: ${response.statusCode}');
+        final response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonEncode({'contentID': currentContentId}),
+        );
+
+        if (response.statusCode == 200) {
+          final responseData = jsonDecode(response.body);
+          
+          if (kDebugMode) {
+            debugPrint('📝 投稿詳細レスポンス[$i]: ${responseData.toString()}');
+          }
+          
+          if (responseData['status'] == 'success' && responseData['data'] != null) {
+            final data = responseData['data'] as Map<String, dynamic>;
+            
+            if (kDebugMode) {
+              debugPrint('📝 投稿データ[$i]:');
+              debugPrint('  contentpath: ${data['contentpath']}');
+              debugPrint('  thumbnailpath: ${data['thumbnailpath']}');
+              debugPrint('  title: ${data['title']}');
+              debugPrint('  username: ${data['username']}');
+              debugPrint('  iconimgpath: ${data['iconimgpath']}');
+            }
+            
+            // 現在のコンテンツIDを追加
+            data['contentID'] = currentContentId;
+            
+            // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
+            final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+            posts.add(post);
+            
+            if (kDebugMode) {
+              debugPrint('📝 投稿変換完了[$i]:');
+              debugPrint('  mediaUrl: ${post.mediaUrl}');
+              debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
+              debugPrint('  userIconUrl: ${post.userIconUrl}');
+              debugPrint('  type: ${post.type}');
+            }
+            
+            // 次のコンテンツIDを取得
+            final nextContentId = data['nextcontentid'] as int?;
+            
+            if (nextContentId == null || nextContentId == 0) {
+              // 次のコンテンツがない場合は終了
+              if (kDebugMode) {
+                debugPrint('📝 これ以上コンテンツがありません');
+              }
+              break;
+            }
+            
+            currentContentId = nextContentId;
+          } else {
+            // エラーの場合は終了
+            if (kDebugMode) {
+              debugPrint('📝 投稿取得失敗: ${responseData['message'] ?? 'Unknown error'}');
+            }
+            break;
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('📝 投稿取得HTTPエラー: ${response.statusCode}');
+          }
+          break;
         }
       }
+      
+      if (kDebugMode) {
+        debugPrint('📝 投稿取得完了: ${posts.length}件');
+      }
+      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('📝 投稿取得例外: $e');
       }
     }
 
-    return [];
+    return posts;
   }
 
   /// スポットライトした投稿を一覧取得
@@ -147,7 +209,7 @@ class PostService {
         
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final List<dynamic> postsJson = responseData['data'];
-          return postsJson.map((json) => Post.fromJson(json)).toList();
+          return postsJson.map((json) => Post.fromJson(json, backendUrl: AppConfig.backendUrl)).toList();
         }
       }
     } catch (e) {
@@ -159,8 +221,8 @@ class PostService {
     return [];
   }
 
-  /// 投稿をスポットライトする
-  static Future<bool> spotlightPost(String postId) async {
+  /// 投稿をスポットライトONにする
+  static Future<bool> spotlightOn(String postId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
       
@@ -168,7 +230,11 @@ class PostService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/posts/$postId/spotlight';
+      final url = '${AppConfig.apiBaseUrl}/content/spotlight/on';
+      
+      if (kDebugMode) {
+        debugPrint('📝 スポットライトON URL: $url, contentID: $postId');
+      }
       
       final response = await http.post(
         Uri.parse(url),
@@ -176,12 +242,54 @@ class PostService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
+        body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
       );
+
+      if (kDebugMode) {
+        debugPrint('📝 スポットライトONレスポンス: ${response.statusCode}');
+      }
 
       return response.statusCode == 200;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('📝 スポットライト例外: $e');
+        debugPrint('📝 スポットライトON例外: $e');
+      }
+      return false;
+    }
+  }
+
+  /// 投稿をスポットライトOFFにする
+  static Future<bool> spotlightOff(String postId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      
+      if (jwtToken == null) {
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/spotlight/off';
+      
+      if (kDebugMode) {
+        debugPrint('📝 スポットライトOFF URL: $url, contentID: $postId');
+      }
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📝 スポットライトOFFレスポンス: ${response.statusCode}');
+      }
+
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 スポットライトOFF例外: $e');
       }
       return false;
     }
@@ -211,7 +319,7 @@ class PostService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
-        body: jsonEncode({'contentid': contentId}),
+        body: jsonEncode({'contentID': int.tryParse(contentId) ?? 0}),
       );
 
       if (response.statusCode == 200) {
@@ -225,7 +333,7 @@ class PostService {
           final Map<String, dynamic> data = responseData['data'];
           // IDを追加してPostモデルに変換
           data['id'] = contentId;
-          return Post.fromJson(data);
+          return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
         }
       } else {
         if (kDebugMode) {

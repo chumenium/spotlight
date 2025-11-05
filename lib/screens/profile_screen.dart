@@ -1190,14 +1190,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// デフォルトアイコンを設定
   Future<void> _setDefaultIcon(AuthProvider authProvider) async {
-    // アイコンを削除（nullに設定）してローカルのデフォルトアイコンを表示
-    await authProvider.updateUserInfo(iconPath: null);
+    // バックエンドのデフォルトアイコンパスを設定
+    const defaultIconPath = '/icon/default_icon.jpg';
+    final defaultIconUrl = '${AppConfig.backendUrl}$defaultIconPath';
+    
+    if (kDebugMode) {
+      debugPrint('🖼️ デフォルトアイコン確認中: $defaultIconUrl');
+    }
+    
+    try {
+      // バックエンドのデフォルトアイコンが利用可能かを確認
+      final response = await http.head(Uri.parse(defaultIconUrl)).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => http.Response('', 404),
+      );
+      
+      if (response.statusCode == 200) {
+        // デフォルトアイコンが存在する場合は設定
+        await authProvider.updateUserInfo(iconPath: defaultIconPath);
+        
+        if (kDebugMode) {
+          debugPrint('✅ バックエンドのデフォルトアイコンを設定: $defaultIconPath');
+        }
+      } else {
+        // デフォルトアイコンが存在しない場合はnullを設定（ローカルのPersonアイコンを表示）
+        await authProvider.updateUserInfo(iconPath: '');
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ バックエンドのデフォルトアイコンが存在しません (${response.statusCode})');
+          debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
+        }
+      }
+    } catch (e) {
+      // ネットワークエラーの場合もnullを設定（ローカルのPersonアイコンを表示）
+      await authProvider.updateUserInfo(iconPath: '');
+      
+      if (kDebugMode) {
+        debugPrint('❌ デフォルトアイコン確認エラー: $e');
+        debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
+      }
+    }
     
     // アイコンキャッシュもクリアしてデフォルトアイコンを確実に表示
     _clearIconCache();
     
-    if (kDebugMode) {
-      debugPrint('🖼️ デフォルトアイコンに設定しました（ローカルアイコンを使用）');
+    // 画面を再描画
+    if (mounted) {
+      setState(() {});
     }
   }
 }

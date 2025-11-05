@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/post.dart';
 import '../services/post_service.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/robust_network_image.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -193,41 +194,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               ),
             )
           : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Colors.white70,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 16,
+              ? RefreshIndicator(
+                  onRefresh: _fetchPosts,
+                  color: const Color(0xFFFF6B35),
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.white70,
+                              size: 64,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _fetchPosts,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF6B35),
+                              ),
+                              child: const Text('再試行'),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _fetchPosts,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF6B35),
-                        ),
-                        child: const Text('再試行'),
-                      ),
-                    ],
+                    ),
                   ),
                 )
               : _posts.isEmpty
-                  ? const Center(
-                      child: Text(
-                        '投稿がありません',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 16,
+                  ? RefreshIndicator(
+                      onRefresh: _fetchPosts,
+                      color: const Color(0xFFFF6B35),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: MediaQuery.of(context).size.height,
+                          child: const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.post_add,
+                                  size: 64,
+                                  color: Colors.white38,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  '投稿がありません',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  '引き下げて更新',
+                                  style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     )
@@ -400,37 +440,92 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Widget _buildImageContent(Post post) {
+    // 画像URLを取得（mediaUrl優先、なければthumbnailUrl）
+    final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
+    
+    if (kDebugMode) {
+      debugPrint('🖼️ 画像URL: $imageUrl');
+      debugPrint('📁 contentPath: ${post.contentPath}');
+    }
+    
     return Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.black,
-      child: post.thumbnailUrl != null
+      child: imageUrl != null
           ? Stack(
               children: [
-                // メイン画像
+                // メイン画像（リトライ機能付き）
                 Center(
-                  child: AspectRatio(
-                    aspectRatio: _getImageAspectRatio(),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: NetworkImage(post.thumbnailUrl!),
-                          fit: BoxFit.cover,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
+                  child: RobustNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                    maxRetries: 2,
+                    timeout: const Duration(seconds: 30),
+                    placeholder: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            '画像を読み込み中...',
+                            style: TextStyle(color: Colors.white38, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                    errorWidget: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.broken_image, color: Colors.white38, size: 64),
+                          const SizedBox(height: 16),
+                          const Text(
+                            '画像を読み込めません',
+                            style: TextStyle(color: Colors.white70, fontSize: 16),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            imageUrl.length > 50 
+                                ? '${imageUrl.substring(0, 50)}...' 
+                                : imageUrl,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'バックエンドサーバーを確認してください',
+                            style: TextStyle(color: Colors.white38, fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
                 // アンビエントライティング効果
-                _buildAmbientLighting(post.thumbnailUrl!),
+                if (imageUrl.isNotEmpty)
+                  _buildAmbientLighting(imageUrl),
               ],
             )
-          : const Center(
-              child: Icon(
-                Icons.image,
-                color: Colors.white,
-                size: 80,
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.image,
+                    color: Colors.white38,
+                    size: 80,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '画像URLが設定されていません\ncontentPath: ${post.contentPath}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white38),
+                  ),
+                ],
               ),
             ),
     );
@@ -647,8 +742,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               CircleAvatar(
                 radius: 20,
                 backgroundColor: SpotLightColors.getSpotlightColor(0),
-                backgroundImage: post.userIconPath.isNotEmpty 
-                    ? NetworkImage(post.userIconPath)
+                backgroundImage: post.userIconUrl != null
+                    ? NetworkImage(post.userIconUrl!)
+                    : null,
+                child: post.userIconUrl == null
+                    ? const Icon(Icons.person, color: Colors.white, size: 20)
                     : null,
               ),
               const SizedBox(width: 12),
@@ -771,10 +869,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
-  double _getImageAspectRatio() {
-    // 仮のアスペクト比計算（実際は画像のサイズに基づく）
-    return 16 / 9;
-  }
 
   String _getTimeAgo(DateTime dateTime) {
     final now = DateTime.now();
@@ -814,9 +908,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   // スポットライト実行（共通処理）
-  void _executeSpotlight() {
+  Future<void> _executeSpotlight() async {
     final currentPost = _posts[_currentIndex];
     final isCurrentlySpotlighted = currentPost.isSpotlighted;
+    
+    // バックエンドAPIを呼び出し
+    final success = isCurrentlySpotlighted 
+        ? await PostService.spotlightOff(currentPost.id)
+        : await PostService.spotlightOn(currentPost.id);
+    
+    if (!success) {
+      if (kDebugMode) {
+        debugPrint('❌ スポットライト処理に失敗しました');
+      }
+      return;
+    }
     
     // 投稿のスポットライト状態を更新
     _posts[_currentIndex] = Post(
@@ -824,6 +930,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       userId: currentPost.userId,
       username: currentPost.username,
       userIconPath: currentPost.userIconPath,
+      userIconUrl: currentPost.userIconUrl,
       title: currentPost.title,
       content: currentPost.content,
       contentPath: currentPost.contentPath,
@@ -831,9 +938,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       mediaUrl: currentPost.mediaUrl,
       thumbnailUrl: currentPost.thumbnailUrl,
       likes: isCurrentlySpotlighted ? currentPost.likes - 1 : currentPost.likes + 1,
+      playNum: currentPost.playNum,
+      link: currentPost.link,
       comments: currentPost.comments,
       shares: currentPost.shares,
       isSpotlighted: !isCurrentlySpotlighted,
+      isText: currentPost.isText,
+      nextContentId: currentPost.nextContentId,
       createdAt: currentPost.createdAt,
     );
     
@@ -981,6 +1092,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 userId: _posts[_currentIndex].userId,
                                 username: _posts[_currentIndex].username,
                                 userIconPath: _posts[_currentIndex].userIconPath,
+                                userIconUrl: _posts[_currentIndex].userIconUrl,
                                 title: _posts[_currentIndex].title,
                                 content: _posts[_currentIndex].content,
                                 contentPath: _posts[_currentIndex].contentPath,
@@ -988,9 +1100,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 mediaUrl: _posts[_currentIndex].mediaUrl,
                                 thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
                                 likes: _posts[_currentIndex].likes,
+                                playNum: _posts[_currentIndex].playNum,
+                                link: _posts[_currentIndex].link,
                                 comments: _posts[_currentIndex].comments + 1,
                                 shares: _posts[_currentIndex].shares,
                                 isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                                isText: _posts[_currentIndex].isText,
+                                nextContentId: _posts[_currentIndex].nextContentId,
                                 createdAt: _posts[_currentIndex].createdAt,
                               );
                             });
@@ -1119,6 +1235,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       userId: _posts[_currentIndex].userId,
                       username: _posts[_currentIndex].username,
                       userIconPath: _posts[_currentIndex].userIconPath,
+                      userIconUrl: _posts[_currentIndex].userIconUrl,
                       title: _posts[_currentIndex].title,
                       content: _posts[_currentIndex].content,
                       contentPath: _posts[_currentIndex].contentPath,
@@ -1126,9 +1243,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       mediaUrl: _posts[_currentIndex].mediaUrl,
                       thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
                       likes: _posts[_currentIndex].likes,
+                      playNum: _posts[_currentIndex].playNum,
+                      link: _posts[_currentIndex].link,
                       comments: _posts[_currentIndex].comments,
                       shares: _posts[_currentIndex].shares + 1,
                       isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                      isText: _posts[_currentIndex].isText,
+                      nextContentId: _posts[_currentIndex].nextContentId,
                       createdAt: _posts[_currentIndex].createdAt,
                     );
                   });
@@ -1208,10 +1329,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
 
     try {
-      // サンプル動画URLまたは実際のURL
-      final videoUrl = post.mediaUrl!.isEmpty 
-          ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
-          : post.mediaUrl!;
+      final videoUrl = post.mediaUrl!;
+      
+      if (kDebugMode) {
+        debugPrint('📹 動画初期化開始: $videoUrl');
+      }
 
       final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
       await controller.initialize();
@@ -1221,10 +1343,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _videoControllers[postIndex] = controller;
           _initializedVideos.add(postIndex);
         });
+        
+        if (kDebugMode) {
+          debugPrint('✅ 動画初期化成功: ${controller.value.duration}');
+        }
       }
     } catch (e) {
-      // 動画の初期化に失敗した場合のエラーハンドリング
-      print('動画の初期化に失敗: $e');
+      // 動画の初期化に失敗した場合、サンプル動画で再試行
+      if (kDebugMode) {
+        debugPrint('❌ 動画の初期化に失敗: $e');
+        debugPrint('🔄 サンプル動画で再試行...');
+      }
+      
+      try {
+        final sampleUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+        final controller = VideoPlayerController.networkUrl(Uri.parse(sampleUrl));
+        await controller.initialize();
+        
+        if (!_isDisposed && mounted) {
+          setState(() {
+            _videoControllers[postIndex] = controller;
+            _initializedVideos.add(postIndex);
+          });
+          
+          if (kDebugMode) {
+            debugPrint('✅ サンプル動画で初期化成功');
+          }
+        }
+      } catch (e2) {
+        if (kDebugMode) {
+          debugPrint('❌ サンプル動画も失敗: $e2');
+        }
+      }
     }
   }
 
@@ -1315,10 +1465,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
 
     try {
-      // サンプル音声URLまたは実際のURL
-      final audioUrl = post.mediaUrl!.isEmpty 
-          ? 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav'
-          : post.mediaUrl!;
+      final audioUrl = post.mediaUrl!;
+      
+      if (kDebugMode) {
+        debugPrint('🎵 音声初期化開始: $audioUrl');
+      }
 
       final player = AudioPlayer();
       await player.setUrl(audioUrl);
@@ -1328,10 +1479,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _audioPlayers[postIndex] = player;
           _initializedAudios.add(postIndex);
         });
+        
+        if (kDebugMode) {
+          debugPrint('✅ 音声初期化成功: ${player.duration}');
+        }
       }
     } catch (e) {
-      // 音声の初期化に失敗した場合のエラーハンドリング
-      print('音声の初期化に失敗: $e');
+      // 音声の初期化に失敗した場合、サンプル音声で再試行
+      if (kDebugMode) {
+        debugPrint('❌ 音声の初期化に失敗: $e');
+        debugPrint('🔄 サンプル音声で再試行...');
+      }
+      
+      try {
+        final sampleUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+        final player = AudioPlayer();
+        await player.setUrl(sampleUrl);
+        
+        if (!_isDisposed && mounted) {
+          setState(() {
+            _audioPlayers[postIndex] = player;
+            _initializedAudios.add(postIndex);
+          });
+          
+          if (kDebugMode) {
+            debugPrint('✅ サンプル音声で初期化成功');
+          }
+        }
+      } catch (e2) {
+        if (kDebugMode) {
+          debugPrint('❌ サンプル音声も失敗: $e2');
+        }
+      }
     }
   }
   
