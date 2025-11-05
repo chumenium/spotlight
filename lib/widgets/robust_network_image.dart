@@ -13,6 +13,7 @@ class RobustNetworkImage extends StatefulWidget {
   final Widget? errorWidget;
   final int maxRetries;
   final Duration timeout;
+  final int maxSizeBytes; // 最大ファイルサイズ（バイト）
 
   const RobustNetworkImage({
     super.key,
@@ -22,6 +23,7 @@ class RobustNetworkImage extends StatefulWidget {
     this.errorWidget,
     this.maxRetries = 3,
     this.timeout = const Duration(seconds: 10),
+    this.maxSizeBytes = 10 * 1024 * 1024, // デフォルト10MB
   });
 
   @override
@@ -90,23 +92,30 @@ class _RobustNetworkImageState extends State<RobustNetworkImage> {
             debugPrint('📊 画像サイズ: ${contentLength != null ? '${(contentLength / 1024).toStringAsFixed(0)} KB' : '不明'}');
           }
           
-          // サイズ制限チェック（10MB以上はエラー）
-          if (contentLength != null && contentLength > 10 * 1024 * 1024) {
-            throw Exception('画像が大きすぎます: ${(contentLength / 1024 / 1024).toStringAsFixed(1)} MB');
+          // サイズ制限チェック
+          if (contentLength != null && contentLength > widget.maxSizeBytes) {
+            throw Exception('画像が大きすぎます: ${(contentLength / 1024 / 1024).toStringAsFixed(1)} MB (制限: ${(widget.maxSizeBytes / 1024 / 1024).toStringAsFixed(1)} MB)');
           }
           
-          final bytes = await streamedResponse.stream.toBytes().timeout(
-            widget.timeout,
-            onTimeout: () {
-              throw Exception('データ受信タイムアウト');
-            },
-          );
+          // ストリームから少しずつデータを受信（接続切断対策）
+          final List<int> bytes = [];
+          int receivedBytes = 0;
+          
+          await for (final chunk in streamedResponse.stream) {
+            bytes.addAll(chunk);
+            receivedBytes += chunk.length;
+            
+            if (kDebugMode && receivedBytes % (100 * 1024) == 0) {
+              // 100KBごとにログ出力
+              debugPrint('📥 受信中: ${(receivedBytes / 1024).toStringAsFixed(0)} KB');
+            }
+          }
           
           if (kDebugMode) {
-            debugPrint('📦 受信完了: ${bytes.length} bytes');
+            debugPrint('✅ 受信完了: ${bytes.length} bytes (${(bytes.length / 1024).toStringAsFixed(0)} KB)');
           }
           
-          response = http.Response.bytes(bytes, streamedResponse.statusCode, 
+          response = http.Response.bytes(Uint8List.fromList(bytes), streamedResponse.statusCode, 
               headers: streamedResponse.headers);
           
           client.close();
