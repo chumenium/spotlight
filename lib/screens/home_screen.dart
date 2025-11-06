@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -238,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// アイコン更新イベントを受信したときの処理
-  void _onIconUpdated(IconUpdateEvent event) {
+  void _onIconUpdated(IconUpdateEvent event) async {
     if (!mounted) return;
 
     if (kDebugMode) {
@@ -246,15 +247,14 @@ class _HomeScreenState extends State<HomeScreen>
           '🔔 アイコン更新を検知: ${event.username} -> ${event.iconPath ?? "default"}');
     }
 
-    // 古いアイコンURLをFlutterの画像キャッシュから削除
+    // 古いアイコンURLをキャッシュから削除
     for (int i = 0; i < _posts.length; i++) {
       if (_posts[i].username == event.username &&
           _posts[i].userIconUrl != null) {
         try {
           final oldUrl = _posts[i].userIconUrl!;
-          // NetworkImageのキャッシュをクリア
-          final oldImage = NetworkImage(oldUrl);
-          oldImage.evict();
+          // cached_network_imageのキャッシュをクリア
+          await CachedNetworkImage.evictFromCache(oldUrl);
 
           if (kDebugMode) {
             debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');

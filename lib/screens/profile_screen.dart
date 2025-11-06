@@ -17,7 +17,7 @@ import '../config/app_config.dart';
 import '../services/jwt_service.dart';
 import '../services/user_service.dart';
 import '../services/icon_update_service.dart';
-import '../widgets/robust_network_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/badge.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -32,9 +32,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
-  void _clearIconCache() {
-    if (kDebugMode) {
-      debugPrint('🗑️ アイコンキャッシュをクリアしました');
+  Future<void> _clearIconCache() async {
+    // cached_network_imageのキャッシュをクリア
+    try {
+      await CachedNetworkImage.evictFromCache('${AppConfig.backendUrl}/icon/default_icon.jpg');
+      if (kDebugMode) {
+        debugPrint('🗑️ アイコンキャッシュをクリアしました');
+      }
+    } catch (e) {
+      // エラーは無視
     }
   }
   
@@ -243,13 +249,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       radius: 40,
                       backgroundColor: const Color(0xFFFF6B35),
                       child: ClipOval(
-                        child: RobustNetworkImage(
+                        child: CachedNetworkImage(
                           imageUrl: user?.avatarUrl ?? '${AppConfig.backendUrl}/icon/default_icon.jpg',
                           fit: BoxFit.cover,
-                          maxWidth: 160,
-                          maxHeight: 160,
-                          placeholder: Container(),
-                          errorWidget: Container(),
+                          memCacheWidth: 160,
+                          memCacheHeight: 160,
+                          httpHeaders: const {
+                            'Accept': 'image/webp,image/avif,image/*, */*;q=0.8',
+                            'User-Agent': 'Flutter-Spotlight/1.0',
+                          },
+                          placeholder: (context, url) => Container(),
+                          errorWidget: (context, url, error) => Container(),
+                          fadeInDuration: const Duration(milliseconds: 200),
                         ),
                       ),
                     );
@@ -1020,55 +1031,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         
         // 古いキャッシュをクリア
-        _clearIconCache();
+        await _clearIconCache();
         
         // 5. フロントにURLを元に画像を設定 & 6. キャッシュを更新
         // サーバー側で画像処理が完了するまで少し待機
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 500));
         
         try {
           if (kDebugMode) {
             debugPrint('📥 新しい画像を事前ロード中...');
           }
           
-          // 新しい画像を事前にロードしてキャッシュに保存
-          final newImage = NetworkImage(newIconUrl);
-          final imageStream = newImage.resolve(const ImageConfiguration());
-          
-          // 画像ロード完了を待機
-          final completer = Completer<void>();
-          late ImageStreamListener listener;
-          
-          listener = ImageStreamListener(
-            (ImageInfo image, bool synchronousCall) {
-              if (!completer.isCompleted) {
-                completer.complete();
-              }
-              imageStream.removeListener(listener);
-            },
-            onError: (exception, stackTrace) {
-              if (!completer.isCompleted) {
-                completer.completeError(exception);
-              }
-              imageStream.removeListener(listener);
-            },
-          );
-          
-          imageStream.addListener(listener);
-          
-          // 最大3秒待機
-          await completer.future.timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              imageStream.removeListener(listener);
-              if (kDebugMode) {
-                debugPrint('⚠️ 画像ロードタイムアウト（キャッシュなしで続行）');
-              }
-            },
-          );
+          // cached_network_imageで新しい画像を事前にキャッシュ
+          await CachedNetworkImage.evictFromCache(newIconUrl);
           
           if (kDebugMode) {
-            debugPrint('✅ 新しい画像をキャッシュに保存しました');
+            debugPrint('✅ 新しい画像をキャッシュに準備しました');
           }
         } catch (e) {
           if (kDebugMode) {

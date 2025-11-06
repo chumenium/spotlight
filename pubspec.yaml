@@ -42,6 +42,9 @@ dependencies:
   # 画像処理（JPEGエンコード/縮小/描画）
   image: ^4.1.7
   
+  # キャッシュ付き画像読み込み
+  cached_network_image: ^3.3.0
+  
   # ファイル選択
   file_picker: ^8.2.4
   
