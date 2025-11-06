@@ -36,8 +36,21 @@ String? _buildFullUrl(String? backendUrl, dynamic path) {
 
   try {
     final targetUri = Uri.parse(rawPath);
-    final resolvedUri = baseUri.resolveUri(targetUri);
-    return resolvedUri.toString();
+    
+    // 絶対パス（"/"で始まる）の場合は、ベースURIのパスを保持する
+    if (rawPath.startsWith('/')) {
+      // ベースURIのパスと結合
+      final basePath = baseUri.path.endsWith('/') 
+          ? baseUri.path.substring(0, baseUri.path.length - 1) 
+          : baseUri.path;
+      final fullPath = '$basePath$rawPath';
+      final resolvedUri = baseUri.replace(path: fullPath);
+      return resolvedUri.toString();
+    } else {
+      // 相対パスの場合は通常のresolveUriを使用
+      final resolvedUri = baseUri.resolveUri(targetUri);
+      return resolvedUri.toString();
+    }
   } on FormatException {
     return rawPath;
   }
