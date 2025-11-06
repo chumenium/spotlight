@@ -68,9 +68,10 @@ class PostService {
   }
   /// バックエンドから投稿一覧を取得（/api/content/detailを連続呼び出し）
   /// 
-  /// 初回はcontentID=0から始めて、nextcontentidを使って連続的に取得します
+  /// contentID=1から昇順で取得します
   static Future<List<Post>> fetchPosts({
     int limit = 20,
+    int startId = 1,
   }) async {
     final List<Post> posts = [];
     
@@ -84,19 +85,17 @@ class PostService {
         return [];
       }
 
-      // 初回はcontentID=0から開始
-      int currentContentId = 0;
-      
       if (kDebugMode) {
-        debugPrint('📝 投稿取得開始: limit=$limit');
+        debugPrint('📝 投稿取得開始: startId=$startId, limit=$limit');
       }
 
-      // 指定された数まで連続的に取得
+      // startIdから昇順で取得
       for (int i = 0; i < limit; i++) {
+        final contentId = startId + i;
         final url = '${AppConfig.apiBaseUrl}/content/detail';
         
         if (kDebugMode) {
-          debugPrint('📝 投稿詳細取得[$i]: contentID=$currentContentId, URL=$url');
+          debugPrint('📝 投稿詳細取得[$i]: contentID=$contentId, URL=$url');
         }
 
         final response = await http.post(
@@ -105,7 +104,7 @@ class PostService {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $jwtToken',
           },
-          body: jsonEncode({'contentID': currentContentId}),
+          body: jsonEncode({'contentID': contentId}),
         );
 
         if (response.statusCode == 200) {
@@ -119,7 +118,7 @@ class PostService {
             final data = responseData['data'] as Map<String, dynamic>;
             
             if (kDebugMode) {
-              debugPrint('📝 投稿データ[$i]:');
+              debugPrint('📝 投稿データ[$i] (ID=$contentId):');
               debugPrint('  contentpath: ${data['contentpath']}');
               debugPrint('  thumbnailpath: ${data['thumbnailpath']}');
               debugPrint('  title: ${data['title']}');
@@ -127,45 +126,32 @@ class PostService {
               debugPrint('  iconimgpath: ${data['iconimgpath']}');
             }
             
-            // 現在のコンテンツIDを追加
-            data['contentID'] = currentContentId;
+            // コンテンツIDを追加
+            data['contentID'] = contentId;
             
             // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
             final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
             posts.add(post);
             
             if (kDebugMode) {
-              debugPrint('📝 投稿変換完了[$i]:');
+              debugPrint('📝 投稿変換完了[$i] (ID=$contentId):');
               debugPrint('  mediaUrl: ${post.mediaUrl}');
               debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
               debugPrint('  userIconUrl: ${post.userIconUrl}');
               debugPrint('  type: ${post.type}');
             }
-            
-            // 次のコンテンツIDを取得
-            final nextContentId = data['nextcontentid'] as int?;
-            
-            if (nextContentId == null || nextContentId == 0) {
-              // 次のコンテンツがない場合は終了
-              if (kDebugMode) {
-                debugPrint('📝 これ以上コンテンツがありません');
-              }
-              break;
-            }
-            
-            currentContentId = nextContentId;
           } else {
-            // エラーの場合は終了
+            // コンテンツが存在しない場合はスキップ
             if (kDebugMode) {
-              debugPrint('📝 投稿取得失敗: ${responseData['message'] ?? 'Unknown error'}');
+              debugPrint('📝 投稿ID=$contentId は存在しないか取得失敗、スキップ');
             }
-            break;
+            // 次のIDを試す（終了しない）
           }
         } else {
           if (kDebugMode) {
-            debugPrint('📝 投稿取得HTTPエラー: ${response.statusCode}');
+            debugPrint('📝 投稿ID=$contentId HTTPエラー: ${response.statusCode}、スキップ');
           }
-          break;
+          // 次のIDを試す（終了しない）
         }
       }
       

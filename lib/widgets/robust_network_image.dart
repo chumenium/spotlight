@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// ネットワークエラーに強い画像ウィジェット
 ///
-/// cached_network_imageを使用して自動的にキャッシュを管理
-/// 分割ダウンロードではなく、確実な一括ダウンロード
+/// シンプルなImage.networkで確実に表示
 class RobustNetworkImage extends StatelessWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -25,21 +24,74 @@ class RobustNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
+    if (kDebugMode) {
+      debugPrint('🖼️ 画像読み込み開始: $imageUrl');
+    }
+
+    return Image.network(
+      imageUrl,
       fit: fit,
-      memCacheWidth: maxWidth,
-      memCacheHeight: maxHeight,
-      httpHeaders: const {
-        'Accept': 'image/webp,image/avif,image/*, */*;q=0.8',
-        'User-Agent': 'Flutter-Spotlight/1.0',
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          if (kDebugMode) {
+            debugPrint('✅ 画像読み込み完了: $imageUrl');
+          }
+          return child;
+        }
+        
+        final progress = loadingProgress.expectedTotalBytes != null
+            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+            : null;
+        
+        if (kDebugMode && progress != null) {
+          debugPrint('📊 画像読み込み中: ${(progress * 100).toStringAsFixed(0)}% - $imageUrl');
+        }
+        
+        return placeholder ??
+            Center(
+              child: CircularProgressIndicator(
+                value: progress,
+                color: const Color(0xFFFF6B35),
+              ),
+            );
       },
-      placeholder: (context, url) => placeholder ?? Container(),
-      errorWidget: (context, url, error) => errorWidget ?? placeholder ?? Container(),
-      fadeInDuration: const Duration(milliseconds: 200),
-      fadeOutDuration: const Duration(milliseconds: 100),
-      maxWidthDiskCache: maxWidth,
-      maxHeightDiskCache: maxHeight,
+      errorBuilder: (context, error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('❌ 画像読み込みエラー: $error');
+          debugPrint('   URL: $imageUrl');
+          debugPrint('   StackTrace: $stackTrace');
+        }
+        
+        return errorWidget ??
+            placeholder ??
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.broken_image,
+                    color: Colors.white38,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '画像の読み込みに失敗',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    imageUrl,
+                    style: const TextStyle(color: Colors.white24, fontSize: 10),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            );
+      },
+      cacheWidth: maxWidth,
+      cacheHeight: maxHeight,
     );
   }
 }

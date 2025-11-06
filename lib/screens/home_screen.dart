@@ -65,12 +65,6 @@ class _HomeScreenState extends State<HomeScreen>
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
 
-  // 画像事前読み込み管理（読み込み済みのインデックスを記録）
-  final Set<int> _preloadedImages = {};
-
-  // リソース解放範囲（現在のページから±3ページ以外は解放）
-  static const int _resourceReleaseRange = 3;
-
   @override
   void initState() {
     super.initState();
@@ -157,23 +151,20 @@ class _HomeScreenState extends State<HomeScreen>
     _isLoadingMore = true;
     
     try {
-      // 最後の投稿のnextContentIdを使用
+      // 最後の投稿のIDから次のIDを計算
       final lastPost = _posts.last;
-      if (lastPost.nextContentId == null) {
-        // nextContentIdがnullの場合は、これ以上投稿がない
-        setState(() {
-          _hasMorePosts = false;
-        });
-        _isLoadingMore = false;
-        return;
-      }
+      final lastId = int.tryParse(lastPost.id) ?? 0;
+      final nextStartId = lastId + 1;
       
       if (kDebugMode) {
-        debugPrint('📝 追加読み込み開始: $_batchLoadCount件');
+        debugPrint('📝 追加読み込み開始: startId=$nextStartId, limit=$_batchLoadCount');
       }
       
-      // 次のコンテンツIDから追加読み込み
-      final morePosts = await PostService.fetchPosts(limit: _batchLoadCount);
+      // 次のIDから追加読み込み
+      final morePosts = await PostService.fetchPosts(
+        limit: _batchLoadCount,
+        startId: nextStartId,
+      );
       
       if (!_isDisposed && mounted && morePosts.isNotEmpty) {
         setState(() {
@@ -195,9 +186,15 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() {
           _hasMorePosts = false;
         });
+        
+        if (kDebugMode) {
+          debugPrint('📝 これ以上投稿がありません');
+        }
       }
     } catch (e) {
-      // エラーは無視（サイレント）
+      if (kDebugMode) {
+        debugPrint('📝 追加読み込みエラー: $e');
+      }
     } finally {
       _isLoadingMore = false;
     }
@@ -662,32 +659,43 @@ class _HomeScreenState extends State<HomeScreen>
               child: Container(
                 width: double.infinity,
                 height: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.grey[900],
-                  image: post.thumbnailUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(post.thumbnailUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
+                color: Colors.grey[900],
                 child: Stack(
                   children: [
-                    if (post.thumbnailUrl == null)
-                      const Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          color: Colors.white,
-                          size: 80,
+                    // サムネイル画像
+                    if (post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty)
+                      Center(
+                        child: Image.network(
+                          post.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          errorBuilder: (context, error, stackTrace) {
+                            if (kDebugMode) {
+                              debugPrint('❌ サムネイル読み込みエラー: ${post.thumbnailUrl}');
+                            }
+                            return Container();
+                          },
                         ),
                       ),
+                    // 再生ボタン
+                    const Center(
+                      child: Icon(
+                        Icons.play_circle_outline,
+                        color: Colors.white,
+                        size: 80,
+                      ),
+                    ),
                     // 動画初期化中のローディング表示
                     if (postIndex == _currentIndex &&
                         post.postType == PostType.video &&
                         !_initializedVideos.contains(postIndex))
-                      const Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6B35),
+                      Container(
+                        color: Colors.black54,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                          ),
                         ),
                       ),
                   ],
@@ -723,62 +731,55 @@ class _HomeScreenState extends State<HomeScreen>
     final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
 
     if (kDebugMode) {
-      debugPrint('🖼️ 画像URL: $imageUrl');
-      debugPrint('📁 contentPath: ${post.contentPath}');
+      debugPrint('🖼️ 画像コンテンツ表示:');
+      debugPrint('   mediaUrl: ${post.mediaUrl}');
+      debugPrint('   thumbnailUrl: ${post.thumbnailUrl}');
+      debugPrint('   contentPath: ${post.contentPath}');
+      debugPrint('   使用URL: $imageUrl');
+    }
+
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.image_not_supported,
+                color: Colors.white38,
+                size: 80,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '画像URLが設定されていません',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white38, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'contentPath: ${post.contentPath}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white24, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.black,
-      child: imageUrl != null
-          ? Stack(
-              children: [
-                // メイン画像（Flutterの最適化された読み込みを使用）
-                Center(
-                  child: RobustNetworkImage(
-                    imageUrl: imageUrl,
-                    fit: BoxFit.contain,
-                    placeholder: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            '画像を読み込み中...',
-                            style:
-                                TextStyle(color: Colors.white38, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                // アンビエントライティング効果
-                if (imageUrl.isNotEmpty) _buildAmbientLighting(imageUrl),
-              ],
-            )
-          : Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.image,
-                    color: Colors.white38,
-                    size: 80,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '画像URLが設定されていません\ncontentPath: ${post.contentPath}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white38),
-                  ),
-                ],
-              ),
-            ),
+      child: Center(
+        child: RobustNetworkImage(
+          imageUrl: imageUrl,
+          fit: BoxFit.contain,
+        ),
+      ),
     );
   }
 
@@ -950,23 +951,6 @@ class _HomeScreenState extends State<HomeScreen>
                     color: Color(0xFFFF6B35),
                   ),
                 ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAmbientLighting(String imageUrl) {
-    return Positioned.fill(
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.5,
-            colors: [
-              Colors.transparent,
-              Colors.black.withOpacity(0.3),
             ],
           ),
         ),
@@ -1722,118 +1706,12 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     } else if (newPost.postType == PostType.image) {
-      // 新しいページが画像投稿の場合、画像を事前読み込み
-      _preloadImagesAround(newIndex);
-
-      // 遠く離れたコンテンツのリソースを解放
-      _releaseDistantResources(newIndex);
+      // 画像は表示時に直接読み込む（事前読み込みなし）
+      // _preloadImagesAround(newIndex);
+      // _releaseDistantResources(newIndex);
     }
   }
 
-  /// 現在のページ周辺の画像を事前読み込み（前後2ページまで）
-  void _preloadImagesAround(int currentIndex) {
-    // 読み込み範囲: 現在のページ ±2ページ
-    const preloadRange = 2;
-
-    for (int i = currentIndex - preloadRange;
-        i <= currentIndex + preloadRange;
-        i++) {
-      if (i >= 0 && i < _posts.length && !_preloadedImages.contains(i)) {
-        final post = _posts[i];
-        if (post.postType == PostType.image) {
-          _preloadImage(i);
-        }
-      }
-    }
-  }
-
-  /// 遠く離れたコンテンツのリソースを解放
-  void _releaseDistantResources(int currentIndex) {
-    // 現在のページから±_resourceReleaseRange以外の画像キャッシュを解放
-    final imagesToRelease = <int>[];
-
-    for (final index in _preloadedImages) {
-      if ((index < currentIndex - _resourceReleaseRange) ||
-          (index > currentIndex + _resourceReleaseRange)) {
-        imagesToRelease.add(index);
-      }
-    }
-
-    for (final index in imagesToRelease) {
-      if (index < _posts.length) {
-        final post = _posts[index];
-        if (post.postType == PostType.image) {
-          final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
-          if (imageUrl != null) {
-            try {
-              final imageProvider = NetworkImage(imageUrl);
-              imageProvider.evict();
-              _preloadedImages.remove(index);
-
-              if (kDebugMode) {
-                debugPrint('🗑️ 遠く離れた画像キャッシュを解放: $imageUrl');
-              }
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ キャッシュ解放エラー: $e');
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /// 画像の事前読み込み（プリキャッシュ、最適化されたサイズで）
-  Future<void> _preloadImage(int postIndex) async {
-    if (postIndex < 0 || postIndex >= _posts.length) return;
-    if (_preloadedImages.contains(postIndex)) return; // 既に読み込み済み
-
-    final post = _posts[postIndex];
-    if (post.postType != PostType.image) return;
-
-    final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
-    if (imageUrl == null || imageUrl.isEmpty) return;
-
-    try {
-      // ディスプレイサイズに基づいて最適化されたサイズで読み込み
-      final mediaQuery = MediaQuery.of(context);
-      final screenSize = mediaQuery.size;
-      final devicePixelRatio = mediaQuery.devicePixelRatio;
-
-      // ディスプレイサイズの1.5倍（Retina対応）を上限として使用
-      final cacheWidth =
-          (screenSize.width * devicePixelRatio * 1.5).round().clamp(360, 2160);
-      final cacheHeight =
-          (screenSize.height * devicePixelRatio * 1.5).round().clamp(640, 3840);
-
-      // Image.networkのキャッシュを事前に読み込む（WebP/AVIFを優先）
-      final imageProvider = NetworkImage(
-        imageUrl,
-        headers: {
-          'Accept': 'image/webp,image/avif,image/*, */*;q=0.8', // WebP/AVIFを優先
-          'User-Agent': 'Flutter-Spotlight/1.0',
-        },
-      );
-
-      // 最適化されたサイズで画像をキャッシュに事前読み込み
-      await precacheImage(
-        imageProvider,
-        context,
-        size: Size(cacheWidth.toDouble(), cacheHeight.toDouble()),
-      );
-
-      _preloadedImages.add(postIndex);
-
-      if (kDebugMode) {
-        debugPrint('✅ 画像事前読み込み完了: $imageUrl (${cacheWidth}x${cacheHeight})');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 画像事前読み込みエラー: $e');
-      }
-    }
-  }
 
   // 音声プレイヤー初期化メソッド
   Future<void> _initializeAudioPlayer(int postIndex) async {

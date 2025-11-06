@@ -17,7 +17,7 @@ class AppConfig {
     }
   }
   
-  // バックエンドサーバーのURL
+  // バックエンドサーバーのURL（直接接続）
   static String get backendUrl => 'http://10.22.107.221:5000';
   
   // デバッグログの表示制御

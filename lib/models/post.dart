@@ -45,13 +45,26 @@ String? _buildFullUrl(String? backendUrl, dynamic path) {
           : baseUri.path;
       final fullPath = '$basePath$rawPath';
       final resolvedUri = baseUri.replace(path: fullPath);
+      
+      if (kDebugMode) {
+        debugPrint('🔗 URL結合（絶対パス）: backendUrl=$backendUrl, rawPath=$rawPath, result=${resolvedUri.toString()}');
+      }
+      
       return resolvedUri.toString();
     } else {
       // 相対パスの場合は通常のresolveUriを使用
       final resolvedUri = baseUri.resolveUri(targetUri);
+      
+      if (kDebugMode) {
+        debugPrint('🔗 URL結合（相対パス）: backendUrl=$backendUrl, rawPath=$rawPath, result=${resolvedUri.toString()}');
+      }
+      
       return resolvedUri.toString();
     }
-  } on FormatException {
+  } on FormatException catch (e) {
+    if (kDebugMode) {
+      debugPrint('❌ URL解析エラー: $e, rawPath=$rawPath');
+    }
     return rawPath;
   }
 }
