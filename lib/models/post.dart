@@ -8,6 +8,41 @@ enum PostType {
   audio,
 }
 
+String? _buildFullUrl(String? backendUrl, dynamic path) {
+  if (path == null) {
+    return null;
+  }
+
+  final rawPath = path.toString().trim();
+
+  if (rawPath.isEmpty) {
+    return null;
+  }
+
+  // 既に完全なURLの場合はそのまま返す
+  final existingUri = Uri.tryParse(rawPath);
+  if (existingUri != null && existingUri.hasScheme && existingUri.host.isNotEmpty) {
+    return existingUri.toString();
+  }
+
+  if (backendUrl == null || backendUrl.isEmpty) {
+    return rawPath;
+  }
+
+  final baseUri = Uri.tryParse(backendUrl.trim());
+  if (baseUri == null) {
+    return rawPath;
+  }
+
+  try {
+    final targetUri = Uri.parse(rawPath);
+    final resolvedUri = baseUri.resolveUri(targetUri);
+    return resolvedUri.toString();
+  } on FormatException {
+    return rawPath;
+  }
+}
+
 /// 投稿モデル
 class Post {
   final String id;
@@ -80,24 +115,15 @@ class Post {
     
     // contentpathから完全なURLを生成
     final contentPath = json['contentpath'] as String? ?? '';
-    String? mediaUrl;
-    if (contentPath.isNotEmpty && backendUrl != null) {
-      mediaUrl = '$backendUrl$contentPath';
-    }
-    
+    final mediaUrl = _buildFullUrl(backendUrl, contentPath);
+
     // thumbnailpathから完全なURLを生成
     final thumbnailPath = json['thumbnailpath'] as String?;
-    String? thumbnailUrl;
-    if (thumbnailPath != null && thumbnailPath.isNotEmpty && backendUrl != null) {
-      thumbnailUrl = '$backendUrl$thumbnailPath';
-    }
-    
+    final thumbnailUrl = _buildFullUrl(backendUrl, thumbnailPath);
+
     // iconimgpathから完全なアイコンURLを生成
     final iconPath = json['iconimgpath'] as String? ?? '';
-    String? userIconUrl;
-    if (iconPath.isNotEmpty && backendUrl != null) {
-      userIconUrl = '$backendUrl$iconPath';
-    }
+    final userIconUrl = _buildFullUrl(backendUrl, iconPath);
     
     // デバッグログ出力
     if (kDebugMode) {
