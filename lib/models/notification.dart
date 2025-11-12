@@ -43,7 +43,7 @@ class NotificationItem {
         title: 'スポットライトされました',
         message: '田中太郎さんがあなたの投稿をスポットライトしました',
         username: '田中太郎',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_1',
         postTitle: '今日の夕焼けがきれい',
         thumbnailUrl: 'https://picsum.photos/80/80?random=1',
@@ -56,7 +56,7 @@ class NotificationItem {
         title: 'スポットライトされました',
         message: '佐藤花子さんがあなたの投稿をスポットライトしました',
         username: '佐藤花子',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_2',
         postTitle: '新しいレシピに挑戦してみた',
         thumbnailUrl: 'https://picsum.photos/80/80?random=2',
@@ -71,7 +71,7 @@ class NotificationItem {
         title: '新しいコメント',
         message: '山田一郎さん: 素晴らしい投稿ですね!',
         username: '山田一郎',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_3',
         postTitle: '週末の旅行記',
         thumbnailUrl: 'https://picsum.photos/80/80?random=3',
@@ -84,7 +84,7 @@ class NotificationItem {
         title: '新しいコメント',
         message: '鈴木次郎さん: とても参考になります!',
         username: '鈴木次郎',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_4',
         postTitle: 'プログラミング学習のコツ',
         thumbnailUrl: 'https://picsum.photos/80/80?random=4',
@@ -99,7 +99,7 @@ class NotificationItem {
         title: 'コメントへの返信',
         message: '高橋三郎さん: そうなんですよ!詳しく説明しますね',
         username: '高橋三郎',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_5',
         postTitle: 'おすすめのカフェについて',
         createdAt: DateTime.now().subtract(const Duration(hours: 6)),
@@ -111,7 +111,7 @@ class NotificationItem {
         title: 'コメントへの返信',
         message: '伊藤四郎さん: ありがとうございます!参考にします',
         username: '伊藤四郎',
-        userAvatar: 'https://via.placeholder.com/40',
+        userAvatar: null, // プレースホルダー画像は使用しない
         postId: 'post_6',
         postTitle: '最新ガジェットレビュー',
         createdAt: DateTime.now().subtract(const Duration(hours: 12)),

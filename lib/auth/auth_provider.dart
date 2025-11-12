@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -87,15 +87,33 @@ class AuthProvider extends ChangeNotifier {
   
   /// Firebase Authenticationのインスタンス
   /// すべての認証処理はこのインスタンスを通じて行われます
-  final firebase_auth.FirebaseAuth _firebaseAuth = firebase_auth.FirebaseAuth.instance;
+  /// Webプラットフォームではnullになる可能性があります
+  firebase_auth.FirebaseAuth? get _firebaseAuth {
+    if (kIsWeb) {
+      // WebではFirebaseが初期化されていない可能性があるため、nullを返す
+      try {
+        return firebase_auth.FirebaseAuth.instance;
+      } catch (e) {
+        return null;
+      }
+    }
+    return firebase_auth.FirebaseAuth.instance;
+  }
   
   /// Google Sign-Inのインスタンス
   /// Google認証フローの管理に使用
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: AuthConfig.googleScopes,
-    // WebクライアントIDを明示的に指定（google-services.jsonから取得）
-    serverClientId: '185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com',
-  );
+  /// WebプラットフォームではclientIdのみ、それ以外ではserverClientIdを使用
+  final GoogleSignIn _googleSignIn = kIsWeb
+      ? GoogleSignIn(
+          scopes: AuthConfig.googleScopes,
+          // Web用のクライアントID（Webプラットフォームで必須）
+          clientId: '185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com',
+        )
+      : GoogleSignIn(
+          scopes: AuthConfig.googleScopes,
+          // サーバー側認証用のクライアントID（Android/iOS用）
+          serverClientId: '185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com',
+        );
   
   /// Twitter Sign-Inのインスタンス
   /// Twitter Developer Portalで取得したAPIキーで初期化されます
@@ -146,12 +164,22 @@ class AuthProvider extends ChangeNotifier {
   AuthProvider() {
     // Firebase Authの状態変化を監視
     // ユーザーがログイン/ログアウトすると自動的に通知されます
-    _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+    final auth = _firebaseAuth;
+    if (auth != null) {
+      auth.authStateChanges().listen(_onAuthStateChanged);
+    } else {
+      if (kDebugMode) {
+        debugPrint('⚠️ FirebaseAuthが初期化されていません');
+      }
+    }
     
     // Google Sign-In初期化状態をデバッグ出力
     if (kDebugMode) {
       debugPrint('🔐 AuthProvider初期化完了');
       debugPrint('🔐 Google Sign-In設定: スコープ=${AuthConfig.googleScopes}');
+      if (kIsWeb) {
+        debugPrint('🔐 Webプラットフォームで実行中');
+      }
     }
   }
 
@@ -327,10 +355,20 @@ class AuthProvider extends ChangeNotifier {
       );
 
       // STEP 4: Firebaseにサインイン
+      final auth = _firebaseAuth;
+      if (auth == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [Google] FirebaseAuthが初期化されていません');
+        }
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      
       // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
       // 既存ユーザーの場合は、既存のUIDが使用されます
       // authStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-      await _firebaseAuth.signInWithCredential(credential);
+      await auth.signInWithCredential(credential);
 
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
         debugPrint('🔐 [Google] Sign-In成功');
@@ -394,10 +432,25 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       // その他のエラー
       _isLoading = false;
-      _errorMessage = 'Googleログインに失敗しました';
-      if (kDebugMode) {
-        debugPrint('🔐 [Google] 予期しないエラー: $e');
+      
+      // People APIエラーの検出
+      final errorString = e.toString();
+      if (errorString.contains('People API') || errorString.contains('SERVICE_DISABLED')) {
+        _errorMessage = 'Google People APIが有効になっていません。\n'
+            'Firebase ConsoleでPeople APIを有効にしてください:\n'
+            'https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=185578323389';
+        if (kDebugMode) {
+          debugPrint('🔐 [Google] People APIエラー: $e');
+          debugPrint('🔐 [Google] People APIを有効化してください: '
+              'https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=185578323389');
+        }
+      } else {
+        _errorMessage = 'Googleログインに失敗しました';
+        if (kDebugMode) {
+          debugPrint('🔐 [Google] 予期しないエラー: $e');
+        }
       }
+      
       notifyListeners();
       return false;
     }
@@ -474,10 +527,20 @@ class AuthProvider extends ChangeNotifier {
         );
 
         // STEP 3: Firebase Authenticationにサインイン（Firebase経由）
+        final auth = _firebaseAuth;
+        if (auth == null) {
+          if (kDebugMode) {
+            debugPrint('❌ [Twitter] FirebaseAuthが初期化されていません');
+          }
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+        
         // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
         // すべての認証処理はFirebase Authentication経由で行われます
         // authStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-        await _firebaseAuth.signInWithCredential(twitterAuthCredential);
+        await auth.signInWithCredential(twitterAuthCredential);
 
         if (kDebugMode && AuthConfig.enableAuthDebugLog) {
           debugPrint('🔐 [Twitter] Sign-In成功');
@@ -566,8 +629,13 @@ class AuthProvider extends ChangeNotifier {
   /// - String: Firebase IDトークン（ログイン済みの場合）
   /// - null: 未ログインまたはトークン取得失敗の場合
   Future<String?> getFirebaseIdToken() async {
+    final auth = _firebaseAuth;
+    if (auth == null) {
+      return null;
+    }
+    
     try {
-      final user = _firebaseAuth.currentUser;
+      final user = auth.currentUser;
       if (user == null) {
         if (kDebugMode && AuthConfig.enableAuthDebugLog) {
           debugPrint('🔐 Firebase IDトークン取得失敗: ユーザー未ログイン');
@@ -830,9 +898,17 @@ class AuthProvider extends ChangeNotifier {
     final isGuest = _currentUser?.id == 'guest';
 
     if (!isGuest) {
-      // Firebase Authenticationからサインアウト
-      // これによりauthStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-      await _firebaseAuth.signOut();
+      final auth = _firebaseAuth;
+      if (auth != null) {
+        // Firebase Authenticationからサインアウト
+        // これによりauthStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
+        await auth.signOut();
+      } else {
+        // FirebaseAuthが初期化されていない場合は手動で状態をクリア
+        _currentUser = null;
+        notifyListeners();
+        return;
+      }
 
       // Google Sign-Inからサインアウト
       // 次回のログイン時にアカウント選択画面が表示されます

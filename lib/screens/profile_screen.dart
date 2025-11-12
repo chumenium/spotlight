@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'spotlight_list_screen.dart';
@@ -30,17 +29,32 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   final ImagePicker _imagePicker = ImagePicker();
+  // アイコン更新時のタイムスタンプ（キャッシュ回避用）
+  int _iconUpdateTimestamp = 0;
   
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
-  Future<void> _clearIconCache() async {
-    // cached_network_imageのキャッシュをクリア
+  /// 
+  /// [oldIconUrl] 古いアイコンのURL（指定された場合のみクリア）
+  Future<void> _clearIconCache({String? oldIconUrl}) async {
     try {
+      // 古いアイコンURLのキャッシュをクリア
+      if (oldIconUrl != null && oldIconUrl.isNotEmpty) {
+        await CachedNetworkImage.evictFromCache(oldIconUrl);
+        if (kDebugMode) {
+          debugPrint('🗑️ 古いアイコンキャッシュをクリア: $oldIconUrl');
+        }
+      }
+      
+      // デフォルトアイコンのキャッシュもクリア
       await CachedNetworkImage.evictFromCache('${AppConfig.backendUrl}/icon/default_icon.jpg');
+      
       if (kDebugMode) {
         debugPrint('🗑️ アイコンキャッシュをクリアしました');
       }
     } catch (e) {
-      // エラーは無視
+      if (kDebugMode) {
+        debugPrint('⚠️ キャッシュクリアエラー: $e');
+      }
     }
   }
   
@@ -245,12 +259,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => _showIconMenu(context, authProvider),
                 child: Builder(
                   builder: (context) {
+                    // アイコンURLとiconPathから一意のキーを生成（キャッシュ回避のため）
+                    final baseIconUrl = user?.avatarUrl ?? 
+                        (user?.iconPath != null 
+                            ? '${AppConfig.backendUrl}/icon/${user!.iconPath}' 
+                            : '${AppConfig.backendUrl}/icon/default_icon.jpg');
+                    // キャッシュ回避のため、アイコン更新時にタイムスタンプを追加
+                    final iconUrl = _iconUpdateTimestamp > 0 && user?.iconPath != null
+                        ? '$baseIconUrl?t=$_iconUpdateTimestamp'
+                        : baseIconUrl;
+                    // iconPathが変更されたときに再構築されるようにキーを設定
+                    final iconKey = '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}_$_iconUpdateTimestamp';
+                    
                     return CircleAvatar(
                       radius: 40,
                       backgroundColor: const Color(0xFFFF6B35),
                       child: ClipOval(
+                        key: ValueKey(iconKey), // アイコン変更時に強制的に再構築
                         child: CachedNetworkImage(
-                          imageUrl: user?.avatarUrl ?? '${AppConfig.backendUrl}/icon/default_icon.jpg',
+                          imageUrl: iconUrl,
                           fit: BoxFit.cover,
                           memCacheWidth: 160,
                           memCacheHeight: 160,
@@ -1001,7 +1028,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // ローディング表示
       _showSafeLoadingDialog();
 
-      final imageFile = File(pickedFile.path);
+      // XFileから直接Uint8Listを取得（Web対応）
+      final imageBytes = await pickedFile.readAsBytes();
       final user = authProvider.currentUser;
       final username = user?.backendUsername;
       
@@ -1013,7 +1041,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      final iconPath = await UserService.uploadIcon(username, imageFile);
+      // Uint8Listを直接渡す（Webでも動作）
+      final iconPath = await UserService.uploadIcon(username, imageBytes);
       _closeSafeLoadingDialog();
       
       if (!mounted) return;
@@ -1030,35 +1059,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint('🔗 新しいアイコンURL: $newIconUrl');
         }
         
-        // 古いキャッシュをクリア
-        await _clearIconCache();
+        // 古いアイコンURLを取得
+        final oldIconUrl = user?.avatarUrl ?? 
+            (user?.iconPath != null ? '${AppConfig.backendUrl}/icon/${user!.iconPath}' : null);
+        
+        if (kDebugMode) {
+          debugPrint('🔗 古いアイコンURL: $oldIconUrl');
+        }
+        
+        // 古いキャッシュをクリア（古いURLとデフォルトアイコン）
+        await _clearIconCache(oldIconUrl: oldIconUrl);
+        
+        // 新しいアイコンのキャッシュもクリア（強制的に再読み込み）
+        try {
+          await CachedNetworkImage.evictFromCache(newIconUrl);
+          if (kDebugMode) {
+            debugPrint('🗑️ 新しいアイコンURLのキャッシュもクリア: $newIconUrl');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 新しいアイコンキャッシュクリアエラー: $e');
+          }
+        }
         
         // 5. フロントにURLを元に画像を設定 & 6. キャッシュを更新
         // サーバー側で画像処理が完了するまで少し待機
         await Future.delayed(const Duration(milliseconds: 500));
-        
-        try {
-          if (kDebugMode) {
-            debugPrint('📥 新しい画像を事前ロード中...');
-          }
-          
-          // cached_network_imageで新しい画像を事前にキャッシュ
-          await CachedNetworkImage.evictFromCache(newIconUrl);
-          
-          if (kDebugMode) {
-            debugPrint('✅ 新しい画像をキャッシュに準備しました');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 画像事前ロードエラー: $e（続行します）');
-          }
-        }
         
         // バックエンドから最新のユーザー情報を再取得して反映
         final refreshed = await authProvider.refreshUserInfoFromBackend();
         
         if (kDebugMode) {
           debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
+        }
+        
+        // 新しいアイコンのURLを再度クリア（再取得後のURLもクリア）
+        try {
+          final refreshedUser = authProvider.currentUser;
+          final refreshedIconUrl = refreshedUser?.avatarUrl ?? 
+              (refreshedUser?.iconPath != null 
+                  ? '${AppConfig.backendUrl}/icon/${refreshedUser!.iconPath}' 
+                  : null);
+          if (refreshedIconUrl != null) {
+            await CachedNetworkImage.evictFromCache(refreshedIconUrl);
+            if (kDebugMode) {
+              debugPrint('🗑️ 再取得後のアイコンURLのキャッシュもクリア: $refreshedIconUrl');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 再取得後のキャッシュクリアエラー: $e');
+          }
         }
         
         // 他の画面にアイコン更新を通知（ホーム画面など）
@@ -1068,11 +1119,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         
         if (mounted) {
-          // 画面を強制的に再構築して新しいアイコンを表示
-          setState(() {});
+          // アイコン更新タイムスタンプを更新（キャッシュ回避のため）
+          setState(() {
+            _iconUpdateTimestamp = DateTime.now().millisecondsSinceEpoch;
+          });
           
           if (kDebugMode) {
-            debugPrint('🔄 プロフィール画面を再構築しました');
+            debugPrint('🔄 プロフィール画面を再構築しました（タイムスタンプ: $_iconUpdateTimestamp）');
           }
           
           // 7. レスポンスメッセージ表示

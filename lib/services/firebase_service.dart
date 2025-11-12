@@ -1,5 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
 import 'fcm_service.dart';
 
 /// Firebase初期化と設定を管理するサービスクラス
@@ -26,9 +26,16 @@ class FirebaseService {
     }
 
     try {
-      await Firebase.initializeApp(
-        options: _getFirebaseOptions(),
-      );
+      final options = _getFirebaseOptions();
+      if (options == null) {
+        if (kDebugMode) {
+          debugPrint('⚠️ FirebaseOptionsがnullのため、google-services.jsonから自動読み込みを試みます');
+        }
+        // Android/iOSではgoogle-services.jsonから自動読み込み
+        await Firebase.initializeApp();
+      } else {
+        await Firebase.initializeApp(options: options);
+      }
       
       _initialized = true;
       
@@ -36,8 +43,10 @@ class FirebaseService {
         debugPrint('✅ Firebase initialized successfully');
       }
 
-      // FCMトークンの自動初期化
-      await _initializeFcm();
+      // FCMトークンの自動初期化（Webではスキップ）
+      if (!kIsWeb) {
+        await _initializeFcm();
+      }
       
     } catch (e) {
       if (kDebugMode) {
@@ -74,10 +83,20 @@ class FirebaseService {
   /// Firebase CLIで自動生成される場合は、
   /// firebase_options.dart をインポートして使用してください。
   FirebaseOptions? _getFirebaseOptions() {
-    // Firebase CLIを使用する場合は、以下のように実装：
-    // return DefaultFirebaseOptions.currentPlatform;
+    // Webプラットフォームでは明示的にFirebaseOptionsを設定
+    if (kIsWeb) {
+      return const FirebaseOptions(
+        apiKey: 'AIzaSyC5pPkP1WWYRaFLspAiq_YMi8IB9KJ-BM4',
+        appId: '1:185578323389:web:1f6fd5c7298d28887ee6d4',
+        messagingSenderId: '185578323389',
+        projectId: 'spotlight-597c4',
+        authDomain: 'spotlight-597c4.firebaseapp.com',
+        storageBucket: 'spotlight-597c4.firebasestorage.app',
+        measurementId: 'G-7VWTB0N3VL', // Firebase Analytics
+      );
+    }
     
-    // 手動設定の場合は、google-services.json / GoogleService-Info.plist
+    // Android/iOSではgoogle-services.json / GoogleService-Info.plist
     // から自動的に読み込まれるため、null を返す
     return null;
   }

@@ -1,9 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
+
+// Webプラットフォームではdart:ioのFileが使えないため、条件付きインポート
+import 'dart:io' if (dart.library.html) 'dart:html' as io;
+// Android/iOS用のdart:ioのFile（Webではコンパイルされないが、型チェック用に必要）
+import 'dart:io' as dart_io show File;
+// Web用のFileReader（Webでのみ使用）
+import 'dart:html' as html show FileReader;
 
 /// ユーザーAPIサービス
 class UserService {
@@ -11,7 +18,7 @@ class UserService {
   /// 
   /// パラメータ:
   /// - username: バックエンドで生成された一意で変更不可なusername（必須）
-  /// - imageFile: アップロードする画像ファイル
+  /// - imageFile: アップロードする画像ファイル（WebではUint8Listも受け入れる）
   /// 
   /// リクエスト:
   /// - username: ユーザー名（必須）
@@ -22,7 +29,7 @@ class UserService {
   /// 
   /// 戻り値:
   /// - String?: アップロード成功時のアイコンパス（iconimgpath）、失敗時はnull
-  static Future<String?> uploadIcon(String username, File imageFile) async {
+  static Future<String?> uploadIcon(String username, dynamic imageFile) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
       
@@ -34,7 +41,32 @@ class UserService {
       }
 
       // 画像をbase64にエンコード
-      final imageBytes = await imageFile.readAsBytes();
+      List<int> imageBytes;
+      if (kIsWeb) {
+        // Webプラットフォーム: imageFileはUint8Listまたはhtml.File
+        if (imageFile is List<int>) {
+          imageBytes = imageFile;
+        } else if (imageFile is Uint8List) {
+          imageBytes = imageFile.toList();
+        } else {
+          // html.Fileの場合、FileReaderを使用
+          final file = imageFile as io.File;
+          final reader = html.FileReader();
+          reader.readAsArrayBuffer(file as dynamic); // html.FileはBlobのサブタイプ
+          await reader.onLoadEnd.first;
+          final arrayBuffer = reader.result;
+          if (arrayBuffer != null && arrayBuffer is ByteBuffer) {
+            imageBytes = Uint8List.view(arrayBuffer);
+          } else {
+            throw Exception('ファイルの読み込みに失敗しました');
+          }
+        }
+      } else {
+        // Android/iOS: imageFileはdart:ioのFile
+        final file = imageFile as dart_io.File;
+        imageBytes = await file.readAsBytes();
+      }
+      
       final base64Image = base64Encode(imageBytes);
 
       final url = '${AppConfig.backendUrl}/api/users/changeicon';
@@ -94,8 +126,25 @@ class UserService {
           debugPrint('📥 アイコンアップロードレスポンス: ${responseData.toString()}');
         }
         
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
-          final iconPath = responseData['data']['iconimgpath'] as String?;
+        if (responseData['status'] == 'success') {
+          // レスポンス構造: dataオブジェクト内、または直接iconimgpathが返される
+          String? iconPath;
+          
+          if (responseData['data'] != null && responseData['data']['iconimgpath'] != null) {
+            iconPath = responseData['data']['iconimgpath'] as String?;
+          } else if (responseData['iconimgpath'] != null) {
+            iconPath = responseData['iconimgpath'] as String?;
+          }
+          
+          // パスからファイル名のみを抽出（/icon/WoodyZone_icon.png -> WoodyZone_icon.png）
+          if (iconPath != null && iconPath.startsWith('/icon/')) {
+            iconPath = iconPath.substring('/icon/'.length);
+          }
+          
+          if (kDebugMode) {
+            debugPrint('✅ アイコンパス取得: $iconPath');
+          }
+          
           return iconPath;
         }
       } else {
