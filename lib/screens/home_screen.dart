@@ -46,6 +46,10 @@ class _HomeScreenState extends State<HomeScreen>
   final Map<int, VideoPlayerController?> _videoControllers = {};
   int? _currentPlayingVideo;
   final Set<int> _initializedVideos = {};
+  
+  // シークバー関連
+  bool _isSeeking = false;
+  double? _seekPosition; // シーク中の位置（0.0-1.0）
 
   // 音声プレイヤー関連
   final Map<int, AudioPlayer?> _audioPlayers = {};
@@ -887,15 +891,18 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
 
-          // タップで一時停止/再生
+          // タップで一時停止/再生、シークバー表示
           Positioned.fill(
             child: GestureDetector(
               onTap: () {
                 if (controller != null && controller.value.isInitialized) {
-                  if (controller.value.isPlaying) {
-                    controller.pause();
-                  } else {
-                    controller.play();
+                  // シーク中でない場合は一時停止/再生
+                  if (!_isSeeking) {
+                    if (controller.value.isPlaying) {
+                      controller.pause();
+                    } else {
+                      controller.play();
+                    }
                   }
                 } else if (postIndex == _currentIndex &&
                     post.postType == PostType.video) {
@@ -903,12 +910,200 @@ class _HomeScreenState extends State<HomeScreen>
                   _initializeVideoController(postIndex);
                 }
               },
+              onHorizontalDragStart: (details) {
+                if (controller != null && controller.value.isInitialized && postIndex == _currentIndex) {
+                  _startSeeking(controller);
+                }
+              },
+              onHorizontalDragUpdate: (details) {
+                if (_isSeeking && controller != null && controller.value.isInitialized) {
+                  _updateSeeking(details, controller);
+                }
+              },
+              onHorizontalDragEnd: (details) {
+                if (_isSeeking && controller != null && controller.value.isInitialized) {
+                  _endSeeking(controller);
+                }
+              },
             ),
           ),
+          
+          // シークバー（動画が初期化されている場合は常に表示）
+          if (postIndex == _currentIndex &&
+              controller != null &&
+              controller.value.isInitialized)
+            _buildSeekBar(controller),
         ],
       ),
     );
   }
+  
+  /// シーク開始
+  void _startSeeking(VideoPlayerController controller) {
+    setState(() {
+      _isSeeking = true;
+      _seekPosition = controller.value.position.inMilliseconds.toDouble() /
+          controller.value.duration.inMilliseconds.toDouble();
+    });
+  }
+  
+  /// シーク中
+  void _updateSeeking(DragUpdateDetails details, VideoPlayerController controller) {
+    if (!controller.value.isInitialized) return;
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dragDelta = details.delta.dx;
+    final dragRatio = dragDelta / screenWidth;
+    
+    setState(() {
+      _seekPosition = (_seekPosition ?? 0.0) + dragRatio;
+      _seekPosition = _seekPosition!.clamp(0.0, 1.0);
+    });
+  }
+  
+  /// シーク終了
+  void _endSeeking(VideoPlayerController controller) {
+    if (!controller.value.isInitialized || _seekPosition == null) return;
+    
+    final targetPosition = Duration(
+      milliseconds: (_seekPosition! * controller.value.duration.inMilliseconds).round(),
+    );
+    
+    controller.seekTo(targetPosition);
+    
+    setState(() {
+      _isSeeking = false;
+      _seekPosition = null;
+    });
+  }
+  
+  /// シークバーを構築（ナビゲーションバーの真上に表示）
+  Widget _buildSeekBar(VideoPlayerController controller) {
+    if (!controller.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+    
+    final position = _isSeeking && _seekPosition != null
+        ? Duration(milliseconds: (_seekPosition! * controller.value.duration.inMilliseconds).round())
+        : controller.value.position;
+    final duration = controller.value.duration;
+    final progress = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+    
+    // ナビゲーションバーの高さを考慮（約80px）
+    return Positioned(
+      bottom: 80,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black.withOpacity(0.8),
+            ],
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // シークバー
+            GestureDetector(
+              onHorizontalDragStart: (details) {
+                _startSeeking(controller);
+              },
+              onHorizontalDragUpdate: (details) {
+                _updateSeeking(details, controller);
+              },
+              onHorizontalDragEnd: (details) {
+                _endSeeking(controller);
+              },
+              onTapDown: (details) {
+                if (!controller.value.isInitialized) return;
+                
+                final screenWidth = MediaQuery.of(context).size.width;
+                final tapX = details.localPosition.dx;
+                final tapRatio = (tapX - 16) / (screenWidth - 32); // パディングを考慮
+                final targetPosition = Duration(
+                  milliseconds: (tapRatio.clamp(0.0, 1.0) * controller.value.duration.inMilliseconds).round(),
+                );
+                
+                controller.seekTo(targetPosition);
+              },
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Stack(
+                  children: [
+                    // 再生済み部分
+                    FractionallySizedBox(
+                      widthFactor: progress,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B35),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // シークハンドル
+                    Positioned(
+                      left: (MediaQuery.of(context).size.width - 32) * progress - 6,
+                      top: -4,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 時間表示
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDuration(position),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  _formatDuration(duration),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
 
   Widget _buildImageContent(Post post) {
     // 画像URLを取得（mediaUrl優先、なければthumbnailUrl）
@@ -1169,7 +1364,10 @@ class _HomeScreenState extends State<HomeScreen>
                   key: ValueKey(
                       '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
                   child: RobustNetworkImage(
-                    imageUrl: post.userIconUrl ?? '${AppConfig.backendUrl}/icon/default_icon.jpg',
+                    imageUrl: post.userIconUrl ?? 
+                        (post.userIconPath.isNotEmpty
+                            ? '${AppConfig.backendUrl}/icon/${post.userIconPath}'
+                            : '${AppConfig.backendUrl}/icon/default_icon.jpg'),
                     fit: BoxFit.cover,
                     maxWidth: 80,
                     maxHeight: 80,
@@ -1783,6 +1981,9 @@ class _HomeScreenState extends State<HomeScreen>
           _videoControllers[postIndex] = controller;
           _initializedVideos.add(postIndex);
         });
+        
+        // 再生位置の更新をリッスン（シークバーの更新用）
+        controller.addListener(_onVideoPositionChanged);
 
         if (kDebugMode) {
           debugPrint('✅ 動画初期化成功: ${controller.value.duration}');
@@ -1807,6 +2008,9 @@ class _HomeScreenState extends State<HomeScreen>
             _videoControllers[postIndex] = controller;
             _initializedVideos.add(postIndex);
           });
+          
+          // 再生位置の更新をリッスン（シークバーの更新用）
+          controller.addListener(_onVideoPositionChanged);
 
           if (kDebugMode) {
             debugPrint('✅ サンプル動画で初期化成功');
@@ -1831,6 +2035,12 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _currentPlayingVideo = null;
     }
+    
+    // シーク状態をリセット
+    setState(() {
+      _isSeeking = false;
+      _seekPosition = null;
+    });
 
     // 前の音声を停止
     if (_currentPlayingAudio != null) {
@@ -2001,6 +2211,19 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// 動画の再生位置が変更されたときのコールバック
+  void _onVideoPositionChanged() {
+    // シーク中でない場合のみ更新（シーク中は手動で更新しているため）
+    if (!_isSeeking && _currentPlayingVideo != null) {
+      final controller = _videoControllers[_currentPlayingVideo];
+      if (controller != null && controller.value.isInitialized && mounted) {
+        setState(() {
+          // シークバーの更新をトリガー
+        });
+      }
+    }
+  }
+  
   // 時間表示用のフォーマット
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
