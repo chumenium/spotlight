@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../utils/spotlight_colors.dart';
 import '../services/post_service.dart';
 
@@ -48,20 +49,20 @@ class CreatePostScreen extends StatefulWidget {
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final TextEditingController _titleController = TextEditingController();
   bool _isPosting = false;
-  
+
   // 背景メディア選択用（写真または動画）
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedMedia;
-  
+
   // テキストオーバーレイ管理
   final List<TextOverlay> _textOverlays = [];
   String? _selectedOverlayId;
-  
+
   // 音声ファイル選択用
   PlatformFile? _selectedAudio;
   AudioPlayer? _audioPlayer;
   bool _isAudioPlaying = false;
-  
+
   // 動画プレイヤー
   VideoPlayerController? _videoPlayerController;
   bool _isVideoPlaying = false;
@@ -73,7 +74,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     // タイトル文字数カウンターをリアルタイム更新
     _titleController.addListener(() {
       setState(() {});
@@ -106,7 +107,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     // 画像 + テキストの場合は合成して単一の画像にする
-    if (_selectedMedia != null && !_isSelectedMediaVideo() && _textOverlays.isNotEmpty) {
+    if (_selectedMedia != null &&
+        !_isSelectedMediaVideo() &&
+        _textOverlays.isNotEmpty) {
       final bytes = await _exportCompositeImage();
       if (bytes != null) {
         _compositedImageBytes = bytes; // このPNGが投稿用の単一画像になります
@@ -133,17 +136,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       String? thumbBase64;
 
       if (type == 'image') {
-        final Uint8List imageBytes = _compositedImageBytes ?? await File(_selectedMedia!.path).readAsBytes();
+        final Uint8List imageBytes = _compositedImageBytes ??
+            await File(_selectedMedia!.path).readAsBytes();
         fileBase64 = base64Encode(imageBytes);
         thumbBase64 = base64Encode(await _generateImageThumbnail(imageBytes));
       } else if (type == 'video') {
         final bytes = await File(_selectedMedia!.path).readAsBytes();
         fileBase64 = base64Encode(bytes);
-        thumbBase64 = base64Encode(_generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+        thumbBase64 = base64Encode(
+            _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
       } else if (type == 'audio') {
         final bytes = await File(_selectedAudio!.path!).readAsBytes();
         fileBase64 = base64Encode(bytes);
-        thumbBase64 = base64Encode(_generatePlaceholderThumbnail(320, 320, label: 'AUDIO'));
+        thumbBase64 = base64Encode(
+            _generatePlaceholderThumbnail(320, 320, label: 'AUDIO'));
       } else {
         _showSnackBar('このバックエンドではテキスト単体投稿は未対応です', Colors.red);
         return;
@@ -163,7 +169,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         thumbnailBase64: thumbBase64,
         link: link,
       );
-      
+
       if (mounted) {
         if (result == null) {
           _showSnackBar('投稿に失敗しました（無効な応答）', Colors.red);
@@ -222,14 +228,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   // 動画/音声の簡易サムネイル（プレースホルダ）
-  Uint8List _generatePlaceholderThumbnail(int width, int height, {required String label}) {
+  Uint8List _generatePlaceholderThumbnail(int width, int height,
+      {required String label}) {
     final canvas = img.Image(width: width, height: height);
     img.fill(canvas, color: img.ColorRgb8(30, 30, 30));
-    img.drawRect(canvas, x1: 0, y1: height - 6, x2: width, y2: height, color: img.ColorRgb8(255, 107, 53));
+    img.drawRect(canvas,
+        x1: 0,
+        y1: height - 6,
+        x2: width,
+        y2: height,
+        color: img.ColorRgb8(255, 107, 53));
     final font = img.arial24;
     // BitmapFontにmeasure APIがないため、おおよその文字幅/高さでセンタリング
     final approxCharWidth = 14; // arial24 推定
-    final approxHeight = 24;    // arial24 高さ
+    final approxHeight = 24; // arial24 高さ
     final textWidth = approxCharWidth * label.runes.length;
     final tx = ((width - textWidth) / 2).round();
     final ty = ((height - approxHeight) / 2).round();
@@ -268,7 +280,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
                     ),
                   )
                 : Text(
@@ -332,8 +345,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       Text(
                         '${_titleController.text.length}/100',
                         style: TextStyle(
-                          color: _titleController.text.length > 100 
-                              ? Colors.red 
+                          color: _titleController.text.length > 100
+                              ? Colors.red
                               : Colors.grey,
                           fontSize: 12,
                         ),
@@ -343,7 +356,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ],
               ),
             ),
-            
+
             // 背景メディアプレビューエリア
             Expanded(
               child: _selectedMedia == null && _selectedAudio == null
@@ -352,14 +365,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ? _buildMediaPreviewWithOverlays()
                       : _buildAudioPreview(),
             ),
-            
+
             // 選択済み音声ファイル表示（背景メディアがある場合は下に表示）
             if (_selectedAudio != null)
               Padding(
-                padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
+                padding:
+                    const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
                 child: _buildSelectedAudioPreview(),
               ),
-            
+
             // メディア選択ボタン
             if (_selectedMedia == null && _selectedAudio == null)
               Padding(
@@ -371,13 +385,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       _buildOptionButton(
                         icon: Icons.image_outlined,
                         label: '写真',
-                        onTap: () => _pickMedia(ImageSource.gallery, isVideo: false),
+                        onTap: () =>
+                            _pickMedia(ImageSource.gallery, isVideo: false),
                       ),
                       const SizedBox(width: 12),
                       _buildOptionButton(
                         icon: Icons.videocam_outlined,
                         label: '動画',
-                        onTap: () => _pickMedia(ImageSource.gallery, isVideo: true),
+                        onTap: () =>
+                            _pickMedia(ImageSource.gallery, isVideo: true),
                       ),
                       const SizedBox(width: 12),
                       _buildOptionButton(
@@ -433,13 +449,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       _buildOptionButton(
                         icon: Icons.image_outlined,
                         label: '写真を追加',
-                        onTap: () => _pickMedia(ImageSource.gallery, isVideo: false),
+                        onTap: () =>
+                            _pickMedia(ImageSource.gallery, isVideo: false),
                       ),
                       const SizedBox(width: 12),
                       _buildOptionButton(
                         icon: Icons.videocam_outlined,
                         label: '動画を追加',
-                        onTap: () => _pickMedia(ImageSource.gallery, isVideo: true),
+                        onTap: () =>
+                            _pickMedia(ImageSource.gallery, isVideo: true),
                       ),
                       const SizedBox(width: 12),
                       _buildOptionButton(
@@ -561,15 +579,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // 選択されたメディアが動画かどうかを判定
   bool _isSelectedMediaVideo() {
     if (_selectedMedia == null) return false;
-    
+
     final path = _selectedMedia!.path.toLowerCase();
-    final isVideo = path.endsWith('.mp4') || 
-                    path.endsWith('.mov') ||
-                    path.endsWith('.avi') ||
-                    path.endsWith('.mkv') ||
-                    path.endsWith('.webm') ||
-                    _selectedMedia!.mimeType?.startsWith('video/') == true;
-    
+    final isVideo = path.endsWith('.mp4') ||
+        path.endsWith('.mov') ||
+        path.endsWith('.avi') ||
+        path.endsWith('.mkv') ||
+        path.endsWith('.webm') ||
+        _selectedMedia!.mimeType?.startsWith('video/') == true;
+
     return isVideo;
   }
 
@@ -581,23 +599,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       builder: (context, constraints) {
         return GestureDetector(
           // 画像の場合のみタップでテキストオーバーレイを追加
-          onTapUp: isVideo ? null : (details) {
-            // テキストオーバーレイをタップしていない場合は追加
-            final tappedOverlay = _textOverlays.where((overlay) {
-              final overlayRect = Rect.fromLTWH(
-                overlay.position.dx,
-                overlay.position.dy,
-                300,
-                100,
-              );
-              return overlayRect.contains(details.localPosition);
-            }).firstOrNull;
+          onTapUp: isVideo
+              ? null
+              : (details) {
+                  // テキストオーバーレイをタップしていない場合は追加
+                  final tappedOverlay = _textOverlays.where((overlay) {
+                    final overlayRect = Rect.fromLTWH(
+                      overlay.position.dx,
+                      overlay.position.dy,
+                      300,
+                      100,
+                    );
+                    return overlayRect.contains(details.localPosition);
+                  }).firstOrNull;
 
-            if (tappedOverlay == null) {
-              // 背景をタップした位置にテキストオーバーレイを追加
-              _addTextOverlay(details.localPosition);
-            }
-          },
+                  if (tappedOverlay == null) {
+                    // 背景をタップした位置にテキストオーバーレイを追加
+                    _addTextOverlay(details.localPosition);
+                  }
+                },
           child: RepaintBoundary(
             key: _compositeKey,
             child: Stack(
@@ -616,7 +636,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
                 // テキストオーバーレイ（画像の場合のみ表示）
                 if (!isVideo)
-                  ..._textOverlays.map((overlay) => _buildTextOverlayWidget(overlay)),
+                  ..._textOverlays
+                      .map((overlay) => _buildTextOverlayWidget(overlay)),
                 // ヒント（タップでテキスト追加 - 画像の場合のみ）
                 if (!isVideo && _textOverlays.isEmpty)
                   Center(
@@ -649,7 +670,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // 合成画像をPNGでエクスポート
   Future<Uint8List?> _exportCompositeImage() async {
     try {
-      final boundary = _compositeKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary = _compositeKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
       if (boundary == null) return null;
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ImageByteFormat.png);
@@ -702,7 +724,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             maxWidth: 360,
           ),
           decoration: BoxDecoration(
-            color: overlay.isFocused ? Colors.white.withOpacity(0.95) : Colors.black.withOpacity(0.7),
+            color: overlay.isFocused
+                ? Colors.white.withOpacity(0.95)
+                : Colors.black.withOpacity(0.7),
             borderRadius: BorderRadius.circular(8),
             border: overlay.isFocused
                 ? Border.all(color: SpotLightColors.primaryOrange, width: 2)
@@ -723,7 +747,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   decoration: InputDecoration(
                     hintText: 'テキストを入力',
                     hintStyle: TextStyle(
-                      color: overlay.isFocused ? Colors.grey[600] : Colors.grey[400],
+                      color: overlay.isFocused
+                          ? Colors.grey[600]
+                          : Colors.grey[400],
                     ),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
@@ -772,7 +798,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     behavior: HitTestBehavior.opaque,
                     onPanUpdate: (details) {
                       setState(() {
-                        final newWidth = (overlay.width + details.delta.dx).clamp(120.0, 360.0) as double;
+                        final newWidth = (overlay.width + details.delta.dx)
+                            .clamp(120.0, 360.0) as double;
                         overlay.width = newWidth;
                       });
                     },
@@ -803,7 +830,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final controller = TextEditingController();
     final focusNode = FocusNode();
-    
+
     focusNode.addListener(() {
       setState(() {
         final overlay = _textOverlays.firstWhere((o) => o.id == id);
@@ -850,7 +877,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.image_outlined, color: Color(0xFFFF6B35)),
+              leading:
+                  const Icon(Icons.image_outlined, color: Color(0xFFFF6B35)),
               title: const Text(
                 '写真を選択',
                 style: TextStyle(color: Colors.white),
@@ -861,7 +889,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.videocam_outlined, color: Color(0xFFFF6B35)),
+              leading:
+                  const Icon(Icons.videocam_outlined, color: Color(0xFFFF6B35)),
               title: const Text(
                 '動画を選択',
                 style: TextStyle(color: Colors.white),
@@ -923,7 +952,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         // 動画の場合はプレイヤーを初期化
         if (isVideo) {
-          _videoPlayerController = VideoPlayerController.file(File(pickedFile.path));
+          _videoPlayerController =
+              VideoPlayerController.file(File(pickedFile.path));
           await _videoPlayerController!.initialize();
           // 動画プレイヤーの状態変更を監視
           _videoPlayerController!.addListener(() {
@@ -975,53 +1005,143 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     try {
+      if (kDebugMode) {
+        debugPrint('🎵 音声ファイル選択を開始...');
+      }
+
+      // FileType.audioを使用（より確実に音声ファイルを選択できる）
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'],
+        type: FileType.audio,
         allowMultiple: false,
         dialogTitle: '音声ファイルを選択',
+        withData: false, // ファイルパスのみ取得（メモリ効率のため）
+        withReadStream: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        // ファイルが有効な音声ファイルかチェック
-        final filePath = result.files.single.path!;
-        final fileExtension = filePath.toLowerCase().split('.').last;
-        final validExtensions = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'];
-        
-        if (!validExtensions.contains(fileExtension)) {
-          _showSnackBar(
-            '音声ファイルのみ選択できます',
-            Colors.red,
-          );
-          return;
+      if (result == null) {
+        if (kDebugMode) {
+          debugPrint('⚠️ ファイル選択がキャンセルされました');
         }
-
-        // ファイルサイズチェック（50MB制限）
-        final fileSize = File(filePath).lengthSync();
-        if (fileSize > 50 * 1024 * 1024) {
-          _showSnackBar(
-            '音声ファイルが大きすぎます（50MB以下にしてください）',
-            Colors.red,
-          );
-          return;
-        }
-
-        setState(() {
-          _selectedAudio = result.files.single;
-        });
-        
-        // 音声プレイヤーを初期化
-        _audioPlayer?.dispose();
-        _audioPlayer = AudioPlayer();
-        try {
-          await _audioPlayer!.setFilePath(_selectedAudio!.path!);
-        } catch (e) {
-          if (mounted) {
-            _showSnackBar('音声ファイルの読み込みに失敗しました: $e', Colors.red);
-          }
-        }
+        return;
       }
-    } catch (e) {
+
+      if (result.files.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 選択されたファイルがありません');
+        }
+        _showSnackBar('ファイルが選択されませんでした', Colors.orange);
+        return;
+      }
+
+      final selectedFile = result.files.single;
+
+      if (kDebugMode) {
+        debugPrint('📁 選択されたファイル:');
+        debugPrint('   名前: ${selectedFile.name}');
+        debugPrint('   パス: ${selectedFile.path}');
+        debugPrint('   サイズ: ${selectedFile.size} bytes');
+        debugPrint('   拡張子: ${selectedFile.extension}');
+      }
+
+      // ファイルパスの確認
+      if (selectedFile.path == null || selectedFile.path!.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('❌ ファイルパスが取得できませんでした');
+        }
+        _showSnackBar('ファイルパスを取得できませんでした', Colors.red);
+        return;
+      }
+
+      final filePath = selectedFile.path!;
+      final file = File(filePath);
+
+      // ファイルの存在確認
+      if (!await file.exists()) {
+        if (kDebugMode) {
+          debugPrint('❌ ファイルが存在しません: $filePath');
+        }
+        _showSnackBar('選択されたファイルが見つかりません', Colors.red);
+        return;
+      }
+
+      // ファイル拡張子の確認
+      final fileExtension = filePath.toLowerCase().split('.').last;
+      final validExtensions = [
+        'mp3',
+        'm4a',
+        'aac',
+        'wav',
+        'ogg',
+        'flac',
+        'opus'
+      ];
+
+      if (!validExtensions.contains(fileExtension)) {
+        if (kDebugMode) {
+          debugPrint('❌ 無効な拡張子: $fileExtension');
+        }
+        _showSnackBar(
+          '音声ファイルのみ選択できます（対応形式: MP3, M4A, AAC, WAV, OGG, FLAC, OPUS）',
+          Colors.red,
+        );
+        return;
+      }
+
+      // ファイルサイズチェック（50MB制限）
+      final fileSize = await file.length();
+      if (fileSize > 50 * 1024 * 1024) {
+        if (kDebugMode) {
+          debugPrint(
+              '❌ ファイルサイズが大きすぎます: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+        _showSnackBar(
+          '音声ファイルが大きすぎます（50MB以下にしてください）',
+          Colors.red,
+        );
+        return;
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+            '✅ ファイル検証成功: $filePath (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)');
+      }
+
+      setState(() {
+        _selectedAudio = selectedFile;
+      });
+
+      // 音声プレイヤーを初期化
+      _audioPlayer?.dispose();
+      _audioPlayer = AudioPlayer();
+
+      try {
+        if (kDebugMode) {
+          debugPrint('🎵 音声プレイヤーを初期化中...');
+        }
+        await _audioPlayer!.setFilePath(filePath);
+        if (kDebugMode) {
+          debugPrint('✅ 音声プレイヤー初期化成功');
+        }
+      } catch (e, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('❌ 音声ファイルの読み込みに失敗: $e');
+          debugPrint('   StackTrace: $stackTrace');
+        }
+        if (mounted) {
+          _showSnackBar('音声ファイルの読み込みに失敗しました: $e', Colors.red);
+        }
+        // エラー時は選択をクリア
+        setState(() {
+          _selectedAudio = null;
+          _audioPlayer?.dispose();
+          _audioPlayer = null;
+        });
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ 音声ファイル選択エラー: $e');
+        debugPrint('   StackTrace: $stackTrace');
+      }
       if (mounted) {
         _showSnackBar('音声ファイルの選択に失敗しました: $e', Colors.red);
       }
@@ -1117,17 +1237,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   builder: (context, snapshot) {
                     final position = snapshot.data ?? Duration.zero;
                     final duration = _audioPlayer?.duration ?? Duration.zero;
-                    
+
                     return Column(
                       children: [
                         Slider(
                           value: duration.inMilliseconds > 0
-                              ? position.inMilliseconds / duration.inMilliseconds
+                              ? position.inMilliseconds /
+                                  duration.inMilliseconds
                               : 0.0,
                           onChanged: (value) {
-                            if (_audioPlayer != null && duration.inMilliseconds > 0) {
+                            if (_audioPlayer != null &&
+                                duration.inMilliseconds > 0) {
                               final newPosition = Duration(
-                                milliseconds: (value * duration.inMilliseconds).round(),
+                                milliseconds:
+                                    (value * duration.inMilliseconds).round(),
                               );
                               _audioPlayer!.seek(newPosition);
                             }
@@ -1176,7 +1299,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else {
         await _audioPlayer!.play();
       }
-      
+
       // 再生状態のリスナーを追加
       _audioPlayer!.playerStateStream.listen((state) {
         if (mounted) {
@@ -1222,12 +1345,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           children: [
             const Text(
               'Android端末でのみ利用可能です！',
-              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
+              style:
+                  TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 16),
             const Text(
               '対応フォーマット:',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             _buildFeatureItem('🎵 MP3'),
@@ -1263,7 +1388,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   // 動画プレビュー表示
   Widget _buildVideoPreview() {
-    if (_videoPlayerController == null || !_videoPlayerController!.value.isInitialized) {
+    if (_videoPlayerController == null ||
+        !_videoPlayerController!.value.isInitialized) {
       return Container(
         width: double.infinity,
         height: double.infinity,
@@ -1311,7 +1437,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   // 動画の再生/一時停止を切り替え
   void _toggleVideoPlayback() {
-    if (_videoPlayerController == null || !_videoPlayerController!.value.isInitialized) {
+    if (_videoPlayerController == null ||
+        !_videoPlayerController!.value.isInitialized) {
       return;
     }
 
@@ -1363,7 +1490,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // スナックバー表示ヘルパー
   void _showSnackBar(String message, Color backgroundColor) {
     if (!mounted) return;
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
