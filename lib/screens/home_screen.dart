@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -12,6 +13,7 @@ import '../services/icon_update_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
+import '../providers/navigation_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -64,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen>
   
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
+  String? _lastTargetPostId; // 最後に処理したターゲット投稿ID
 
   @override
   void initState() {
@@ -99,6 +102,29 @@ class _HomeScreenState extends State<HomeScreen>
     // リアルタイム更新を開始
     _startAutoUpdate();
   }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // NavigationProviderのtargetPostIdをチェック
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    final targetPostId = navigationProvider.targetPostId;
+    
+    // ターゲット投稿IDが変更された場合、かつ投稿リストが読み込まれている場合
+    if (targetPostId != null && 
+        targetPostId != _lastTargetPostId && 
+        !_isLoading && 
+        _posts.isNotEmpty) {
+      _lastTargetPostId = targetPostId;
+      // 少し遅延させてからジャンプ（画面遷移が完了してから）
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!_isDisposed && mounted) {
+          _checkAndJumpToTargetPost();
+        }
+      });
+    }
+  }
 
   /// バックエンドから投稿を取得（初回読み込み）
   Future<void> _fetchPosts() async {
@@ -128,6 +154,9 @@ class _HomeScreenState extends State<HomeScreen>
         // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
         if (_posts.isNotEmpty) {
           _handleMediaPageChange(_currentIndex);
+          
+          // ターゲット投稿IDが設定されている場合はジャンプ
+          _checkAndJumpToTargetPost();
         }
       }
     } catch (e) {
@@ -140,6 +169,161 @@ class _HomeScreenState extends State<HomeScreen>
           _isLoading = false;
           _errorMessage = '投稿の取得に失敗しました';
         });
+      }
+    }
+  }
+  
+  /// ターゲット投稿IDをチェックしてジャンプ
+  Future<void> _checkAndJumpToTargetPost() async {
+    if (!mounted) return;
+    
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    final targetPostId = navigationProvider.targetPostId;
+    
+    if (targetPostId == null) return;
+    
+    if (kDebugMode) {
+      debugPrint('🎯 ターゲット投稿ID: $targetPostId');
+    }
+    
+    // 現在の投稿リストから探す
+    final index = _posts.indexWhere((post) => post.id == targetPostId);
+    
+    if (index >= 0) {
+      // 見つかった場合はそのインデックスにジャンプ
+      if (kDebugMode) {
+        debugPrint('✅ 投稿が見つかりました: インデックス $index');
+      }
+      
+      // PageControllerでジャンプ
+      if (_pageController.hasClients) {
+        // animateToPageはonPageChangedを自動的に呼び出すので、
+        // 手動でインデックスを更新する必要はない
+        // onPageChangedで自動的に_handleMediaPageChangeが呼ばれる
+        await _pageController.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+        
+        // animateToPageの完了を待ってから、念のためインデックスを確認
+        // onPageChangedが呼ばれているはずだが、確実にするため
+        if (mounted && _currentIndex != index) {
+          setState(() {
+            _currentIndex = index;
+          });
+          _handleMediaPageChange(index);
+        }
+      }
+      
+      // ターゲット投稿IDをクリア
+      navigationProvider.clearTargetPostId();
+    } else {
+      // 見つからなかった場合は、その投稿を取得して追加
+      if (kDebugMode) {
+        debugPrint('🔍 投稿が見つかりません。取得を試みます...');
+      }
+      
+      await _fetchAndJumpToPost(targetPostId);
+    }
+  }
+  
+  /// 特定の投稿を取得してジャンプ
+  Future<void> _fetchAndJumpToPost(String postId) async {
+    try {
+      // 投稿IDから数値に変換
+      final contentId = int.tryParse(postId);
+      if (contentId == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 無効な投稿ID: $postId');
+        }
+        return;
+      }
+      
+      // その投稿を取得（PostService.fetchPostsを使用して、startIdを指定）
+      final posts = await PostService.fetchPosts(limit: 1, startId: contentId);
+      
+      if (posts.isNotEmpty && posts.first.id == postId) {
+        final targetPost = posts.first;
+        
+        if (!_isDisposed && mounted) {
+          // 投稿リストに追加（既に存在する場合はスキップ）
+          final existingIndex = _posts.indexWhere((post) => post.id == postId);
+          
+          if (existingIndex < 0) {
+            // 新しい投稿なので、適切な位置に挿入
+            // IDが現在の投稿より小さい場合は先頭に、大きい場合は末尾に追加
+            final currentFirstId = _posts.isNotEmpty ? int.tryParse(_posts.first.id) : null;
+            final targetId = int.tryParse(postId) ?? 0;
+            
+            setState(() {
+              if (currentFirstId != null && targetId < currentFirstId) {
+                _posts.insert(0, targetPost);
+              } else {
+                _posts.add(targetPost);
+              }
+              
+              // 取得済みコンテンツIDを記録
+              _fetchedContentIds.add(postId);
+            });
+            
+            // 投稿を追加した後、そのインデックスにジャンプ
+            // setStateの完了を待ってからジャンプ
+            await Future.delayed(const Duration(milliseconds: 50));
+            
+            final newIndex = _posts.indexWhere((post) => post.id == postId);
+            if (newIndex >= 0 && _pageController.hasClients) {
+              // animateToPageはonPageChangedを自動的に呼び出す
+              await _pageController.animateToPage(
+                newIndex,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+              
+              // animateToPageの完了を待ってから、念のためインデックスを確認
+              if (mounted && _currentIndex != newIndex) {
+                setState(() {
+                  _currentIndex = newIndex;
+                });
+                _handleMediaPageChange(newIndex);
+              }
+              
+              if (kDebugMode) {
+                debugPrint('✅ 投稿を追加してジャンプしました: インデックス $newIndex');
+              }
+            }
+          } else {
+            // 既に存在する場合はそのインデックスにジャンプ
+            if (_pageController.hasClients) {
+              // animateToPageはonPageChangedを自動的に呼び出す
+              await _pageController.animateToPage(
+                existingIndex,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+              
+              // animateToPageの完了を待ってから、念のためインデックスを確認
+              if (mounted && _currentIndex != existingIndex) {
+                setState(() {
+                  _currentIndex = existingIndex;
+                });
+                _handleMediaPageChange(existingIndex);
+              }
+            }
+          }
+          
+          // ターゲット投稿IDをクリア
+          final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+          navigationProvider.clearTargetPostId();
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 投稿の取得に失敗しました: $postId');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 投稿取得エラー: $e');
       }
     }
   }

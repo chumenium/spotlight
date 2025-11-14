@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/search_history.dart';
 import '../models/post.dart';
 import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
+import '../providers/navigation_provider.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -75,16 +77,40 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _onSearchChanged() {
-    final query = _searchController.text;
+    final query = _searchController.text.trim();
     if (!_isDisposed && mounted) {
       setState(() {
         if (query.isEmpty) {
           _filteredSuggestions = _allSuggestions;
         } else {
-          _filteredSuggestions = _allSuggestions
+          // 検索履歴から候補を生成
+          final historySuggestions = _searchHistory
+              .where((history) => 
+                  history.query.toLowerCase().contains(query.toLowerCase()))
+              .map((history) => SearchSuggestion(
+                    id: 'history_${history.id}',
+                    query: history.query,
+                    description: '検索履歴',
+                    isTrending: false,
+                  ))
+              .toList();
+          
+          // おすすめ検索から候補を生成
+          final suggestionMatches = _allSuggestions
               .where((suggestion) => 
                   suggestion.query.toLowerCase().contains(query.toLowerCase()))
               .toList();
+          
+          // 検索履歴とおすすめを結合（重複を除去）
+          final allSuggestions = <String, SearchSuggestion>{};
+          for (final suggestion in historySuggestions) {
+            allSuggestions[suggestion.query] = suggestion;
+          }
+          for (final suggestion in suggestionMatches) {
+            allSuggestions[suggestion.query] = suggestion;
+          }
+          
+          _filteredSuggestions = allSuggestions.values.toList();
         }
       });
     }
@@ -134,7 +160,7 @@ class _SearchScreenState extends State<SearchScreen> {
             
             // 検索結果または検索履歴・おすすめ
             Expanded(
-              child: _isSearching 
+              child: _searchResults.isNotEmpty || _isSearching
                   ? _buildSearchResults()
                   : _buildSearchContent(),
             ),
@@ -205,27 +231,21 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
+    final query = _searchController.text.trim();
+    
+    // 検索入力中は候補を表示
+    if (query.isNotEmpty && _filteredSuggestions.isNotEmpty) {
+      return _buildSearchSuggestions();
+    }
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 検索履歴
           if (_searchHistory.isNotEmpty) ...[
-            _buildSectionHeader('検索履歴'),
-            _buildSearchHistory(),
-            const SizedBox(height: 20),
-          ] else ...[
-            _buildSectionHeader('検索履歴'),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '検索履歴がありません',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-              ),
-            ),
+            _buildSectionHeader('最近の検索'),
+            _buildSearchHistoryChips(),
             const SizedBox(height: 20),
           ],
           
@@ -243,9 +263,21 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             )
           else
-            _buildSuggestions(),
+            _buildSuggestionsChips(),
         ],
       ),
+    );
+  }
+  
+  /// 検索候補を表示（入力中）
+  Widget _buildSearchSuggestions() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _filteredSuggestions.length,
+      itemBuilder: (context, index) {
+        final suggestion = _filteredSuggestions[index];
+        return _buildSuggestionItem(suggestion);
+      },
     );
   }
 
@@ -295,106 +327,165 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
     
-    return ListView.builder(
+    // TikTok風のタイル表示（グリッドレイアウト）
+    return GridView.builder(
+      padding: const EdgeInsets.all(2),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2, // 2列のグリッド
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 0.75, // 縦長のタイル
+      ),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
         final post = _searchResults[index];
-        return _buildSearchResultItem(post);
+        return _buildSearchResultTile(post);
       },
     );
   }
 
-  Widget _buildSearchResultItem(Post post) {
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
-            ? Image.network(
-                post.thumbnailUrl!,
-                width: 56,
-                height: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 56,
-                    height: 56,
-                    color: Colors.grey[800],
-                    child: Icon(
-                      Icons.image,
-                      color: Colors.grey[600],
-                    ),
-                  );
-                },
-              )
-            : Container(
-                width: 56,
-                height: 56,
-                color: Colors.grey[800],
-                child: Icon(
-                  Icons.image,
-                  color: Colors.grey[600],
-                ),
-              ),
-      ),
-      title: Text(
-        post.title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Icon(
-                Icons.flashlight_on,
-                size: 14,
-                color: SpotLightColors.getSpotlightColor(0),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${post.likes}',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Icon(
-                Icons.play_circle_outline,
-                size: 14,
-                color: Colors.grey[400],
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${post.playNum}',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                _getTimeAgo(post.createdAt),
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+  /// TikTok風のタイル表示
+  Widget _buildSearchResultTile(Post post) {
+    final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
+    
+    return GestureDetector(
       onTap: () {
-        // 検索結果の投稿詳細に遷移（後で実装）
+        // ホーム画面に遷移して投稿を再生
+        if (kDebugMode) {
+          debugPrint('🔍 検索結果タップ: ${post.id} - ${post.title}');
+        }
+        _navigateToPost(post);
       },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // サムネイル画像
+            if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(
+                  thumbnailUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[800],
+                      child: const Center(
+                        child: Icon(
+                          Icons.image,
+                          color: Colors.grey,
+                          size: 32,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              )
+            else
+              Container(
+                color: Colors.grey[800],
+                child: const Center(
+                  child: Icon(
+                    Icons.image,
+                    color: Colors.grey,
+                    size: 32,
+                  ),
+                ),
+              ),
+            
+            // グラデーションオーバーレイ（下部）
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(4),
+                    bottomRight: Radius.circular(4),
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                    ],
+                  ),
+                ),
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // タイトル
+                    Text(
+                      post.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // 統計情報
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.flashlight_on,
+                          size: 12,
+                          color: SpotLightColors.getSpotlightColor(0),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${post.likes}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.play_circle_outline,
+                          size: 12,
+                          color: Colors.white70,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${post.playNum}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+  
+  /// ホーム画面に遷移して投稿を再生
+  void _navigateToPost(Post post) {
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    
+    if (kDebugMode) {
+      debugPrint('🔍 ホーム画面に遷移: 投稿ID=${post.id}');
+    }
+    
+    // ホーム画面に遷移して投稿IDを設定
+    navigationProvider.navigateToHome(postId: post.id);
   }
 
   Widget _buildSectionHeader(String title) {
@@ -411,59 +502,102 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildSearchHistory() {
-    return Column(
-      children: _searchHistory.take(5).map((history) {
-        return _buildHistoryItem(history);
-      }).toList(),
+  /// 検索履歴をチップ形式で表示
+  Widget _buildSearchHistoryChips() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _searchHistory.take(10).map((history) {
+          return _buildHistoryChip(history);
+        }).toList(),
+      ),
     );
   }
 
-  Widget _buildHistoryItem(SearchHistory history) {
-    return ListTile(
-      leading: const Icon(
-        Icons.history,
-        color: Colors.grey,
-        size: 20,
-      ),
-      title: Text(
-        history.query,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
-      ),
-      subtitle: Text(
-        _getTimeAgo(history.searchedAt),
-        style: TextStyle(
-          color: Colors.grey[400],
-          fontSize: 12,
-        ),
-      ),
-      trailing: IconButton(
-        onPressed: () {
-          setState(() {
-            _searchHistory.remove(history);
-          });
-        },
-        icon: const Icon(
-          Icons.close,
-          color: Colors.grey,
-          size: 16,
-        ),
-      ),
+  Widget _buildHistoryChip(SearchHistory history) {
+    return GestureDetector(
       onTap: () {
         _searchController.text = history.query;
         _performSearch(history.query);
       },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8, bottom: 8),
+        child: Chip(
+          avatar: const Icon(
+            Icons.history,
+            size: 16,
+            color: Colors.grey,
+          ),
+          label: Text(
+            history.query,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+          backgroundColor: Colors.grey[800],
+          deleteIcon: const Icon(
+            Icons.close,
+            size: 16,
+            color: Colors.grey,
+          ),
+          onDeleted: () {
+            setState(() {
+              _searchHistory.remove(history);
+            });
+          },
+        ),
+      ),
     );
   }
 
-  Widget _buildSuggestions() {
-    return Column(
-      children: _filteredSuggestions.map((suggestion) {
-        return _buildSuggestionItem(suggestion);
-      }).toList(),
+  /// おすすめ検索をチップ形式で表示
+  Widget _buildSuggestionsChips() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _allSuggestions.map((suggestion) {
+          return _buildSuggestionChip(suggestion);
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionChip(SearchSuggestion suggestion) {
+    return FilterChip(
+      avatar: suggestion.isTrending
+          ? Icon(
+              Icons.trending_up,
+              size: 16,
+              color: SpotLightColors.getSpotlightColor(0),
+            )
+          : const Icon(
+              Icons.search,
+              size: 16,
+              color: Colors.grey,
+            ),
+      label: Text(
+        suggestion.query,
+        style: TextStyle(
+          color: suggestion.isTrending 
+              ? SpotLightColors.getSpotlightColor(0)
+              : Colors.white,
+          fontSize: 14,
+          fontWeight: suggestion.isTrending 
+              ? FontWeight.w600
+              : FontWeight.normal,
+        ),
+      ),
+      backgroundColor: Colors.grey[800],
+      selectedColor: Colors.grey[700],
+      onSelected: (selected) {
+        _searchController.text = suggestion.query;
+        _performSearch(suggestion.query);
+      },
     );
   }
 
@@ -503,18 +637,4 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-    
-    if (difference.inDays > 0) {
-      return '${difference.inDays}日前';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}時間前';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}分前';
-    } else {
-      return 'たった今';
-    }
-  }
 }

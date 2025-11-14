@@ -12,12 +12,35 @@ class SearchHistory {
     this.resultCount,
   });
 
-  factory SearchHistory.fromJson(Map<String, dynamic> json) {
+  factory SearchHistory.fromJson(dynamic json) {
+    // API仕様: 検索履歴は文字列の配列として返される
+    if (json is String) {
+      return SearchHistory(
+        id: json,
+        query: json,
+        searchedAt: DateTime.now(), // 履歴には日時情報がないため現在時刻を使用
+        resultCount: null,
+      );
+    }
+    
+    // オブジェクト形式の場合
+    if (json is Map<String, dynamic>) {
+      return SearchHistory(
+        id: json['id']?.toString() ?? json['query']?.toString() ?? '',
+        query: json['query']?.toString() ?? json.toString(),
+        searchedAt: json['searched_at'] != null 
+            ? DateTime.tryParse(json['searched_at']) ?? DateTime.now()
+            : DateTime.now(),
+        resultCount: json['result_count']?.toString(),
+      );
+    }
+    
+    // フォールバック
     return SearchHistory(
-      id: json['id'] as String,
-      query: json['query'] as String,
-      searchedAt: DateTime.parse(json['searched_at'] as String),
-      resultCount: json['result_count'] as String?,
+      id: json.toString(),
+      query: json.toString(),
+      searchedAt: DateTime.now(),
+      resultCount: null,
     );
   }
 

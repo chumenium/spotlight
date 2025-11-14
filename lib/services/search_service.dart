@@ -43,7 +43,10 @@ class SearchService {
         
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final List<dynamic> historyJson = responseData['data'];
-          return historyJson.map((json) => SearchHistory.fromJson(json)).toList();
+          // API仕様: 検索履歴は文字列の配列
+          return historyJson.map((item) {
+            return SearchHistory.fromJson(item);
+          }).toList();
         }
       } else {
         if (kDebugMode) {
@@ -97,29 +100,25 @@ class SearchService {
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final List<dynamic> items = responseData['data'];
           
-          // バックエンドの検索結果をPostモデルに変換
+          // バックエンドの検索結果をPostモデルに変換（Post.fromJsonを使用）
           return items.map((item) {
-            return Post(
-              id: item['contentID'] as String,
-              userId: '', // 検索結果には含まれない
-              username: '', // 検索結果には含まれない
-              userIconPath: '',
-              title: item['title'] as String? ?? '',
-              content: null,
-              contentPath: '',
-              type: 'video', // デフォルトとしてvideoを設定
-              mediaUrl: item['link'] as String?,
-              thumbnailUrl: item['thumbnailurl'] as String?,
-              likes: item['spotlightnum'] as int? ?? 0,
-              playNum: item['playnum'] as int? ?? 0,
-              link: item['link'] as String?,
-              comments: 0,
-              shares: 0,
-              isSpotlighted: false,
-              isText: false,
-              nextContentId: null,
-              createdAt: DateTime.parse(item['posttimestamp'] as String),
-            );
+            // APIレスポンスのフィールド名をPost.fromJsonが期待する形式に変換
+            final postData = <String, dynamic>{
+              'contentID': item['contentID']?.toString() ?? '',
+              'title': item['title'] ?? '',
+              'contentpath': item['thumbnailurl'] ?? '', // 検索結果ではthumbnailurlがcontentpath
+              'thumbnailpath': item['thumbnailurl'] ?? '',
+              'spotlightnum': item['spotlightnum'] ?? 0,
+              'playnum': item['playnum'] ?? 0,
+              'posttimestamp': item['posttimestamp'] ?? DateTime.now().toIso8601String(),
+              'link': item['link'],
+              'username': '', // 検索結果には含まれない
+              'iconimgpath': '', // 検索結果には含まれない
+              'spotlightflag': false,
+              'textflag': false,
+            };
+            
+            return Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
           }).toList();
         }
       } else {
