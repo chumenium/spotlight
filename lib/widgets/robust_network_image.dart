@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// ネットワークエラーに強い画像ウィジェット
 ///
-/// シンプルなImage.networkで確実に表示
+/// CachedNetworkImageを使用して確実にキャッシュ
 class RobustNetworkImage extends StatelessWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -24,42 +25,25 @@ class RobustNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kDebugMode) {
-      debugPrint('🖼️ 画像読み込み開始: $imageUrl');
-    }
+    // CachedNetworkImageを使用して、キャッシュから読み込む
+    // 同じURLの場合は再取得されない
 
-    return Image.network(
-      imageUrl,
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      key: ValueKey(imageUrl), // 同じURLの場合は再構築を防ぐ
       fit: fit,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
-          if (kDebugMode) {
-            debugPrint('✅ 画像読み込み完了: $imageUrl');
-          }
-          return child;
-        }
-        
-        final progress = loadingProgress.expectedTotalBytes != null
-            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-            : null;
-        
-        if (kDebugMode && progress != null) {
-          debugPrint('📊 画像読み込み中: ${(progress * 100).toStringAsFixed(0)}% - $imageUrl');
-        }
-        
-        return placeholder ??
-            Center(
-              child: CircularProgressIndicator(
-                value: progress,
-                color: const Color(0xFFFF6B35),
-              ),
-            );
-      },
-      errorBuilder: (context, error, stackTrace) {
+      memCacheWidth: maxWidth,
+      memCacheHeight: maxHeight,
+      placeholder: (context, url) => placeholder ??
+          const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFFFF6B35),
+            ),
+          ),
+      errorWidget: (context, url, error) {
         if (kDebugMode) {
           debugPrint('❌ 画像読み込みエラー: $error');
           debugPrint('   URL: $imageUrl');
-          debugPrint('   StackTrace: $stackTrace');
         }
         
         return errorWidget ??
@@ -74,24 +58,14 @@ class RobustNetworkImage extends StatelessWidget {
                     size: 48,
                   ),
                   const SizedBox(height: 8),
-                  Text(
+                  const Text(
                     '画像の読み込みに失敗',
-                    style: const TextStyle(color: Colors.white38, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    imageUrl,
-                    style: const TextStyle(color: Colors.white24, fontSize: 10),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                 ],
               ),
             );
       },
-      cacheWidth: maxWidth,
-      cacheHeight: maxHeight,
     );
   }
 }

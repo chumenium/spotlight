@@ -129,8 +129,16 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final results = await SearchService.searchPosts(query);
       
+      if (kDebugMode) {
+        debugPrint('🔍 検索結果取得: ${results.length}件');
+        for (final post in results) {
+          debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
+        }
+      }
+      
       if (!_isDisposed && mounted) {
         setState(() {
+          // 検索結果を完全に置き換える（新しい検索の場合は既存の結果をクリア）
           _searchResults = results;
           _isSearching = false;
         });
@@ -481,11 +489,25 @@ class _SearchScreenState extends State<SearchScreen> {
     final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
     
     if (kDebugMode) {
-      debugPrint('🔍 ホーム画面に遷移: 投稿ID=${post.id}');
+      debugPrint('🔍 ホーム画面に遷移: 投稿ID=${post.id}, contentID=${post.id}');
+      debugPrint('🔍 投稿タイトル: ${post.title}');
     }
     
-    // ホーム画面に遷移して投稿IDを設定
-    navigationProvider.navigateToHome(postId: post.id);
+    // 投稿IDが空の場合はエラー
+    if (post.id.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('❌ 投稿IDが空です');
+      }
+      return;
+    }
+    
+    // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
+    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
+    
+    if (kDebugMode) {
+      debugPrint('✅ NavigationProviderに投稿IDを設定: ${navigationProvider.targetPostId}');
+      debugPrint('✅ NavigationProviderに投稿タイトルを設定: ${navigationProvider.targetPostTitle}');
+    }
   }
 
   Widget _buildSectionHeader(String title) {

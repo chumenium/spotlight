@@ -100,14 +100,37 @@ class SearchService {
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final List<dynamic> items = responseData['data'];
           
+          // 重複を防ぐためにcontentIDでマップを作成
+          final Map<String, dynamic> uniqueItems = {};
+          for (final item in items) {
+            final contentId = item['contentID']?.toString() ?? '';
+            if (contentId.isNotEmpty && !uniqueItems.containsKey(contentId)) {
+              uniqueItems[contentId] = item;
+            }
+          }
+          
+          if (kDebugMode) {
+            debugPrint('🔍 検索結果: 総数=${items.length}, 重複除去後=${uniqueItems.length}');
+          }
+          
           // バックエンドの検索結果をPostモデルに変換（Post.fromJsonを使用）
-          return items.map((item) {
+          return uniqueItems.values.map((item) {
+            // contentIDを取得（数値または文字列）
+            final contentId = item['contentID'];
+            final contentIdStr = contentId?.toString() ?? '';
+            
+            if (kDebugMode && contentIdStr.isEmpty) {
+              debugPrint('⚠️ 検索結果にcontentIDがありません: $item');
+            }
+            
             // APIレスポンスのフィールド名をPost.fromJsonが期待する形式に変換
+            // 検索結果にはthumbnailurlしか含まれないため、contentpathは空にする
+            // 実際のコンテンツはPostService.fetchPostDetailで取得する
             final postData = <String, dynamic>{
-              'contentID': item['contentID']?.toString() ?? '',
+              'contentID': contentIdStr, // 文字列として設定
               'title': item['title'] ?? '',
-              'contentpath': item['thumbnailurl'] ?? '', // 検索結果ではthumbnailurlがcontentpath
-              'thumbnailpath': item['thumbnailurl'] ?? '',
+              'contentpath': '', // 検索結果には含まれないため空にする
+              'thumbnailpath': item['thumbnailurl'] ?? '', // 検索結果ではthumbnailurlがthumbnailpath
               'spotlightnum': item['spotlightnum'] ?? 0,
               'playnum': item['playnum'] ?? 0,
               'posttimestamp': item['posttimestamp'] ?? DateTime.now().toIso8601String(),
@@ -118,7 +141,17 @@ class SearchService {
               'textflag': false,
             };
             
-            return Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
+            final post = Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
+            
+            if (kDebugMode) {
+              debugPrint('🔍 検索結果からPost作成: contentID=$contentIdStr, post.id=${post.id}');
+              debugPrint('  - title: ${post.title}');
+              debugPrint('  - thumbnailUrl: ${post.thumbnailUrl}');
+              debugPrint('  - mediaUrl: ${post.mediaUrl}');
+              debugPrint('  - contentPath: ${post.contentPath}');
+            }
+            
+            return post;
           }).toList();
         }
       } else {

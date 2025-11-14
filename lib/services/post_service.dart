@@ -317,8 +317,8 @@ class PostService {
         
         if (responseData['status'] == 'success' && responseData['data'] != null) {
           final Map<String, dynamic> data = responseData['data'];
-          // IDを追加してPostモデルに変換
-          data['id'] = contentId;
+          // contentIDを追加してPostモデルに変換
+          data['contentID'] = contentId;
           return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
         }
       } else {

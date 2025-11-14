@@ -14,6 +14,55 @@ import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
+import '../services/comment_service.dart';
+import '../services/playlist_service.dart';
+import '../models/comment.dart';
+
+/// 音声背景用のカスタムペインター
+class _AudioBackgroundPainter extends CustomPainter {
+  final bool isPlaying;
+  
+  _AudioBackgroundPainter({required this.isPlaying});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.fill;
+    
+    // 波紋エフェクト
+    if (isPlaying) {
+      final center = Offset(size.width / 2, size.height / 2);
+      for (int i = 0; i < 3; i++) {
+        paint.color = SpotLightColors.getSpotlightColor(2)
+            .withOpacity(0.1 - (i * 0.03));
+        canvas.drawCircle(
+          center,
+          size.width * 0.3 + (i * 30),
+          paint,
+        );
+      }
+    }
+    
+    // グラデーション円
+    final gradientPaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.topLeft,
+        radius: 1.5,
+        colors: [
+          SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      gradientPaint,
+    );
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -47,9 +96,17 @@ class _HomeScreenState extends State<HomeScreen>
   int? _currentPlayingVideo;
   final Set<int> _initializedVideos = {};
   
-  // シークバー関連
+  // シークバー関連（動画用）
   bool _isSeeking = false;
   double? _seekPosition; // シーク中の位置（0.0-1.0）
+  Timer? _seekBarUpdateTimer; // シークバー更新用タイマー
+  Timer? _seekDebounceTimer; // シーク中のデバウンスタイマー
+  
+  // シークバー関連（音声用）
+  bool _isSeekingAudio = false;
+  double? _seekPositionAudio; // シーク中の位置（0.0-1.0）
+  Timer? _seekBarUpdateTimerAudio; // シークバー更新用タイマー
+  Timer? _seekDebounceTimerAudio; // シーク中のデバウンスタイマー
 
   // 音声プレイヤー関連
   final Map<int, AudioPlayer?> _audioPlayers = {};
@@ -115,18 +172,45 @@ class _HomeScreenState extends State<HomeScreen>
     final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
     final targetPostId = navigationProvider.targetPostId;
     
+    if (kDebugMode) {
+      debugPrint('🔄 didChangeDependencies: targetPostId=$targetPostId, _lastTargetPostId=$_lastTargetPostId, _isLoading=$_isLoading, _posts.length=${_posts.length}');
+    }
+    
     // ターゲット投稿IDが変更された場合、かつ投稿リストが読み込まれている場合
     if (targetPostId != null && 
         targetPostId != _lastTargetPostId && 
-        !_isLoading && 
-        _posts.isNotEmpty) {
+        !_isLoading) {
+      if (kDebugMode) {
+        debugPrint('✅ ターゲット投稿IDが変更されました: $targetPostId');
+      }
+      
       _lastTargetPostId = targetPostId;
-      // 少し遅延させてからジャンプ（画面遷移が完了してから）
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (!_isDisposed && mounted) {
-          _checkAndJumpToTargetPost();
+      
+      // 投稿リストが空の場合は、投稿を取得してからジャンプ
+      if (_posts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📝 投稿リストが空なので、先に投稿を取得します');
         }
-      });
+        _fetchPosts().then((_) {
+          if (!_isDisposed && mounted) {
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (!_isDisposed && mounted) {
+                _checkAndJumpToTargetPost();
+              }
+            });
+          }
+        });
+      } else {
+        // 少し遅延させてからジャンプ（画面遷移が完了してから）
+        if (kDebugMode) {
+          debugPrint('⏳ 投稿リストがあるので、遅延後にジャンプします');
+        }
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (!_isDisposed && mounted) {
+            _checkAndJumpToTargetPost();
+          }
+        });
+      }
     }
   }
 
@@ -134,10 +218,11 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _fetchPosts() async {
     try {
       if (kDebugMode) {
-        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件）...');
+        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件、startId=1）...');
       }
       
-      final posts = await PostService.fetchPosts(limit: _initialLoadCount);
+      // 初回読み込みは必ずID=1から開始
+      final posts = await PostService.fetchPosts(limit: _initialLoadCount, startId: 1);
       
       if (!_isDisposed && mounted) {
         setState(() {
@@ -152,6 +237,9 @@ class _HomeScreenState extends State<HomeScreen>
           _fetchedContentIds.clear();
           for (final post in posts) {
             _fetchedContentIds.add(post.id);
+            if (kDebugMode) {
+              debugPrint('📝 取得済みIDを記録: ${post.id}');
+            }
           }
         });
         
@@ -186,54 +274,251 @@ class _HomeScreenState extends State<HomeScreen>
     
     if (targetPostId == null) return;
     
+    // 既に処理中の場合はスキップ（同じIDの処理が完了するまで待つ）
+    if (_lastTargetPostId == targetPostId) {
+      if (kDebugMode) {
+        debugPrint('⏭️ 既に処理中のターゲット投稿ID: $targetPostId');
+      }
+      return;
+    }
+    
+    // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
+    _lastTargetPostId = targetPostId;
+    
     if (kDebugMode) {
       debugPrint('🎯 ターゲット投稿ID: $targetPostId');
     }
     
-    // 現在の投稿リストから探す
-    final index = _posts.indexWhere((post) => post.id == targetPostId);
+    // 現在の投稿リストから探す（文字列として比較）
+    final index = _posts.indexWhere((post) => post.id.toString() == targetPostId.toString());
+    
+    if (kDebugMode) {
+      debugPrint('🔍 投稿検索: targetPostId=$targetPostId, 現在の投稿数=${_posts.length}');
+      for (int i = 0; i < _posts.length; i++) {
+        debugPrint('  [$i] ID=${_posts[i].id} (type: ${_posts[i].id.runtimeType})');
+      }
+    }
     
     if (index >= 0) {
-      // 見つかった場合はそのインデックスにジャンプ
+      // 見つかった場合でも、完全なデータを再取得して更新する
+      // 検索結果から作成された不完全な投稿の可能性があるため
       if (kDebugMode) {
-        debugPrint('✅ 投稿が見つかりました: インデックス $index');
+        debugPrint('✅ 投稿が見つかりました: インデックス $index, 投稿ID=${_posts[index].id}');
+        debugPrint('  - 既存の投稿のcontentPath: ${_posts[index].contentPath}');
+        debugPrint('  - 既存の投稿のmediaUrl: ${_posts[index].mediaUrl}');
       }
       
-      // PageControllerでジャンプ
-      if (_pageController.hasClients) {
-        // animateToPageはonPageChangedを自動的に呼び出すので、
-        // 手動でインデックスを更新する必要はない
-        // onPageChangedで自動的に_handleMediaPageChangeが呼ばれる
-        await _pageController.animateToPage(
-          index,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+      // 完全なデータを再取得
+      final updatedPost = await PostService.fetchPostDetail(targetPostId);
+      final expectedTitle = navigationProvider.targetPostTitle;
+      
+      // 検索結果のタイトルと取得した投稿のタイトルを比較
+      if (updatedPost != null && updatedPost.id.toString() == targetPostId.toString()) {
+        // タイトルが一致しない場合は、タイトルで検索して正しい投稿を見つける
+        if (expectedTitle != null && 
+            expectedTitle.isNotEmpty && 
+            updatedPost.title != expectedTitle) {
+          if (kDebugMode) {
+            debugPrint('⚠️ タイトルが一致しません:');
+            debugPrint('  - 検索結果のタイトル: $expectedTitle');
+            debugPrint('  - 取得した投稿のタイトル: ${updatedPost.title}');
+            debugPrint('  - タイトルで検索して正しい投稿を見つけます...');
+          }
+          
+          // タイトルで検索して正しい投稿を見つける
+          final titleMatchIndex = _posts.indexWhere((post) => 
+              post.title == expectedTitle && 
+              post.id.toString() != targetPostId.toString());
+          
+          if (titleMatchIndex >= 0) {
+            if (kDebugMode) {
+              debugPrint('✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
+            }
+            
+            // 正しい投稿にジャンプ
+            if (_pageController.hasClients) {
+              await _pageController.animateToPage(
+                titleMatchIndex,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+              
+              if (kDebugMode) {
+                debugPrint('✅ タイトルで一致する投稿にジャンプ完了: インデックス $titleMatchIndex');
+              }
+            }
+            
+            // ターゲット投稿IDをクリア
+            navigationProvider.clearTargetPostId();
+            _lastTargetPostId = null;
+            return;
+          } else {
+            if (kDebugMode) {
+              debugPrint('⚠️ タイトルで一致する投稿が見つかりませんでした');
+            }
+          }
+        }
         
-        // animateToPageの完了を待ってから、念のためインデックスを確認
-        // onPageChangedが呼ばれているはずだが、確実にするため
-        if (mounted && _currentIndex != index) {
-          setState(() {
-            _currentIndex = index;
-          });
-          _handleMediaPageChange(index);
+        if (kDebugMode) {
+          debugPrint('✅ 投稿データを更新:');
+          debugPrint('  - 更新後のcontentPath: ${updatedPost.contentPath}');
+          debugPrint('  - 更新後のmediaUrl: ${updatedPost.mediaUrl}');
+          debugPrint('  - 更新後のtype: ${updatedPost.type}');
+          debugPrint('  - 更新後のtitle: ${updatedPost.title}');
+          if (expectedTitle != null) {
+            debugPrint('  - 検索結果のタイトル: $expectedTitle');
+            debugPrint('  - タイトル一致: ${updatedPost.title == expectedTitle}');
+          }
+        }
+        
+        // 投稿リスト内の投稿を更新
+        // 既存のメディアコントローラーをクリア（新しいメディアを初期化するため）
+        final postIndex = index;
+        if (_videoControllers.containsKey(postIndex)) {
+          final oldController = _videoControllers[postIndex];
+          if (oldController != null) {
+            await oldController.dispose();
+            _videoControllers.remove(postIndex);
+            _initializedVideos.remove(postIndex);
+            if (kDebugMode) {
+              debugPrint('🗑️ 既存の動画コントローラーをクリア: インデックス $postIndex');
+            }
+          }
+        }
+        if (_audioPlayers.containsKey(postIndex)) {
+          final oldPlayer = _audioPlayers[postIndex];
+          if (oldPlayer != null) {
+            await oldPlayer.dispose();
+            _audioPlayers.remove(postIndex);
+            _initializedAudios.remove(postIndex);
+            if (kDebugMode) {
+              debugPrint('🗑️ 既存の音声プレイヤーをクリア: インデックス $postIndex');
+            }
+          }
+        }
+        
+        setState(() {
+          _posts[index] = updatedPost;
+        });
+        
+        // 投稿データを更新した後、再度インデックスを確認
+        // setStateの後なので、確実に更新されているはず
+        final verifiedIndex = _posts.indexWhere((post) => post.id.toString() == targetPostId.toString());
+        if (verifiedIndex >= 0 && verifiedIndex != index) {
+          if (kDebugMode) {
+            debugPrint('⚠️ インデックスが変更されました: $index -> $verifiedIndex');
+          }
+          // インデックスが変更された場合は、新しいインデックスを使用
+          final actualIndex = verifiedIndex;
+          
+          // PageControllerでジャンプ
+          if (_pageController.hasClients) {
+            await _pageController.animateToPage(
+              actualIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+            
+            if (kDebugMode) {
+              debugPrint('✅ ジャンプ完了: インデックス $actualIndex, 現在の投稿ID=${_posts[actualIndex].id}');
+              debugPrint('  - タイトル: ${_posts[actualIndex].title}');
+              debugPrint('  - 投稿者: ${_posts[actualIndex].username}');
+              debugPrint('  - タイプ: ${_posts[actualIndex].type}');
+            }
+          }
+        } else {
+          // インデックスが変更されていない場合
+          if (kDebugMode) {
+            debugPrint('🔄 投稿データを更新しました: インデックス $index');
+            debugPrint('  - タイトル: ${_posts[index].title}');
+            debugPrint('  - 投稿者: ${_posts[index].username}');
+            debugPrint('  - タイプ: ${_posts[index].type}');
+            debugPrint('  - animateToPageのonPageChangedでメディアが初期化されます');
+          }
+          
+          // PageControllerでジャンプ
+          if (_pageController.hasClients) {
+            await _pageController.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+            
+            if (kDebugMode) {
+              debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
+            }
+          }
+        }
+      } else {
+        // 投稿データの取得に失敗した場合でも、既存の投稿にジャンプ
+        if (kDebugMode) {
+          debugPrint('⚠️ 投稿データの取得に失敗しましたが、既存の投稿にジャンプします');
+        }
+        
+        // PageControllerでジャンプ
+        if (_pageController.hasClients) {
+          await _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+          
+          if (kDebugMode) {
+            debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
+          }
         }
       }
       
       // ターゲット投稿IDをクリア
       navigationProvider.clearTargetPostId();
+      _lastTargetPostId = null;
     } else {
       // 見つからなかった場合は、その投稿を取得して追加
       if (kDebugMode) {
         debugPrint('🔍 投稿が見つかりません。取得を試みます...');
       }
       
-      await _fetchAndJumpToPost(targetPostId);
+      final expectedTitle = navigationProvider.targetPostTitle;
+      final success = await _fetchAndJumpToPost(targetPostId, expectedTitle: expectedTitle);
+      
+      // 処理完了後、ターゲット投稿IDをクリア
+      if (mounted) {
+        if (!success) {
+          // 投稿取得に失敗した場合、タイトルで検索を試みる
+          if (expectedTitle != null && expectedTitle.isNotEmpty) {
+            if (kDebugMode) {
+              debugPrint('🔍 タイトルで検索を試みます: $expectedTitle');
+            }
+            
+            final titleMatchIndex = _posts.indexWhere((post) => post.title == expectedTitle);
+            if (titleMatchIndex >= 0) {
+              if (kDebugMode) {
+                debugPrint('✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
+              }
+              
+              if (_pageController.hasClients) {
+                await _pageController.animateToPage(
+                  titleMatchIndex,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              }
+            } else {
+              if (kDebugMode) {
+                debugPrint('❌ タイトルで一致する投稿が見つかりませんでした');
+              }
+            }
+          }
+        }
+        
+        navigationProvider.clearTargetPostId();
+        _lastTargetPostId = null;
+      }
     }
   }
   
   /// 特定の投稿を取得してジャンプ
-  Future<void> _fetchAndJumpToPost(String postId) async {
+  Future<bool> _fetchAndJumpToPost(String postId, {String? expectedTitle}) async {
     try {
       // 投稿IDから数値に変換
       final contentId = int.tryParse(postId);
@@ -241,18 +526,34 @@ class _HomeScreenState extends State<HomeScreen>
         if (kDebugMode) {
           debugPrint('❌ 無効な投稿ID: $postId');
         }
-        return;
+        return false;
       }
       
-      // その投稿を取得（PostService.fetchPostsを使用して、startIdを指定）
-      final posts = await PostService.fetchPosts(limit: 1, startId: contentId);
+      // その投稿を直接取得（PostService.fetchPostDetailを使用）
+      final post = await PostService.fetchPostDetail(postId);
       
-      if (posts.isNotEmpty && posts.first.id == postId) {
-        final targetPost = posts.first;
+      if (kDebugMode) {
+        if (post != null) {
+          debugPrint('🔍 投稿取得結果: 成功');
+          debugPrint('  - 取得した投稿ID: ${post.id} (type: ${post.id.runtimeType})');
+          debugPrint('  - 期待する投稿ID: $postId (type: ${postId.runtimeType})');
+          debugPrint('  - title: ${post.title}');
+          debugPrint('  - type: ${post.type}');
+          debugPrint('  - contentPath: ${post.contentPath}');
+          debugPrint('  - mediaUrl: ${post.mediaUrl}');
+          debugPrint('  - thumbnailUrl: ${post.thumbnailUrl}');
+          debugPrint('  - username: ${post.username}');
+        } else {
+          debugPrint('🔍 投稿取得結果: 失敗（投稿が見つかりません）');
+        }
+      }
+      
+      if (post != null && post.id.toString() == postId.toString()) {
+        final targetPost = post;
         
         if (!_isDisposed && mounted) {
           // 投稿リストに追加（既に存在する場合はスキップ）
-          final existingIndex = _posts.indexWhere((post) => post.id == postId);
+          final existingIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
           
           if (existingIndex < 0) {
             // 新しい投稿なので、適切な位置に挿入
@@ -275,8 +576,12 @@ class _HomeScreenState extends State<HomeScreen>
             // setStateの完了を待ってからジャンプ
             await Future.delayed(const Duration(milliseconds: 50));
             
-            final newIndex = _posts.indexWhere((post) => post.id == postId);
+            final newIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
             if (newIndex >= 0 && _pageController.hasClients) {
+              if (kDebugMode) {
+                debugPrint('✅ 投稿を追加しました: インデックス $newIndex, 投稿ID=${_posts[newIndex].id}');
+              }
+              
               // animateToPageはonPageChangedを自動的に呼び出す
               await _pageController.animateToPage(
                 newIndex,
@@ -285,20 +590,47 @@ class _HomeScreenState extends State<HomeScreen>
               );
               
               // animateToPageの完了を待ってから、念のためインデックスを確認
-              if (mounted && _currentIndex != newIndex) {
-                setState(() {
-                  _currentIndex = newIndex;
-                });
-                _handleMediaPageChange(newIndex);
+              if (mounted) {
+                // 再度インデックスを確認（setStateの後なので確実に更新されているはず）
+                final finalIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
+                if (finalIndex >= 0) {
+                  if (_currentIndex != finalIndex) {
+                    setState(() {
+                      _currentIndex = finalIndex;
+                    });
+                    _handleMediaPageChange(finalIndex);
+                  }
+                  
+                  if (kDebugMode) {
+                    debugPrint('✅ ジャンプ完了: インデックス $finalIndex, 現在の投稿ID=${_posts[finalIndex].id}');
+                  }
+                  
+                  // ターゲット投稿IDをクリア
+                  final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                  navigationProvider.clearTargetPostId();
+                  _lastTargetPostId = null;
+                  
+                  return true; // 成功
+                } else {
+                  if (kDebugMode) {
+                    debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
+                  }
+                  return false; // 失敗
+                }
               }
-              
+            } else {
               if (kDebugMode) {
-                debugPrint('✅ 投稿を追加してジャンプしました: インデックス $newIndex');
+                debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
               }
+              return false; // 失敗
             }
           } else {
             // 既に存在する場合はそのインデックスにジャンプ
             if (_pageController.hasClients) {
+              if (kDebugMode) {
+                debugPrint('✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
+              }
+              
               // animateToPageはonPageChangedを自動的に呼び出す
               await _pageController.animateToPage(
                 existingIndex,
@@ -307,28 +639,41 @@ class _HomeScreenState extends State<HomeScreen>
               );
               
               // animateToPageの完了を待ってから、念のためインデックスを確認
-              if (mounted && _currentIndex != existingIndex) {
-                setState(() {
-                  _currentIndex = existingIndex;
-                });
-                _handleMediaPageChange(existingIndex);
+              if (mounted) {
+                if (_currentIndex != existingIndex) {
+                  setState(() {
+                    _currentIndex = existingIndex;
+                  });
+                  _handleMediaPageChange(existingIndex);
+                }
+                
+                if (kDebugMode) {
+                  debugPrint('✅ ジャンプ完了: インデックス $existingIndex, 現在の投稿ID=${_posts[existingIndex].id}');
+                }
+                
+                // ターゲット投稿IDをクリア
+                final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                navigationProvider.clearTargetPostId();
+                _lastTargetPostId = null;
+                
+                return true; // 成功
               }
             }
+            return true; // 成功（既存の投稿にジャンプ）
           }
-          
-          // ターゲット投稿IDをクリア
-          final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
-          navigationProvider.clearTargetPostId();
         }
+        return false; // 失敗（投稿が見つからない）
       } else {
         if (kDebugMode) {
           debugPrint('❌ 投稿の取得に失敗しました: $postId');
         }
+        return false; // 失敗
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ 投稿取得エラー: $e');
       }
+      return false; // 失敗
     }
   }
   
@@ -345,7 +690,8 @@ class _HomeScreenState extends State<HomeScreen>
       final nextStartId = lastId + 1;
       
       if (kDebugMode) {
-        debugPrint('📝 追加読み込み開始: startId=$nextStartId, limit=$_batchLoadCount');
+        debugPrint('📝 追加読み込み開始: 最後の投稿ID=$lastId, startId=$nextStartId, limit=$_batchLoadCount');
+        debugPrint('📝 取得済みID: ${_fetchedContentIds.toList()}');
       }
       
       // 次のIDから追加読み込み
@@ -355,20 +701,40 @@ class _HomeScreenState extends State<HomeScreen>
       );
       
       if (!_isDisposed && mounted && morePosts.isNotEmpty) {
-        setState(() {
-          _posts.addAll(morePosts);
-          
-          // 取得済みコンテンツIDを記録
-          for (final post in morePosts) {
-            _fetchedContentIds.add(post.id);
-          }
-          
-          // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
-          _hasMorePosts = morePosts.length >= _batchLoadCount;
-        });
+        // 重複を防ぐために、既に取得済みの投稿を除外
+        final newPosts = morePosts.where((post) => !_fetchedContentIds.contains(post.id)).toList();
         
         if (kDebugMode) {
-          debugPrint('📝 追加読み込み完了: ${morePosts.length}件（合計: ${_posts.length}件）');
+          debugPrint('📝 取得した投稿: ${morePosts.length}件、重複除外後: ${newPosts.length}件');
+          for (final post in newPosts) {
+            debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
+          }
+        }
+        
+        if (newPosts.isNotEmpty) {
+          setState(() {
+            _posts.addAll(newPosts);
+            
+            // 取得済みコンテンツIDを記録
+            for (final post in newPosts) {
+              _fetchedContentIds.add(post.id);
+            }
+            
+            // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
+            _hasMorePosts = newPosts.length >= _batchLoadCount;
+          });
+          
+          if (kDebugMode) {
+            debugPrint('📝 追加読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
+          }
+        } else {
+          // 全て重複していた場合は、次のIDから再試行
+          if (kDebugMode) {
+            debugPrint('📝 全て重複していたため、次のIDから再試行');
+          }
+          setState(() {
+            _hasMorePosts = true; // 再試行のためtrueに設定
+          });
         }
       } else {
         setState(() {
@@ -538,6 +904,10 @@ class _HomeScreenState extends State<HomeScreen>
     
     // リアルタイム更新を停止
     _updateTimer?.cancel();
+    _seekBarUpdateTimer?.cancel();
+    _seekDebounceTimer?.cancel();
+    _seekBarUpdateTimerAudio?.cancel();
+    _seekDebounceTimerAudio?.cancel();
     
     // アイコン更新イベントのリスナーを解除
     _iconUpdateSubscription?.cancel();
@@ -624,6 +994,34 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    // NavigationProviderのtargetPostIdを監視
+    return Consumer<NavigationProvider>(
+      builder: (context, navigationProvider, child) {
+        // targetPostIdが変更された場合、ジャンプ処理を実行
+        final targetPostId = navigationProvider.targetPostId;
+        if (targetPostId != null && 
+            targetPostId != _lastTargetPostId && 
+            !_isLoading && 
+            mounted) {
+          if (kDebugMode) {
+            debugPrint('🔄 build内でターゲット投稿IDを検出: $targetPostId');
+          }
+          
+          // 次のフレームで実行（build中にsetStateを呼ばないように）
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && targetPostId == navigationProvider.targetPostId) {
+              // _checkAndJumpToTargetPost内で_lastTargetPostIdを設定するため、ここでは設定しない
+              _checkAndJumpToTargetPost();
+            }
+          });
+        }
+        
+        return _buildScaffold(context);
+      },
+    );
+  }
+  
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: _isLoading
@@ -731,6 +1129,16 @@ class _HomeScreenState extends State<HomeScreen>
                                     // 大量コンテンツ対応：ビューポート範囲を制限
                                     allowImplicitScrolling: false,
                                     onPageChanged: (index) {
+                                      if (kDebugMode) {
+                                        debugPrint('📄 onPageChanged: インデックス $index, 投稿数=${_posts.length}');
+                                        if (index < _posts.length) {
+                                          debugPrint('  - 投稿ID: ${_posts[index].id}');
+                                          debugPrint('  - タイトル: ${_posts[index].title}');
+                                          debugPrint('  - 投稿者: ${_posts[index].username}');
+                                          debugPrint('  - タイプ: ${_posts[index].type}');
+                                        }
+                                      }
+                                      
                                       setState(() {
                                         _currentIndex = index;
                                         _resetSpotlightState();
@@ -916,7 +1324,10 @@ class _HomeScreenState extends State<HomeScreen>
                 }
               },
               onHorizontalDragUpdate: (details) {
-                if (_isSeeking && controller != null && controller.value.isInitialized) {
+                if (controller != null && controller.value.isInitialized) {
+                  if (!_isSeeking) {
+                    _startSeeking(controller);
+                  }
                   _updateSeeking(details, controller);
                 }
               },
@@ -940,24 +1351,54 @@ class _HomeScreenState extends State<HomeScreen>
   
   /// シーク開始
   void _startSeeking(VideoPlayerController controller) {
+    if (!controller.value.isInitialized) return;
+    
+    // シークバー更新タイマーを一時停止
+    _seekBarUpdateTimer?.cancel();
+    
+    // 動画を一時停止（シーク中は再生を停止）
+    final wasPlaying = controller.value.isPlaying;
+    if (wasPlaying) {
+      controller.pause();
+    }
+    
     setState(() {
       _isSeeking = true;
       _seekPosition = controller.value.position.inMilliseconds.toDouble() /
           controller.value.duration.inMilliseconds.toDouble();
     });
+    
+    if (kDebugMode) {
+      debugPrint('🎯 シーク開始: ${_formatDuration(controller.value.position)} / ${_formatDuration(controller.value.duration)}');
+    }
   }
   
   /// シーク中
   void _updateSeeking(DragUpdateDetails details, VideoPlayerController controller) {
-    if (!controller.value.isInitialized) return;
+    if (!controller.value.isInitialized || _seekPosition == null) return;
     
     final screenWidth = MediaQuery.of(context).size.width;
     final dragDelta = details.delta.dx;
     final dragRatio = dragDelta / screenWidth;
     
     setState(() {
-      _seekPosition = (_seekPosition ?? 0.0) + dragRatio;
+      _seekPosition = _seekPosition! + dragRatio;
       _seekPosition = _seekPosition!.clamp(0.0, 1.0);
+    });
+    
+    // デバウンス処理：100msごとに動画の再生位置を更新
+    _seekDebounceTimer?.cancel();
+    _seekDebounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (_seekPosition != null && controller.value.isInitialized) {
+        final targetPosition = Duration(
+          milliseconds: (_seekPosition! * controller.value.duration.inMilliseconds).round(),
+        );
+        controller.seekTo(targetPosition);
+        
+        if (kDebugMode) {
+          debugPrint('🎯 シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)} (progress: ${_seekPosition!.toStringAsFixed(3)})');
+        }
+      }
     });
   }
   
@@ -965,16 +1406,284 @@ class _HomeScreenState extends State<HomeScreen>
   void _endSeeking(VideoPlayerController controller) {
     if (!controller.value.isInitialized || _seekPosition == null) return;
     
+    // デバウンスタイマーをキャンセルして、即座に最終位置に移動
+    _seekDebounceTimer?.cancel();
+    
     final targetPosition = Duration(
       milliseconds: (_seekPosition! * controller.value.duration.inMilliseconds).round(),
     );
     
-    controller.seekTo(targetPosition);
+    // 動画の再生位置を変更
+    controller.seekTo(targetPosition).then((_) {
+      // シーク前が再生中だった場合は再開
+      // ただし、シーク中は一時停止しているので、常に再生を再開
+      if (!_isDisposed && mounted) {
+        controller.play();
+      }
+    });
+    
+    if (kDebugMode) {
+      debugPrint('🎯 シーク終了: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)}');
+    }
     
     setState(() {
       _isSeeking = false;
       _seekPosition = null;
     });
+    
+    // シークバー更新タイマーを再開
+    _startSeekBarUpdateTimer();
+  }
+  
+  /// 音声シーク開始
+  void _startSeekingAudio(AudioPlayer player) {
+    if (player.duration == null) return;
+    
+    // シークバー更新タイマーを一時停止
+    _seekBarUpdateTimerAudio?.cancel();
+    
+    // 音声を一時停止（シーク中は再生を停止）
+    final wasPlaying = player.playing;
+    if (wasPlaying) {
+      player.pause();
+    }
+    
+    setState(() {
+      _isSeekingAudio = true;
+      final currentPosition = player.position;
+      final duration = player.duration ?? Duration.zero;
+      if (duration.inMilliseconds > 0) {
+        _seekPositionAudio = currentPosition.inMilliseconds.toDouble() / duration.inMilliseconds.toDouble();
+      } else {
+        _seekPositionAudio = 0.0;
+      }
+    });
+    
+    if (kDebugMode) {
+      debugPrint('🎵 音声シーク開始: ${_formatDuration(player.position)} / ${_formatDuration(player.duration ?? Duration.zero)}');
+    }
+  }
+  
+  /// 音声シーク中
+  void _updateSeekingAudio(DragUpdateDetails details, AudioPlayer player) {
+    if (player.duration == null || _seekPositionAudio == null) return;
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dragDelta = details.delta.dx;
+    final dragRatio = dragDelta / screenWidth;
+    
+    setState(() {
+      _seekPositionAudio = _seekPositionAudio! + dragRatio;
+      _seekPositionAudio = _seekPositionAudio!.clamp(0.0, 1.0);
+    });
+    
+    // デバウンス処理：100msごとに音声の再生位置を更新
+    _seekDebounceTimerAudio?.cancel();
+    _seekDebounceTimerAudio = Timer(const Duration(milliseconds: 100), () {
+      if (_seekPositionAudio != null && player.duration != null) {
+        final targetPosition = Duration(
+          milliseconds: (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
+        );
+        player.seek(targetPosition);
+        
+        if (kDebugMode) {
+          debugPrint('🎵 音声シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(player.duration!)} (progress: ${_seekPositionAudio!.toStringAsFixed(3)})');
+        }
+      }
+    });
+  }
+  
+  /// 音声シーク終了
+  void _endSeekingAudio(AudioPlayer player) {
+    if (player.duration == null || _seekPositionAudio == null) return;
+    
+    // デバウンスタイマーをキャンセルして、即座に最終位置に移動
+    _seekDebounceTimerAudio?.cancel();
+    
+    final targetPosition = Duration(
+      milliseconds: (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
+    );
+    
+    // 音声の再生位置を変更
+    player.seek(targetPosition).then((_) {
+      // シーク前が再生中だった場合は再開
+      if (!_isDisposed && mounted) {
+        player.play();
+      }
+    });
+    
+    setState(() {
+      _isSeekingAudio = false;
+      _seekPositionAudio = null;
+    });
+    
+    // シークバー更新タイマーを再開
+    _startSeekBarUpdateTimerAudio();
+  }
+  
+  /// 音声シークバー更新タイマーを開始
+  void _startSeekBarUpdateTimerAudio() {
+    _seekBarUpdateTimerAudio?.cancel();
+    _seekBarUpdateTimerAudio = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isDisposed && mounted && _currentPlayingAudio != null && !_isSeekingAudio) {
+        final player = _audioPlayers[_currentPlayingAudio];
+        if (player != null) {
+          setState(() {
+            // シークバーの更新をトリガー
+          });
+        } else {
+          // プレイヤーが初期化されていない場合はタイマーを停止
+          timer.cancel();
+        }
+      } else if (_currentPlayingAudio == null) {
+        // 再生中の音声がない場合はタイマーを停止
+        timer.cancel();
+      }
+    });
+  }
+  
+  /// 音声用シークバーを構築（ナビゲーションバーの真上に表示）
+  Widget _buildAudioSeekBar(AudioPlayer player) {
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, positionSnapshot) {
+        final position = _isSeekingAudio && _seekPositionAudio != null
+            ? Duration(milliseconds: (_seekPositionAudio! * (player.duration?.inMilliseconds ?? 0)).round())
+            : (positionSnapshot.data ?? Duration.zero);
+        final duration = player.duration ?? Duration.zero;
+        final progress = duration.inMilliseconds > 0
+            ? position.inMilliseconds / duration.inMilliseconds
+            : 0.0;
+        
+        // ナビゲーションバーの高さを考慮（約80px）
+        return Positioned(
+          bottom: 80,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.8),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // 時間表示（画面右のシークバーの上）
+                Padding(
+                  padding: const EdgeInsets.only(right: 0, bottom: 8),
+                  child: Text(
+                    '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                // シークバー（画面の一番左から右まで）
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragStart: (details) {
+                    if (player.duration == null) return;
+                    _startSeekingAudio(player);
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    if (player.duration == null) return;
+                    if (!_isSeekingAudio) {
+                      _startSeekingAudio(player);
+                    }
+                    _updateSeekingAudio(details, player);
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (player.duration == null) return;
+                    _endSeekingAudio(player);
+                  },
+                  onTapDown: (details) {
+                    if (player.duration == null) return;
+                    
+                    // シークバーのコンテナ内の座標を取得
+                    final containerWidth = MediaQuery.of(context).size.width;
+                    final tapX = details.localPosition.dx.clamp(0.0, containerWidth);
+                    final tapRatio = tapX / containerWidth;
+                    final targetPosition = Duration(
+                      milliseconds: (tapRatio.clamp(0.0, 1.0) * duration.inMilliseconds).round(),
+                    );
+                    
+                    player.seek(targetPosition);
+                    
+                    if (kDebugMode) {
+                      debugPrint('🎵 音声シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 20, // タップ領域を広げる
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Stack(
+                      children: [
+                        // 背景バー
+                        Container(
+                          width: double.infinity,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        // 再生済み部分（左から右へ）
+                        Positioned(
+                          left: 0,
+                          top: 8,
+                          child: FractionallySizedBox(
+                            widthFactor: progress,
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B35),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // シークハンドル
+                        Positioned(
+                          left: MediaQuery.of(context).size.width * progress - 6,
+                          top: 4,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
   
   /// シークバーを構築（ナビゲーションバーの真上に表示）
@@ -997,7 +1706,7 @@ class _HomeScreenState extends State<HomeScreen>
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -1010,52 +1719,90 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // シークバー
+            // 時間表示（画面右のシークバーの上）
+            Padding(
+              padding: const EdgeInsets.only(right: 0, bottom: 8),
+              child: Text(
+                '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            // シークバー（画面の一番左から右まで）
             GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onHorizontalDragStart: (details) {
+                if (!controller.value.isInitialized) return;
                 _startSeeking(controller);
               },
               onHorizontalDragUpdate: (details) {
+                if (!controller.value.isInitialized) return;
+                if (!_isSeeking) {
+                  _startSeeking(controller);
+                }
                 _updateSeeking(details, controller);
               },
               onHorizontalDragEnd: (details) {
+                if (!controller.value.isInitialized) return;
                 _endSeeking(controller);
               },
               onTapDown: (details) {
                 if (!controller.value.isInitialized) return;
                 
-                final screenWidth = MediaQuery.of(context).size.width;
-                final tapX = details.localPosition.dx;
-                final tapRatio = (tapX - 16) / (screenWidth - 32); // パディングを考慮
+                // シークバーのコンテナ内の座標を取得
+                final containerWidth = MediaQuery.of(context).size.width;
+                final tapX = details.localPosition.dx.clamp(0.0, containerWidth);
+                final tapRatio = tapX / containerWidth;
                 final targetPosition = Duration(
                   milliseconds: (tapRatio.clamp(0.0, 1.0) * controller.value.duration.inMilliseconds).round(),
                 );
                 
                 controller.seekTo(targetPosition);
+                
+                if (kDebugMode) {
+                  debugPrint('🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
+                }
               },
               child: Container(
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                width: double.infinity,
+                height: 20, // タップ領域を広げる
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Stack(
                   children: [
-                    // 再生済み部分
-                    FractionallySizedBox(
-                      widthFactor: progress,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B35),
-                          borderRadius: BorderRadius.circular(2),
+                    // 背景バー
+                    Container(
+                      width: double.infinity,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // 再生済み部分（左から右へ）
+                    Positioned(
+                      left: 0,
+                      top: 8,
+                      child: FractionallySizedBox(
+                        widthFactor: progress,
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B35),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
                     ),
                     // シークハンドル
                     Positioned(
-                      left: (MediaQuery.of(context).size.width - 32) * progress - 6,
-                      top: -4,
+                      left: MediaQuery.of(context).size.width * progress - 6,
+                      top: 4,
                       child: Container(
                         width: 12,
                         height: 12,
@@ -1075,28 +1822,6 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            // 時間表示
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _formatDuration(position),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  _formatDuration(duration),
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -1217,123 +1942,114 @@ class _HomeScreenState extends State<HomeScreen>
     final player = _audioPlayers[postIndex];
     final isPlaying = _currentPlayingAudio == postIndex && player != null;
 
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment.center,
-          radius: 1.0,
-          colors: [
-            SpotLightColors.getSpotlightColor(2).withOpacity(0.3),
-            Colors.black,
-          ],
-        ),
-      ),
-      child: GestureDetector(
-        onTap: () => _toggleAudioPlayback(postIndex),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 音声視覚化エフェクト
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: isPlaying ? 160 : 120,
-                height: isPlaying ? 160 : 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: SpotLightColors.getSpotlightColor(2)
-                      .withOpacity(isPlaying ? 0.3 : 0.1),
-                  border: Border.all(
-                    color:
-                        SpotLightColors.getSpotlightColor(2).withOpacity(0.8),
-                    width: 2,
-                  ),
-                ),
-                child: Icon(
-                  isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                  size: isPlaying ? 80 : 60,
-                ),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                '音声投稿',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
-              // 再生進捗
-              if (player != null)
-                Container(
-                  width: 250,
-                  child: StreamBuilder<Duration>(
-                    stream: player.positionStream,
-                    builder: (context, snapshot) {
-                      final position = snapshot.data ?? Duration.zero;
-                      final duration = player.duration ?? Duration.zero;
-
-                      return Column(
-                        children: [
-                          Slider(
-                            value: duration.inMilliseconds > 0
-                                ? position.inMilliseconds /
-                                    duration.inMilliseconds
-                                : 0.0,
-                            onChanged: (value) {
-                              if (duration.inMilliseconds > 0) {
-                                final newPosition = Duration(
-                                  milliseconds:
-                                      (value * duration.inMilliseconds).round(),
-                                );
-                                player.seek(newPosition);
-                              }
-                            },
-                            activeColor: SpotLightColors.getSpotlightColor(2),
-                            inactiveColor: Colors.grey[600],
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _formatDuration(position),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                _formatDuration(duration),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
+    return Stack(
+      children: [
+        // モダンな背景デザイン
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                SpotLightColors.getSpotlightColor(2).withOpacity(0.4),
+                SpotLightColors.getSpotlightColor(1).withOpacity(0.3),
+                Colors.black,
+                Colors.black,
+              ],
+              stops: const [0.0, 0.3, 0.7, 1.0],
+            ),
+          ),
+          child: CustomPaint(
+            painter: _AudioBackgroundPainter(isPlaying: isPlaying),
+            child: GestureDetector(
+              onTap: () {
+                if (!_isSeekingAudio) {
+                  _toggleAudioPlayback(postIndex);
+                }
+              },
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 音声視覚化エフェクト（モダンなデザイン）
+                    Container(
+                      width: 200,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            SpotLightColors.getSpotlightColor(2).withOpacity(0.6),
+                            SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+                            Colors.transparent,
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: SpotLightColors.getSpotlightColor(2).withOpacity(0.5),
+                            blurRadius: isPlaying ? 40 : 20,
+                            spreadRadius: isPlaying ? 10 : 5,
                           ),
                         ],
-                      );
-                    },
-                  ),
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black.withOpacity(0.3),
+                          border: Border.all(
+                            color: SpotLightColors.getSpotlightColor(2).withOpacity(0.8),
+                            width: 3,
+                          ),
+                        ),
+                        child: Icon(
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: isPlaying ? 90 : 70,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    Text(
+                      '音声投稿',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.5),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 音声初期化中のローディング表示
+                    if (postIndex == _currentIndex &&
+                        post.postType == PostType.audio &&
+                        !_initializedAudios.contains(postIndex))
+                      const Padding(
+                        padding: EdgeInsets.only(top: 30),
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6B35),
+                        ),
+                      ),
+                  ],
                 ),
-              // 音声初期化中のローディング表示
-              if (postIndex == _currentIndex &&
-                  post.postType == PostType.audio &&
-                  !_initializedAudios.contains(postIndex))
-                const Padding(
-                  padding: EdgeInsets.only(top: 20),
-                  child: CircularProgressIndicator(
-                    color: Color(0xFFFF6B35),
-                  ),
-                ),
-            ],
+              ),
+            ),
           ),
         ),
-      ),
+        // シークバー（音声が初期化されている場合は常に表示）
+        if (postIndex == _currentIndex &&
+            player != null &&
+            _initializedAudios.contains(postIndex))
+          _buildAudioSeekBar(player),
+      ],
     );
   }
 
@@ -1357,22 +2073,25 @@ class _HomeScreenState extends State<HomeScreen>
           // 投稿者情報
           Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: SpotLightColors.getSpotlightColor(0),
-                child: ClipOval(
-                  key: ValueKey(
-                      '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
-                  child: RobustNetworkImage(
-                    imageUrl: post.userIconUrl ?? 
-                        (post.userIconPath.isNotEmpty
-                            ? '${AppConfig.backendUrl}/icon/${post.userIconPath}'
-                            : '${AppConfig.backendUrl}/icon/default_icon.jpg'),
-                    fit: BoxFit.cover,
-                    maxWidth: 80,
-                    maxHeight: 80,
-                    placeholder: Container(),
-                    errorWidget: Container(),
+              // RepaintBoundaryでアイコン部分を分離し、setStateの影響を受けないようにする
+              RepaintBoundary(
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: SpotLightColors.getSpotlightColor(0),
+                  child: ClipOval(
+                    key: ValueKey(
+                        '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
+                    child: RobustNetworkImage(
+                      imageUrl: post.userIconUrl ?? 
+                          (post.userIconPath.isNotEmpty
+                              ? '${AppConfig.backendUrl}/icon/${post.userIconPath}'
+                              : '${AppConfig.backendUrl}/icon/default_icon.jpg'),
+                      fit: BoxFit.cover,
+                      maxWidth: 80,
+                      maxHeight: 80,
+                      placeholder: Container(),
+                      errorWidget: Container(),
+                    ),
                   ),
                 ),
               ),
@@ -1439,6 +2158,13 @@ class _HomeScreenState extends State<HomeScreen>
           color: Colors.white,
           label: '${post.comments}',
           onTap: () => _handleCommentButton(post),
+        ),
+        const SizedBox(height: 20),
+        // プレイリスト追加ボタン
+        _buildControlButton(
+          icon: Icons.playlist_add,
+          color: Colors.white,
+          onTap: () => _handlePlaylistButton(post),
         ),
         const SizedBox(height: 20),
         // 共有ボタン
@@ -1625,138 +2351,189 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _handleCommentButton(Post post) {
+    final commentController = TextEditingController();
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
-                  width: 1,
-                ),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ヘッダー
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            bool isLoading = false;
+            List<Comment> comments = [];
+            
+            // コメント一覧を取得
+            if (comments.isEmpty && !isLoading) {
+              isLoading = true;
+              CommentService.getComments(post.id).then((fetchedComments) {
+                if (mounted) {
+                  setModalState(() {
+                    comments = fetchedComments;
+                    isLoading = false;
+                  });
+                }
+              });
+            }
+            
+            return DraggableScrollableSheet(
+              initialChildSize: 0.7,
+              minChildSize: 0.5,
+              maxChildSize: 0.9,
+              builder: (context, scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.85),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'コメント',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        // ヘッダー
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'コメント',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close, color: Colors.white),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white),
+                        const SizedBox(height: 20),
+
+                        // コメント一覧
+                        Expanded(
+                          child: isLoading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFFFF6B35),
+                                  ),
+                                )
+                              : comments.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'コメントはありません',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      controller: scrollController,
+                                      itemCount: comments.length,
+                                      itemBuilder: (context, index) {
+                                        return _buildCommentItem(comments[index]);
+                                      },
+                                    ),
+                        ),
+
+                        // コメント入力
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: const Color(0xFFFF6B35),
+                                child: const Icon(Icons.person,
+                                    size: 16, color: Colors.white),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: commentController,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'コメントを追加...',
+                                    hintStyle: TextStyle(color: Colors.grey[400]),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey[800],
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              IconButton(
+                                onPressed: () async {
+                                  final commentText = commentController.text.trim();
+                                  if (commentText.isEmpty) return;
+                                  
+                                  // コメント送信
+                                  final success = await CommentService.addComment(
+                                    post.id,
+                                    commentText,
+                                  );
+                                  
+                                  if (success && mounted) {
+                                    commentController.clear();
+                                    // コメント一覧を再取得
+                                    final fetchedComments = await CommentService.getComments(post.id);
+                                    setModalState(() {
+                                      comments = fetchedComments;
+                                    });
+                                    
+                                    // 投稿のコメント数を更新
+                                    setState(() {
+                                      _posts[_currentIndex] = Post(
+                                        id: _posts[_currentIndex].id,
+                                        userId: _posts[_currentIndex].userId,
+                                        username: _posts[_currentIndex].username,
+                                        userIconPath: _posts[_currentIndex].userIconPath,
+                                        userIconUrl: _posts[_currentIndex].userIconUrl,
+                                        title: _posts[_currentIndex].title,
+                                        content: _posts[_currentIndex].content,
+                                        contentPath: _posts[_currentIndex].contentPath,
+                                        type: _posts[_currentIndex].type,
+                                        mediaUrl: _posts[_currentIndex].mediaUrl,
+                                        thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
+                                        likes: _posts[_currentIndex].likes,
+                                        playNum: _posts[_currentIndex].playNum,
+                                        link: _posts[_currentIndex].link,
+                                        comments: _posts[_currentIndex].comments + 1,
+                                        shares: _posts[_currentIndex].shares,
+                                        isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                                        isText: _posts[_currentIndex].isText,
+                                        nextContentId: _posts[_currentIndex].nextContentId,
+                                        createdAt: _posts[_currentIndex].createdAt,
+                                      );
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.send,
+                                    color: Color(0xFFFF6B35)),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
-
-                    // コメント一覧
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: 10, // 仮のコメント数
-                        itemBuilder: (context, index) {
-                          return _buildCommentItem(index);
-                        },
-                      ),
-                    ),
-
-                    // コメント入力
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: const Color(0xFFFF6B35),
-                            child: const Icon(Icons.person,
-                                size: 16, color: Colors.white),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                hintText: 'コメントを追加...',
-                                hintStyle: TextStyle(color: Colors.grey[400]),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[800],
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          IconButton(
-                            onPressed: () {
-                              // コメント送信
-                              setState(() {
-                                _posts[_currentIndex] = Post(
-                                  id: _posts[_currentIndex].id,
-                                  userId: _posts[_currentIndex].userId,
-                                  username: _posts[_currentIndex].username,
-                                  userIconPath:
-                                      _posts[_currentIndex].userIconPath,
-                                  userIconUrl:
-                                      _posts[_currentIndex].userIconUrl,
-                                  title: _posts[_currentIndex].title,
-                                  content: _posts[_currentIndex].content,
-                                  contentPath:
-                                      _posts[_currentIndex].contentPath,
-                                  type: _posts[_currentIndex].type,
-                                  mediaUrl: _posts[_currentIndex].mediaUrl,
-                                  thumbnailUrl:
-                                      _posts[_currentIndex].thumbnailUrl,
-                                  likes: _posts[_currentIndex].likes,
-                                  playNum: _posts[_currentIndex].playNum,
-                                  link: _posts[_currentIndex].link,
-                                  comments: _posts[_currentIndex].comments + 1,
-                                  shares: _posts[_currentIndex].shares,
-                                  isSpotlighted:
-                                      _posts[_currentIndex].isSpotlighted,
-                                  isText: _posts[_currentIndex].isText,
-                                  nextContentId:
-                                      _posts[_currentIndex].nextContentId,
-                                  createdAt: _posts[_currentIndex].createdAt,
-                                );
-                              });
-                            },
-                            icon: const Icon(Icons.send,
-                                color: Color(0xFFFF6B35)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -1764,75 +2541,344 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildCommentItem(int index) {
+  Widget _buildCommentItem(Comment comment) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: const Color(0xFFFF6B35),
-            child: const Icon(Icons.person, size: 16, color: Colors.white),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFFFF6B35),
+                backgroundImage: comment.userIconUrl != null
+                    ? CachedNetworkImageProvider(comment.userIconUrl!)
+                    : null,
+                child: comment.userIconUrl == null
+                    ? const Icon(Icons.person, size: 16, color: Colors.white)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Text(
+                          comment.username,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatCommentTime(comment.commenttimestamp),
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      'ユーザー${index + 1}',
+                      comment.commenttext,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${index + 1}時間前',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 12,
-                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {},
+                          icon: const Icon(Icons.thumb_up_outlined,
+                              color: Colors.grey, size: 16),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          onPressed: () {
+                            // 返信機能（将来実装）
+                          },
+                          icon: const Icon(Icons.reply, color: Colors.grey, size: 16),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'これはコメント${index + 1}の内容です。とても面白い投稿ですね！',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
+              ),
+            ],
+          ),
+          // 返信コメント
+          if (comment.replies.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 42),
+              child: Column(
+                children: comment.replies.map((reply) => _buildCommentItem(reply)).toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  String _formatCommentTime(String timestamp) {
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+      
+      if (difference.inDays > 0) {
+        return '${difference.inDays}日前';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}時間前';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}分前';
+      } else {
+        return 'たった今';
+      }
+    } catch (e) {
+      return timestamp;
+    }
+  }
+  
+  /// プレイリスト追加ボタンの処理
+  void _handlePlaylistButton(Post post) async {
+    try {
+      // プレイリスト一覧を取得
+      final playlists = await PlaylistService.getPlaylists();
+      
+      if (!mounted) return;
+      
+      if (playlists.isEmpty) {
+        // プレイリストがない場合は新規作成を促す
+        _showCreatePlaylistDialog(post);
+        return;
+      }
+      
+      // プレイリスト選択ダイアログを表示
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.9),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ヘッダー
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'プレイリストに追加',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () {},
-                      icon: const Icon(Icons.thumb_up_outlined,
-                          color: Colors.grey, size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      onPressed: () {},
-                      icon:
-                          const Icon(Icons.reply, color: Colors.grey, size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
+                // プレイリスト一覧
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: playlists.length + 1, // +1は新規作成ボタン
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        // 新規作成ボタン
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.add_circle_outline,
+                            color: Color(0xFFFF6B35),
+                          ),
+                          title: const Text(
+                            '新しいプレイリストを作成',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showCreatePlaylistDialog(post);
+                          },
+                        );
+                      }
+                      
+                      final playlist = playlists[index - 1];
+                      return ListTile(
+                        leading: playlist.thumbnailpath != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: Image.network(
+                                  '${AppConfig.backendUrl}${playlist.thumbnailpath}',
+                                  width: 40,
+                                  height: 40,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(
+                                      Icons.playlist_play,
+                                      color: Color(0xFFFF6B35),
+                                    );
+                                  },
+                                ),
+                              )
+                            : const Icon(
+                                Icons.playlist_play,
+                                color: Color(0xFFFF6B35),
+                              ),
+                        title: Text(
+                          playlist.title,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          final success = await PlaylistService.addContentToPlaylist(
+                            playlist.playlistid,
+                            post.id,
+                          );
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? 'プレイリストに追加しました'
+                                      : '追加に失敗しました',
+                                ),
+                                backgroundColor: success
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
+          );
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📋 プレイリスト取得エラー: $e');
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('プレイリストの取得に失敗しました'),
+            backgroundColor: Colors.red,
           ),
-        ],
-      ),
+        );
+      }
+    }
+  }
+  
+  /// プレイリスト作成ダイアログ
+  void _showCreatePlaylistDialog(Post post) {
+    final titleController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text(
+            '新しいプレイリストを作成',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: titleController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'プレイリスト名を入力',
+              hintStyle: TextStyle(color: Colors.grey[400]),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              filled: true,
+              fillColor: Colors.grey[800],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final title = titleController.text.trim();
+                if (title.isEmpty) return;
+                
+                Navigator.pop(context);
+                
+                final playlistId = await PlaylistService.createPlaylist(title);
+                
+                if (playlistId != null && mounted) {
+                  // 作成したプレイリストにコンテンツを追加
+                  final success = await PlaylistService.addContentToPlaylist(
+                    playlistId,
+                    post.id,
+                  );
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          success
+                              ? 'プレイリストを作成して追加しました'
+                              : '追加に失敗しました',
+                        ),
+                        backgroundColor: success
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    );
+                  }
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('プレイリストの作成に失敗しました'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                '作成',
+                style: TextStyle(color: Color(0xFFFF6B35)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2025,7 +3071,18 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _handleMediaPageChange(int newIndex) {
+    if (newIndex < 0 || newIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 無効なインデックス: $newIndex, 投稿数=${_posts.length}');
+      }
+      return;
+    }
+    
     final newPost = _posts[newIndex];
+    
+    if (kDebugMode) {
+      debugPrint('🔄 メディアページ変更: インデックス $newIndex, 投稿ID=${newPost.id}, type=${newPost.type}');
+    }
 
     // 前の動画を停止
     if (_currentPlayingVideo != null) {
@@ -2035,6 +3092,9 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _currentPlayingVideo = null;
     }
+    
+    // シークバー更新タイマーを停止
+    _seekBarUpdateTimer?.cancel();
     
     // シーク状態をリセット
     setState(() {
@@ -2054,6 +3114,9 @@ class _HomeScreenState extends State<HomeScreen>
     // 新しいページが動画投稿の場合
     if (newPost.postType == PostType.video) {
       _currentPlayingVideo = newIndex;
+      
+      // シークバー更新タイマーを開始
+      _startSeekBarUpdateTimer();
 
       // 動画コントローラーが初期化されていない場合は初期化
       if (!_initializedVideos.contains(newIndex)) {
@@ -2088,6 +3151,8 @@ class _HomeScreenState extends State<HomeScreen>
             if (player != null) {
               player.setLoopMode(LoopMode.one);
               player.play();
+              // シークバー更新タイマーを開始
+              _startSeekBarUpdateTimerAudio();
             }
           }
         });
@@ -2097,6 +3162,8 @@ class _HomeScreenState extends State<HomeScreen>
         if (player != null) {
           player.setLoopMode(LoopMode.one);
           player.play();
+          // シークバー更新タイマーを開始
+          _startSeekBarUpdateTimerAudio();
         }
       }
     } else if (newPost.postType == PostType.image) {
@@ -2205,12 +3272,35 @@ class _HomeScreenState extends State<HomeScreen>
           _currentPlayingAudio = postIndex;
         });
         await player.play();
+        // シークバー更新タイマーを開始
+        _startSeekBarUpdateTimerAudio();
       }
     } catch (e) {
       print('音声の再生に失敗: $e');
     }
   }
 
+  /// シークバー更新タイマーを開始（1秒ごとに更新）
+  void _startSeekBarUpdateTimer() {
+    _seekBarUpdateTimer?.cancel();
+    _seekBarUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isDisposed && mounted && _currentPlayingVideo != null && !_isSeeking) {
+        final controller = _videoControllers[_currentPlayingVideo];
+        if (controller != null && controller.value.isInitialized) {
+          setState(() {
+            // シークバーの更新をトリガー
+          });
+        } else {
+          // コントローラーが初期化されていない場合はタイマーを停止
+          timer.cancel();
+        }
+      } else if (_currentPlayingVideo == null) {
+        // 動画が再生されていない場合はタイマーを停止
+        timer.cancel();
+      }
+    });
+  }
+  
   /// 動画の再生位置が変更されたときのコールバック
   void _onVideoPositionChanged() {
     // シーク中でない場合のみ更新（シーク中は手動で更新しているため）
