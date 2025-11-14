@@ -66,18 +66,19 @@ class PostService {
 
     return null;
   }
+
   /// バックエンドから投稿一覧を取得（/api/content/detailを連続呼び出し）
-  /// 
+  ///
   /// contentID=1から昇順で取得します
   static Future<List<Post>> fetchPosts({
     int limit = 20,
     int startId = 1,
   }) async {
     final List<Post> posts = [];
-    
+
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         if (kDebugMode) {
           debugPrint('📝 JWTトークンが取得できません');
@@ -93,7 +94,7 @@ class PostService {
       for (int i = 0; i < limit; i++) {
         final contentId = startId + i;
         final url = '${AppConfig.apiBaseUrl}/content/detail';
-        
+
         if (kDebugMode) {
           debugPrint('📝 投稿詳細取得[$i]: contentID=$contentId, URL=$url');
         }
@@ -109,14 +110,15 @@ class PostService {
 
         if (response.statusCode == 200) {
           final responseData = jsonDecode(response.body);
-          
+
           if (kDebugMode) {
             debugPrint('📝 投稿詳細レスポンス[$i]: ${responseData.toString()}');
           }
-          
-          if (responseData['status'] == 'success' && responseData['data'] != null) {
+
+          if (responseData['status'] == 'success' &&
+              responseData['data'] != null) {
             final data = responseData['data'] as Map<String, dynamic>;
-            
+
             if (kDebugMode) {
               debugPrint('📝 投稿データ[$i] (ID=$contentId):');
               debugPrint('  contentpath: ${data['contentpath']}');
@@ -125,14 +127,14 @@ class PostService {
               debugPrint('  username: ${data['username']}');
               debugPrint('  iconimgpath: ${data['iconimgpath']}');
             }
-            
+
             // コンテンツIDを追加
             data['contentID'] = contentId;
-            
+
             // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
             final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
             posts.add(post);
-            
+
             if (kDebugMode) {
               debugPrint('📝 投稿変換完了[$i] (ID=$contentId):');
               debugPrint('  mediaUrl: ${post.mediaUrl}');
@@ -149,16 +151,16 @@ class PostService {
           }
         } else {
           if (kDebugMode) {
-            debugPrint('📝 投稿ID=$contentId HTTPエラー: ${response.statusCode}、スキップ');
+            debugPrint(
+                '📝 投稿ID=$contentId HTTPエラー: ${response.statusCode}、スキップ');
           }
           // 次のIDを試す（終了しない）
         }
       }
-      
+
       if (kDebugMode) {
         debugPrint('📝 投稿取得完了: ${posts.length}件');
       }
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('📝 投稿取得例外: $e');
@@ -175,13 +177,14 @@ class PostService {
   }) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         return [];
       }
 
-      final url = '${AppConfig.apiBaseUrl}/posts/spotlighted?page=$page&limit=$limit';
-      
+      final url =
+          '${AppConfig.apiBaseUrl}/posts/spotlighted?page=$page&limit=$limit';
+
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -192,10 +195,14 @@ class PostService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
           final List<dynamic> postsJson = responseData['data'];
-          return postsJson.map((json) => Post.fromJson(json, backendUrl: AppConfig.backendUrl)).toList();
+          return postsJson
+              .map((json) =>
+                  Post.fromJson(json, backendUrl: AppConfig.backendUrl))
+              .toList();
         }
       }
     } catch (e) {
@@ -211,17 +218,17 @@ class PostService {
   static Future<bool> spotlightOn(String postId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         return false;
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/on';
-      
+
       if (kDebugMode) {
         debugPrint('📝 スポットライトON URL: $url, contentID: $postId');
       }
-      
+
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -248,17 +255,17 @@ class PostService {
   static Future<bool> spotlightOff(String postId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         return false;
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/off';
-      
+
       if (kDebugMode) {
         debugPrint('📝 スポットライトOFF URL: $url, contentID: $postId');
       }
-      
+
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -285,7 +292,7 @@ class PostService {
   static Future<Post?> fetchPostDetail(String contentId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         if (kDebugMode) {
           debugPrint('📝 JWTトークンが取得できません');
@@ -294,7 +301,7 @@ class PostService {
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/detail';
-      
+
       if (kDebugMode) {
         debugPrint('📝 投稿詳細取得URL: $url');
       }
@@ -310,12 +317,13 @@ class PostService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (kDebugMode) {
           debugPrint('📝 投稿詳細レスポンス: ${responseData.toString()}');
         }
-        
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
           final Map<String, dynamic> data = responseData['data'];
           // contentIDを追加してPostモデルに変換
           data['contentID'] = contentId;
@@ -335,6 +343,70 @@ class PostService {
     return null;
   }
 
+  /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
+  static Future<List<Post>> getUserContents() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 JWTトークンが取得できません');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/users/getusercontents';
+
+      if (kDebugMode) {
+        debugPrint('📝 自分の投稿取得URL: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📝 自分の投稿取得レスポンス: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> postsJson = responseData['data'];
+
+          if (kDebugMode) {
+            debugPrint('📝 自分の投稿数: ${postsJson.length}');
+          }
+
+          return postsJson.map((json) {
+            // contentIDをidとして設定
+            final contentId = json['contentID']?.toString() ?? '';
+            json['id'] = contentId;
+            return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
+          }).toList();
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 自分の投稿取得エラー: ${response.statusCode}');
+          debugPrint('レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 自分の投稿取得例外: $e');
+      }
+    }
+
+    return [];
+  }
+
   /// 投稿を作成
   static Future<Map<String, dynamic>?> createPost({
     required String type, // video, image, audio, text
@@ -346,7 +418,7 @@ class PostService {
   }) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
-      
+
       if (jwtToken == null) {
         if (kDebugMode) {
           debugPrint('📝 JWTトークンが取得できません');
@@ -355,7 +427,7 @@ class PostService {
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/add';
-      
+
       if (kDebugMode) {
         debugPrint('📝 投稿作成URL: $url');
       }
@@ -404,11 +476,11 @@ class PostService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (kDebugMode) {
           debugPrint('📝 投稿作成レスポンス: ${responseData.toString()}');
         }
-        
+
         if (responseData['status'] == 'success') {
           return responseData['data'];
         }
@@ -426,4 +498,3 @@ class PostService {
     return null;
   }
 }
-
