@@ -1,8 +1,79 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
+import 'package:provider/provider.dart';
 import '../utils/spotlight_colors.dart';
+import '../models/post.dart';
+import '../services/post_service.dart';
+import '../widgets/robust_network_image.dart';
+import '../providers/navigation_provider.dart';
 
-class SpotlightListScreen extends StatelessWidget {
+class SpotlightListScreen extends StatefulWidget {
   const SpotlightListScreen({super.key});
+
+  @override
+  State<SpotlightListScreen> createState() => _SpotlightListScreenState();
+}
+
+class _SpotlightListScreenState extends State<SpotlightListScreen> {
+  List<Post> _posts = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserContents();
+  }
+
+  /// 自分の投稿を取得
+  Future<void> _fetchUserContents() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final posts = await PostService.getUserContents();
+
+      if (kDebugMode) {
+        debugPrint('📝 自分の投稿取得完了: ${posts.length}件');
+      }
+
+      if (mounted) {
+        setState(() {
+          _posts = posts;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 自分の投稿取得エラー: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _errorMessage = '投稿の取得に失敗しました';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// 日付を相対時間に変換（例: "3日前"）
+  String _formatRelativeTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}日前';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}時間前';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}分前';
+    } else {
+      return 'たった今';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -11,165 +82,249 @@ class SpotlightListScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
         foregroundColor: Colors.white,
-        title: const Text('スポットライト'),
+        title: const Text('自分の投稿'),
         elevation: 0,
         actions: [
           IconButton(
-            onPressed: () {
-              // フィルター機能
-            },
-            icon: const Icon(Icons.filter_list),
+            onPressed: _fetchUserContents,
+            icon: const Icon(Icons.refresh),
+            tooltip: '更新',
           ),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: 30, // サンプルデータ数
-        itemBuilder: (context, index) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              children: [
-                // サムネイル
-                Container(
-                  width: 160,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[800],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Stack(
-                    children: [
-                      const Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                      // スポットライトアイコン
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: SpotLightColors.getSpotlightColor(index),
-                            borderRadius: BorderRadius.circular(4),
-                            boxShadow: [
-                              BoxShadow(
-                                color: SpotLightColors.getSpotlightColor(index).withOpacity(0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.star,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                      // 動画時間
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            '2:30',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // タイトルと情報
-                Expanded(
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+              ),
+            )
+          : _errorMessage != null
+              ? Center(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.red[300],
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
                       Text(
-                        'スポットライトした投稿 ${index + 1}',
+                        _errorMessage!,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '投稿者名',
-                        style: TextStyle(
-                          color: Colors.grey[400],
-                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchUserContents,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF6B35),
+                        ),
+                        child: const Text('再試行'),
+                      ),
+                    ],
+                  ),
+                )
+              : _posts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.star,
-                            color: SpotLightColors.getSpotlightColor(index),
-                            size: 16,
+                            Icons.upload_outlined,
+                            color: Colors.grey[600],
+                            size: 64,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(height: 16),
                           Text(
-                            'スポットライト済み',
-                            style: TextStyle(
-                              color: SpotLightColors.getSpotlightColor(index),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${(index % 5) + 1}日前',
+                            '投稿がありません',
                             style: TextStyle(
                               color: Colors.grey[400],
-                              fontSize: 12,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '新しい投稿を作成してみましょう',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _fetchUserContents,
+                      color: const Color(0xFFFF6B35),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _posts.length,
+                        itemBuilder: (context, index) {
+                          final post = _posts[index];
+                          return _buildPostItem(context, post, index);
+                        },
+                      ),
+                    ),
+    );
+  }
+
+  Widget _buildPostItem(BuildContext context, Post post, int index) {
+    return GestureDetector(
+      onTap: () {
+        // 投稿をタップしたらホーム画面に遷移してその投稿を表示
+        final navigationProvider =
+            Provider.of<NavigationProvider>(context, listen: false);
+        navigationProvider.navigateToHome(postId: post.id);
+
+        if (kDebugMode) {
+          debugPrint('📱 投稿をタップ: ID=${post.id}, タイトル=${post.title}');
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          children: [
+            // サムネイル
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 160,
+                height: 90,
+                color: Colors.grey[800],
+                child: post.thumbnailUrl != null
+                    ? RobustNetworkImage(
+                        imageUrl: post.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              post.postType == PostType.video
+                                  ? Icons.play_circle_outline
+                                  : post.postType == PostType.image
+                                      ? Icons.image_outlined
+                                      : post.postType == PostType.audio
+                                          ? Icons.audiotrack_outlined
+                                          : Icons.text_fields_outlined,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          // スポットライトアイコン
+                          if (post.isSpotlighted)
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      SpotLightColors.getSpotlightColor(index),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: SpotLightColors.getSpotlightColor(
+                                              index)
+                                          .withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.star,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // タイトルと情報
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (post.isSpotlighted) ...[
+                        Icon(
+                          Icons.star,
+                          color: SpotLightColors.getSpotlightColor(index),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.likes}スポットライト',
+                          style: TextStyle(
+                            color: SpotLightColors.getSpotlightColor(index),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        '${post.playNum}回再生',
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                // メニューボタン
-                IconButton(
-                  onPressed: () {
-                    _showSpotlightMenuBottomSheet(context, index);
-                  },
-                  icon: const Icon(
-                    Icons.more_vert,
-                    color: Colors.grey,
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatRelativeTime(post.createdAt),
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          );
-        },
+            // メニューボタン
+            IconButton(
+              onPressed: () {
+                _showPostMenuBottomSheet(context, post, index);
+              },
+              icon: const Icon(
+                Icons.more_vert,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  void _showSpotlightMenuBottomSheet(BuildContext context, int index) {
+  void _showPostMenuBottomSheet(BuildContext context, Post post, int index) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -186,23 +341,33 @@ class SpotlightListScreen extends StatelessWidget {
               title: '再生',
               onTap: () {
                 Navigator.pop(context);
-                // 投稿を再生
+                // TODO: 投稿を再生（HomeScreenに遷移）
               },
             ),
-            _buildMenuOption(
-              icon: Icons.star_border,
-              title: 'スポットライトを解除',
-              onTap: () {
-                Navigator.pop(context);
-                _showRemoveSpotlightDialog(context, index);
-              },
-            ),
+            if (post.isSpotlighted)
+              _buildMenuOption(
+                icon: Icons.star_border,
+                title: 'スポットライトを解除',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showRemoveSpotlightDialog(context, post, index);
+                },
+              )
+            else
+              _buildMenuOption(
+                icon: Icons.star,
+                title: 'スポットライトを付ける',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddSpotlightDialog(context, post, index);
+                },
+              ),
             _buildMenuOption(
               icon: Icons.playlist_add,
               title: '再生リストに追加',
               onTap: () {
                 Navigator.pop(context);
-                // 再生リストに追加
+                // TODO: 再生リストに追加
               },
             ),
             _buildMenuOption(
@@ -210,15 +375,7 @@ class SpotlightListScreen extends StatelessWidget {
               title: '共有',
               onTap: () {
                 Navigator.pop(context);
-                // 共有機能
-              },
-            ),
-            _buildMenuOption(
-              icon: Icons.remove_circle_outline,
-              title: '履歴から削除',
-              onTap: () {
-                Navigator.pop(context);
-                // 履歴から削除
+                // TODO: 共有機能
               },
             ),
           ],
@@ -227,7 +384,7 @@ class SpotlightListScreen extends StatelessWidget {
     );
   }
 
-  void _showRemoveSpotlightDialog(BuildContext context, int index) {
+  void _showRemoveSpotlightDialog(BuildContext context, Post post, int index) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -249,12 +406,80 @@ class SpotlightListScreen extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // スポットライト解除処理
+              final success = await PostService.spotlightOff(post.id);
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('スポットライトを解除しました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _fetchUserContents();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('スポットライトの解除に失敗しました'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text(
               '解除',
+              style: TextStyle(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddSpotlightDialog(BuildContext context, Post post, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'スポットライトを付ける',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'この投稿にスポットライトを付けますか？',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final success = await PostService.spotlightOn(post.id);
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('スポットライトを付けました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _fetchUserContents();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('スポットライトの付与に失敗しました'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              '付ける',
               style: TextStyle(color: Color(0xFFFF6B35)),
             ),
           ),
