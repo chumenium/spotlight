@@ -58,9 +58,31 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.10
 
 flutter:
   uses-material-design: true
   
   assets:
     - assets/images/
+
+# アプリアイコンの設定
+# アイコン画像を assets/icon/icon.png に配置してください（1024x1024px推奨）
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+
+# スプラッシュスクリーン（起動アニメーション）の設定
+# スプラッシュ画像を assets/splash/splash.png に配置してください（1084x1920px推奨）
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/splash/splash.png"
+  android: true
+  ios: false
+  android_12:
+    image: "assets/splash/splash.png"
+    color: "#FFFFFF"
