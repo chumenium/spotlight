@@ -21,20 +21,19 @@ import '../models/comment.dart';
 /// 音声背景用のカスタムペインター
 class _AudioBackgroundPainter extends CustomPainter {
   final bool isPlaying;
-  
+
   _AudioBackgroundPainter({required this.isPlaying});
-  
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.fill;
-    
+    final paint = Paint()..style = PaintingStyle.fill;
+
     // 波紋エフェクト
     if (isPlaying) {
       final center = Offset(size.width / 2, size.height / 2);
       for (int i = 0; i < 3; i++) {
-        paint.color = SpotLightColors.getSpotlightColor(2)
-            .withOpacity(0.1 - (i * 0.03));
+        paint.color =
+            SpotLightColors.getSpotlightColor(2).withOpacity(0.1 - (i * 0.03));
         canvas.drawCircle(
           center,
           size.width * 0.3 + (i * 30),
@@ -42,7 +41,7 @@ class _AudioBackgroundPainter extends CustomPainter {
         );
       }
     }
-    
+
     // グラデーション円
     final gradientPaint = Paint()
       ..shader = RadialGradient(
@@ -53,13 +52,13 @@ class _AudioBackgroundPainter extends CustomPainter {
           Colors.transparent,
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    
+
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
       gradientPaint,
     );
   }
-  
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
@@ -95,13 +94,13 @@ class _HomeScreenState extends State<HomeScreen>
   final Map<int, VideoPlayerController?> _videoControllers = {};
   int? _currentPlayingVideo;
   final Set<int> _initializedVideos = {};
-  
+
   // シークバー関連（動画用）
   bool _isSeeking = false;
   double? _seekPosition; // シーク中の位置（0.0-1.0）
   Timer? _seekBarUpdateTimer; // シークバー更新用タイマー
   Timer? _seekDebounceTimer; // シーク中のデバウンスタイマー
-  
+
   // シークバー関連（音声用）
   bool _isSeekingAudio = false;
   double? _seekPositionAudio; // シーク中の位置（0.0-1.0）
@@ -173,21 +172,22 @@ class _HomeScreenState extends State<HomeScreen>
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
     final targetPostId = navigationProvider.targetPostId;
-    
+
     if (kDebugMode) {
-      debugPrint('🔄 didChangeDependencies: targetPostId=$targetPostId, _lastTargetPostId=$_lastTargetPostId, _isLoading=$_isLoading, _posts.length=${_posts.length}');
+      debugPrint(
+          '🔄 didChangeDependencies: targetPostId=$targetPostId, _lastTargetPostId=$_lastTargetPostId, _isLoading=$_isLoading, _posts.length=${_posts.length}');
     }
-    
+
     // ターゲット投稿IDが変更された場合、かつ投稿リストが読み込まれている場合
-    if (targetPostId != null && 
-        targetPostId != _lastTargetPostId && 
+    if (targetPostId != null &&
+        targetPostId != _lastTargetPostId &&
         !_isLoading) {
       if (kDebugMode) {
         debugPrint('✅ ターゲット投稿IDが変更されました: $targetPostId');
       }
-      
+
       _lastTargetPostId = targetPostId;
-      
+
       // 投稿リストが空の場合は、投稿を取得してからジャンプ
       if (_posts.isEmpty) {
         if (kDebugMode) {
@@ -222,10 +222,11 @@ class _HomeScreenState extends State<HomeScreen>
       if (kDebugMode) {
         debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件、startId=1）...');
       }
-      
+
       // 初回読み込みは必ずID=1から開始
-      final posts = await PostService.fetchPosts(limit: _initialLoadCount, startId: 1);
-      
+      final posts =
+          await PostService.fetchPosts(limit: _initialLoadCount, startId: 1);
+
       if (!_isDisposed && mounted) {
         setState(() {
           _posts = posts;
@@ -289,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen>
     final targetPostId = navigationProvider.targetPostId;
 
     if (targetPostId == null) return;
-    
+
     // 既に処理中の場合はスキップ（同じIDの処理が完了するまで待つ）
     if (_lastTargetPostId == targetPostId) {
       if (kDebugMode) {
@@ -297,24 +298,27 @@ class _HomeScreenState extends State<HomeScreen>
       }
       return;
     }
-    
+
     // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
     _lastTargetPostId = targetPostId;
-    
+
     if (kDebugMode) {
       debugPrint('🎯 ターゲット投稿ID: $targetPostId');
     }
-    
+
     // 現在の投稿リストから探す（文字列として比較）
-    final index = _posts.indexWhere((post) => post.id.toString() == targetPostId.toString());
-    
+    final index = _posts
+        .indexWhere((post) => post.id.toString() == targetPostId.toString());
+
     if (kDebugMode) {
-      debugPrint('🔍 投稿検索: targetPostId=$targetPostId, 現在の投稿数=${_posts.length}');
+      debugPrint(
+          '🔍 投稿検索: targetPostId=$targetPostId, 現在の投稿数=${_posts.length}');
       for (int i = 0; i < _posts.length; i++) {
-        debugPrint('  [$i] ID=${_posts[i].id} (type: ${_posts[i].id.runtimeType})');
+        debugPrint(
+            '  [$i] ID=${_posts[i].id} (type: ${_posts[i].id.runtimeType})');
       }
     }
-    
+
     if (index >= 0) {
       // 見つかった場合でも、完全なデータを再取得して更新する
       // 検索結果から作成された不完全な投稿の可能性があるため
@@ -323,16 +327,17 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('  - 既存の投稿のcontentPath: ${_posts[index].contentPath}');
         debugPrint('  - 既存の投稿のmediaUrl: ${_posts[index].mediaUrl}');
       }
-      
+
       // 完全なデータを再取得
       final updatedPost = await PostService.fetchPostDetail(targetPostId);
       final expectedTitle = navigationProvider.targetPostTitle;
-      
+
       // 検索結果のタイトルと取得した投稿のタイトルを比較
-      if (updatedPost != null && updatedPost.id.toString() == targetPostId.toString()) {
+      if (updatedPost != null &&
+          updatedPost.id.toString() == targetPostId.toString()) {
         // タイトルが一致しない場合は、タイトルで検索して正しい投稿を見つける
-        if (expectedTitle != null && 
-            expectedTitle.isNotEmpty && 
+        if (expectedTitle != null &&
+            expectedTitle.isNotEmpty &&
             updatedPost.title != expectedTitle) {
           if (kDebugMode) {
             debugPrint('⚠️ タイトルが一致しません:');
@@ -340,17 +345,18 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('  - 取得した投稿のタイトル: ${updatedPost.title}');
             debugPrint('  - タイトルで検索して正しい投稿を見つけます...');
           }
-          
+
           // タイトルで検索して正しい投稿を見つける
-          final titleMatchIndex = _posts.indexWhere((post) => 
-              post.title == expectedTitle && 
+          final titleMatchIndex = _posts.indexWhere((post) =>
+              post.title == expectedTitle &&
               post.id.toString() != targetPostId.toString());
-          
+
           if (titleMatchIndex >= 0) {
             if (kDebugMode) {
-              debugPrint('✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
+              debugPrint(
+                  '✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
             }
-            
+
             // 正しい投稿にジャンプ
             if (_pageController.hasClients) {
               await _pageController.animateToPage(
@@ -358,12 +364,12 @@ class _HomeScreenState extends State<HomeScreen>
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
               );
-              
+
               if (kDebugMode) {
                 debugPrint('✅ タイトルで一致する投稿にジャンプ完了: インデックス $titleMatchIndex');
               }
             }
-            
+
             // ターゲット投稿IDをクリア
             navigationProvider.clearTargetPostId();
             _lastTargetPostId = null;
@@ -374,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen>
             }
           }
         }
-        
+
         if (kDebugMode) {
           debugPrint('✅ 投稿データを更新:');
           debugPrint('  - 更新後のcontentPath: ${updatedPost.contentPath}');
@@ -386,7 +392,7 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('  - タイトル一致: ${updatedPost.title == expectedTitle}');
           }
         }
-        
+
         // 投稿リスト内の投稿を更新
         // 既存のメディアコントローラーをクリア（新しいメディアを初期化するため）
         final postIndex = index;
@@ -412,21 +418,22 @@ class _HomeScreenState extends State<HomeScreen>
             }
           }
         }
-        
+
         setState(() {
           _posts[index] = updatedPost;
         });
-        
+
         // 投稿データを更新した後、再度インデックスを確認
         // setStateの後なので、確実に更新されているはず
-        final verifiedIndex = _posts.indexWhere((post) => post.id.toString() == targetPostId.toString());
+        final verifiedIndex = _posts.indexWhere(
+            (post) => post.id.toString() == targetPostId.toString());
         if (verifiedIndex >= 0 && verifiedIndex != index) {
           if (kDebugMode) {
             debugPrint('⚠️ インデックスが変更されました: $index -> $verifiedIndex');
           }
           // インデックスが変更された場合は、新しいインデックスを使用
           final actualIndex = verifiedIndex;
-          
+
           // PageControllerでジャンプ
           if (_pageController.hasClients) {
             await _pageController.animateToPage(
@@ -434,9 +441,10 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
             );
-            
+
             if (kDebugMode) {
-              debugPrint('✅ ジャンプ完了: インデックス $actualIndex, 現在の投稿ID=${_posts[actualIndex].id}');
+              debugPrint(
+                  '✅ ジャンプ完了: インデックス $actualIndex, 現在の投稿ID=${_posts[actualIndex].id}');
               debugPrint('  - タイトル: ${_posts[actualIndex].title}');
               debugPrint('  - 投稿者: ${_posts[actualIndex].username}');
               debugPrint('  - タイプ: ${_posts[actualIndex].type}');
@@ -451,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('  - タイプ: ${_posts[index].type}');
             debugPrint('  - animateToPageのonPageChangedでメディアが初期化されます');
           }
-          
+
           // PageControllerでジャンプ
           if (_pageController.hasClients) {
             await _pageController.animateToPage(
@@ -459,9 +467,10 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
             );
-            
+
             if (kDebugMode) {
-              debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
+              debugPrint(
+                  '✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
             }
           }
         }
@@ -470,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (kDebugMode) {
           debugPrint('⚠️ 投稿データの取得に失敗しましたが、既存の投稿にジャンプします');
         }
-        
+
         // PageControllerでジャンプ
         if (_pageController.hasClients) {
           await _pageController.animateToPage(
@@ -478,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen>
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
-          
+
           if (kDebugMode) {
             debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
           }
@@ -493,10 +502,11 @@ class _HomeScreenState extends State<HomeScreen>
       if (kDebugMode) {
         debugPrint('🔍 投稿が見つかりません。取得を試みます...');
       }
-      
+
       final expectedTitle = navigationProvider.targetPostTitle;
-      final success = await _fetchAndJumpToPost(targetPostId, expectedTitle: expectedTitle);
-      
+      final success =
+          await _fetchAndJumpToPost(targetPostId, expectedTitle: expectedTitle);
+
       // 処理完了後、ターゲット投稿IDをクリア
       if (mounted) {
         if (!success) {
@@ -505,13 +515,15 @@ class _HomeScreenState extends State<HomeScreen>
             if (kDebugMode) {
               debugPrint('🔍 タイトルで検索を試みます: $expectedTitle');
             }
-            
-            final titleMatchIndex = _posts.indexWhere((post) => post.title == expectedTitle);
+
+            final titleMatchIndex =
+                _posts.indexWhere((post) => post.title == expectedTitle);
             if (titleMatchIndex >= 0) {
               if (kDebugMode) {
-                debugPrint('✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
+                debugPrint(
+                    '✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
               }
-              
+
               if (_pageController.hasClients) {
                 await _pageController.animateToPage(
                   titleMatchIndex,
@@ -526,7 +538,7 @@ class _HomeScreenState extends State<HomeScreen>
             }
           }
         }
-        
+
         navigationProvider.clearTargetPostId();
         _lastTargetPostId = null;
       }
@@ -534,7 +546,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// 特定の投稿を取得してジャンプ
-  Future<bool> _fetchAndJumpToPost(String postId, {String? expectedTitle}) async {
+  Future<bool> _fetchAndJumpToPost(String postId,
+      {String? expectedTitle}) async {
     try {
       // 投稿IDから数値に変換
       final contentId = int.tryParse(postId);
@@ -544,10 +557,10 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return false;
       }
-      
+
       // その投稿を直接取得（PostService.fetchPostDetailを使用）
       final post = await PostService.fetchPostDetail(postId);
-      
+
       if (kDebugMode) {
         if (post != null) {
           debugPrint('🔍 投稿取得結果: 成功');
@@ -563,14 +576,15 @@ class _HomeScreenState extends State<HomeScreen>
           debugPrint('🔍 投稿取得結果: 失敗（投稿が見つかりません）');
         }
       }
-      
+
       if (post != null && post.id.toString() == postId.toString()) {
         final targetPost = post;
-        
+
         if (!_isDisposed && mounted) {
           // 投稿リストに追加（既に存在する場合はスキップ）
-          final existingIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
-          
+          final existingIndex = _posts
+              .indexWhere((post) => post.id.toString() == postId.toString());
+
           if (existingIndex < 0) {
             // 新しい投稿なので、適切な位置に挿入
             // IDが現在の投稿より小さい場合は先頭に、大きい場合は末尾に追加
@@ -592,13 +606,15 @@ class _HomeScreenState extends State<HomeScreen>
             // 投稿を追加した後、そのインデックスにジャンプ
             // setStateの完了を待ってからジャンプ
             await Future.delayed(const Duration(milliseconds: 50));
-            
-            final newIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
+
+            final newIndex = _posts
+                .indexWhere((post) => post.id.toString() == postId.toString());
             if (newIndex >= 0 && _pageController.hasClients) {
               if (kDebugMode) {
-                debugPrint('✅ 投稿を追加しました: インデックス $newIndex, 投稿ID=${_posts[newIndex].id}');
+                debugPrint(
+                    '✅ 投稿を追加しました: インデックス $newIndex, 投稿ID=${_posts[newIndex].id}');
               }
-              
+
               // animateToPageはonPageChangedを自動的に呼び出す
               await _pageController.animateToPage(
                 newIndex,
@@ -609,7 +625,8 @@ class _HomeScreenState extends State<HomeScreen>
               // animateToPageの完了を待ってから、念のためインデックスを確認
               if (mounted) {
                 // 再度インデックスを確認（setStateの後なので確実に更新されているはず）
-                final finalIndex = _posts.indexWhere((post) => post.id.toString() == postId.toString());
+                final finalIndex = _posts.indexWhere(
+                    (post) => post.id.toString() == postId.toString());
                 if (finalIndex >= 0) {
                   if (_currentIndex != finalIndex) {
                     setState(() {
@@ -617,16 +634,18 @@ class _HomeScreenState extends State<HomeScreen>
                     });
                     _handleMediaPageChange(finalIndex);
                   }
-                  
+
                   if (kDebugMode) {
-                    debugPrint('✅ ジャンプ完了: インデックス $finalIndex, 現在の投稿ID=${_posts[finalIndex].id}');
+                    debugPrint(
+                        '✅ ジャンプ完了: インデックス $finalIndex, 現在の投稿ID=${_posts[finalIndex].id}');
                   }
-                  
+
                   // ターゲット投稿IDをクリア
-                  final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                  final navigationProvider =
+                      Provider.of<NavigationProvider>(context, listen: false);
                   navigationProvider.clearTargetPostId();
                   _lastTargetPostId = null;
-                  
+
                   return true; // 成功
                 } else {
                   if (kDebugMode) {
@@ -645,9 +664,10 @@ class _HomeScreenState extends State<HomeScreen>
             // 既に存在する場合はそのインデックスにジャンプ
             if (_pageController.hasClients) {
               if (kDebugMode) {
-                debugPrint('✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
+                debugPrint(
+                    '✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
               }
-              
+
               // animateToPageはonPageChangedを自動的に呼び出す
               await _pageController.animateToPage(
                 existingIndex,
@@ -663,16 +683,18 @@ class _HomeScreenState extends State<HomeScreen>
                   });
                   _handleMediaPageChange(existingIndex);
                 }
-                
+
                 if (kDebugMode) {
-                  debugPrint('✅ ジャンプ完了: インデックス $existingIndex, 現在の投稿ID=${_posts[existingIndex].id}');
+                  debugPrint(
+                      '✅ ジャンプ完了: インデックス $existingIndex, 現在の投稿ID=${_posts[existingIndex].id}');
                 }
-                
+
                 // ターゲット投稿IDをクリア
-                final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                final navigationProvider =
+                    Provider.of<NavigationProvider>(context, listen: false);
                 navigationProvider.clearTargetPostId();
                 _lastTargetPostId = null;
-                
+
                 return true; // 成功
               }
             }
@@ -707,7 +729,8 @@ class _HomeScreenState extends State<HomeScreen>
       final nextStartId = lastId + 1;
 
       if (kDebugMode) {
-        debugPrint('📝 追加読み込み開始: 最後の投稿ID=$lastId, startId=$nextStartId, limit=$_batchLoadCount');
+        debugPrint(
+            '📝 追加読み込み開始: 最後の投稿ID=$lastId, startId=$nextStartId, limit=$_batchLoadCount');
         debugPrint('📝 取得済みID: ${_fetchedContentIds.toList()}');
       }
 
@@ -719,30 +742,34 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (!_isDisposed && mounted && morePosts.isNotEmpty) {
         // 重複を防ぐために、既に取得済みの投稿を除外
-        final newPosts = morePosts.where((post) => !_fetchedContentIds.contains(post.id)).toList();
-        
+        final newPosts = morePosts
+            .where((post) => !_fetchedContentIds.contains(post.id))
+            .toList();
+
         if (kDebugMode) {
-          debugPrint('📝 取得した投稿: ${morePosts.length}件、重複除外後: ${newPosts.length}件');
+          debugPrint(
+              '📝 取得した投稿: ${morePosts.length}件、重複除外後: ${newPosts.length}件');
           for (final post in newPosts) {
             debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
           }
         }
-        
+
         if (newPosts.isNotEmpty) {
           setState(() {
             _posts.addAll(newPosts);
-            
+
             // 取得済みコンテンツIDを記録
             for (final post in newPosts) {
               _fetchedContentIds.add(post.id);
             }
-            
+
             // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
             _hasMorePosts = newPosts.length >= _batchLoadCount;
           });
-          
+
           if (kDebugMode) {
-            debugPrint('📝 追加読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
+            debugPrint(
+                '📝 追加読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
           }
         } else {
           // 全て重複していた場合は、次のIDから再試行
@@ -925,7 +952,7 @@ class _HomeScreenState extends State<HomeScreen>
     _seekDebounceTimer?.cancel();
     _seekBarUpdateTimerAudio?.cancel();
     _seekDebounceTimerAudio?.cancel();
-    
+
     // アイコン更新イベントのリスナーを解除
     _iconUpdateSubscription?.cancel();
 
@@ -1016,14 +1043,14 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (context, navigationProvider, child) {
         // targetPostIdが変更された場合、ジャンプ処理を実行
         final targetPostId = navigationProvider.targetPostId;
-        if (targetPostId != null && 
-            targetPostId != _lastTargetPostId && 
-            !_isLoading && 
+        if (targetPostId != null &&
+            targetPostId != _lastTargetPostId &&
+            !_isLoading &&
             mounted) {
           if (kDebugMode) {
             debugPrint('🔄 build内でターゲット投稿IDを検出: $targetPostId');
           }
-          
+
           // 次のフレームで実行（build中にsetStateを呼ばないように）
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && targetPostId == navigationProvider.targetPostId) {
@@ -1032,12 +1059,12 @@ class _HomeScreenState extends State<HomeScreen>
             }
           });
         }
-        
+
         return _buildScaffold(context);
       },
     );
   }
-  
+
   Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1147,15 +1174,20 @@ class _HomeScreenState extends State<HomeScreen>
                                     allowImplicitScrolling: false,
                                     onPageChanged: (index) {
                                       if (kDebugMode) {
-                                        debugPrint('📄 onPageChanged: インデックス $index, 投稿数=${_posts.length}');
+                                        debugPrint(
+                                            '📄 onPageChanged: インデックス $index, 投稿数=${_posts.length}');
                                         if (index < _posts.length) {
-                                          debugPrint('  - 投稿ID: ${_posts[index].id}');
-                                          debugPrint('  - タイトル: ${_posts[index].title}');
-                                          debugPrint('  - 投稿者: ${_posts[index].username}');
-                                          debugPrint('  - タイプ: ${_posts[index].type}');
+                                          debugPrint(
+                                              '  - 投稿ID: ${_posts[index].id}');
+                                          debugPrint(
+                                              '  - タイトル: ${_posts[index].title}');
+                                          debugPrint(
+                                              '  - 投稿者: ${_posts[index].username}');
+                                          debugPrint(
+                                              '  - タイプ: ${_posts[index].type}');
                                         }
                                       }
-                                      
+
                                       setState(() {
                                         _currentIndex = index;
                                         _resetSpotlightState();
@@ -1378,31 +1410,33 @@ class _HomeScreenState extends State<HomeScreen>
   /// シーク開始
   void _startSeeking(VideoPlayerController controller) {
     if (!controller.value.isInitialized) return;
-    
+
     // シークバー更新タイマーを一時停止
     _seekBarUpdateTimer?.cancel();
-    
+
     // 動画を一時停止（シーク中は再生を停止）
     final wasPlaying = controller.value.isPlaying;
     if (wasPlaying) {
       controller.pause();
     }
-    
+
     setState(() {
       _isSeeking = true;
       _seekPosition = controller.value.position.inMilliseconds.toDouble() /
           controller.value.duration.inMilliseconds.toDouble();
     });
-    
+
     if (kDebugMode) {
-      debugPrint('🎯 シーク開始: ${_formatDuration(controller.value.position)} / ${_formatDuration(controller.value.duration)}');
+      debugPrint(
+          '🎯 シーク開始: ${_formatDuration(controller.value.position)} / ${_formatDuration(controller.value.duration)}');
     }
   }
 
   /// シーク中
-  void _updateSeeking(DragUpdateDetails details, VideoPlayerController controller) {
+  void _updateSeeking(
+      DragUpdateDetails details, VideoPlayerController controller) {
     if (!controller.value.isInitialized || _seekPosition == null) return;
-    
+
     final screenWidth = MediaQuery.of(context).size.width;
     final dragDelta = details.delta.dx;
     final dragRatio = dragDelta / screenWidth;
@@ -1411,18 +1445,21 @@ class _HomeScreenState extends State<HomeScreen>
       _seekPosition = _seekPosition! + dragRatio;
       _seekPosition = _seekPosition!.clamp(0.0, 1.0);
     });
-    
+
     // デバウンス処理：100msごとに動画の再生位置を更新
     _seekDebounceTimer?.cancel();
     _seekDebounceTimer = Timer(const Duration(milliseconds: 100), () {
       if (_seekPosition != null && controller.value.isInitialized) {
         final targetPosition = Duration(
-          milliseconds: (_seekPosition! * controller.value.duration.inMilliseconds).round(),
+          milliseconds:
+              (_seekPosition! * controller.value.duration.inMilliseconds)
+                  .round(),
         );
         controller.seekTo(targetPosition);
-        
+
         if (kDebugMode) {
-          debugPrint('🎯 シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)} (progress: ${_seekPosition!.toStringAsFixed(3)})');
+          debugPrint(
+              '🎯 シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)} (progress: ${_seekPosition!.toStringAsFixed(3)})');
         }
       }
     });
@@ -1431,15 +1468,15 @@ class _HomeScreenState extends State<HomeScreen>
   /// シーク終了
   void _endSeeking(VideoPlayerController controller) {
     if (!controller.value.isInitialized || _seekPosition == null) return;
-    
+
     // デバウンスタイマーをキャンセルして、即座に最終位置に移動
     _seekDebounceTimer?.cancel();
-    
+
     final targetPosition = Duration(
       milliseconds:
           (_seekPosition! * controller.value.duration.inMilliseconds).round(),
     );
-    
+
     // 動画の再生位置を変更
     controller.seekTo(targetPosition).then((_) {
       // シーク前が再生中だった場合は再開
@@ -1448,89 +1485,95 @@ class _HomeScreenState extends State<HomeScreen>
         controller.play();
       }
     });
-    
+
     if (kDebugMode) {
-      debugPrint('🎯 シーク終了: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)}');
+      debugPrint(
+          '🎯 シーク終了: ${_formatDuration(targetPosition)} / ${_formatDuration(controller.value.duration)}');
     }
-    
+
     setState(() {
       _isSeeking = false;
       _seekPosition = null;
     });
-    
+
     // シークバー更新タイマーを再開
     _startSeekBarUpdateTimer();
   }
-  
+
   /// 音声シーク開始
   void _startSeekingAudio(AudioPlayer player) {
     if (player.duration == null) return;
-    
+
     // シークバー更新タイマーを一時停止
     _seekBarUpdateTimerAudio?.cancel();
-    
+
     // 音声を一時停止（シーク中は再生を停止）
     final wasPlaying = player.playing;
     if (wasPlaying) {
       player.pause();
     }
-    
+
     setState(() {
       _isSeekingAudio = true;
       final currentPosition = player.position;
       final duration = player.duration ?? Duration.zero;
       if (duration.inMilliseconds > 0) {
-        _seekPositionAudio = currentPosition.inMilliseconds.toDouble() / duration.inMilliseconds.toDouble();
+        _seekPositionAudio = currentPosition.inMilliseconds.toDouble() /
+            duration.inMilliseconds.toDouble();
       } else {
         _seekPositionAudio = 0.0;
       }
     });
-    
+
     if (kDebugMode) {
-      debugPrint('🎵 音声シーク開始: ${_formatDuration(player.position)} / ${_formatDuration(player.duration ?? Duration.zero)}');
+      debugPrint(
+          '🎵 音声シーク開始: ${_formatDuration(player.position)} / ${_formatDuration(player.duration ?? Duration.zero)}');
     }
   }
-  
+
   /// 音声シーク中
   void _updateSeekingAudio(DragUpdateDetails details, AudioPlayer player) {
     if (player.duration == null || _seekPositionAudio == null) return;
-    
+
     final screenWidth = MediaQuery.of(context).size.width;
     final dragDelta = details.delta.dx;
     final dragRatio = dragDelta / screenWidth;
-    
+
     setState(() {
       _seekPositionAudio = _seekPositionAudio! + dragRatio;
       _seekPositionAudio = _seekPositionAudio!.clamp(0.0, 1.0);
     });
-    
+
     // デバウンス処理：100msごとに音声の再生位置を更新
     _seekDebounceTimerAudio?.cancel();
     _seekDebounceTimerAudio = Timer(const Duration(milliseconds: 100), () {
       if (_seekPositionAudio != null && player.duration != null) {
         final targetPosition = Duration(
-          milliseconds: (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
+          milliseconds:
+              (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
         );
         player.seek(targetPosition);
-        
+
         if (kDebugMode) {
-          debugPrint('🎵 音声シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(player.duration!)} (progress: ${_seekPositionAudio!.toStringAsFixed(3)})');
+          debugPrint(
+              '🎵 音声シーク位置更新: ${_formatDuration(targetPosition)} / ${_formatDuration(player.duration!)} (progress: ${_seekPositionAudio!.toStringAsFixed(3)})');
         }
       }
     });
   }
-  
+
   /// 音声シーク終了
   void _endSeekingAudio(AudioPlayer player) {
     if (player.duration == null || _seekPositionAudio == null) return;
-    
+
     // デバウンスタイマーをキャンセルして、即座に最終位置に移動
     _seekDebounceTimerAudio?.cancel();
-    
+
     final targetPosition = Duration(
-      milliseconds: (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
+      milliseconds:
+          (_seekPositionAudio! * player.duration!.inMilliseconds).round(),
     );
-    
+
     // 音声の再生位置を変更
     player.seek(targetPosition).then((_) {
       // シーク前が再生中だった場合は再開
@@ -1538,21 +1581,25 @@ class _HomeScreenState extends State<HomeScreen>
         player.play();
       }
     });
-    
+
     setState(() {
       _isSeekingAudio = false;
       _seekPositionAudio = null;
     });
-    
+
     // シークバー更新タイマーを再開
     _startSeekBarUpdateTimerAudio();
   }
-  
+
   /// 音声シークバー更新タイマーを開始
   void _startSeekBarUpdateTimerAudio() {
     _seekBarUpdateTimerAudio?.cancel();
-    _seekBarUpdateTimerAudio = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!_isDisposed && mounted && _currentPlayingAudio != null && !_isSeekingAudio) {
+    _seekBarUpdateTimerAudio =
+        Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isDisposed &&
+          mounted &&
+          _currentPlayingAudio != null &&
+          !_isSeekingAudio) {
         final player = _audioPlayers[_currentPlayingAudio];
         if (player != null) {
           setState(() {
@@ -1568,20 +1615,23 @@ class _HomeScreenState extends State<HomeScreen>
       }
     });
   }
-  
+
   /// 音声用シークバーを構築（ナビゲーションバーの真上に表示）
   Widget _buildAudioSeekBar(AudioPlayer player) {
     return StreamBuilder<Duration>(
       stream: player.positionStream,
       builder: (context, positionSnapshot) {
         final position = _isSeekingAudio && _seekPositionAudio != null
-            ? Duration(milliseconds: (_seekPositionAudio! * (player.duration?.inMilliseconds ?? 0)).round())
+            ? Duration(
+                milliseconds: (_seekPositionAudio! *
+                        (player.duration?.inMilliseconds ?? 0))
+                    .round())
             : (positionSnapshot.data ?? Duration.zero);
         final duration = player.duration ?? Duration.zero;
         final progress = duration.inMilliseconds > 0
             ? position.inMilliseconds / duration.inMilliseconds
             : 0.0;
-        
+
         // ナビゲーションバーの高さを考慮（約80px）
         return Positioned(
           bottom: 80,
@@ -1635,19 +1685,23 @@ class _HomeScreenState extends State<HomeScreen>
                   },
                   onTapDown: (details) {
                     if (player.duration == null) return;
-                    
+
                     // シークバーのコンテナ内の座標を取得
                     final containerWidth = MediaQuery.of(context).size.width;
-                    final tapX = details.localPosition.dx.clamp(0.0, containerWidth);
+                    final tapX =
+                        details.localPosition.dx.clamp(0.0, containerWidth);
                     final tapRatio = tapX / containerWidth;
                     final targetPosition = Duration(
-                      milliseconds: (tapRatio.clamp(0.0, 1.0) * duration.inMilliseconds).round(),
+                      milliseconds:
+                          (tapRatio.clamp(0.0, 1.0) * duration.inMilliseconds)
+                              .round(),
                     );
-                    
+
                     player.seek(targetPosition);
-                    
+
                     if (kDebugMode) {
-                      debugPrint('🎵 音声シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
+                      debugPrint(
+                          '🎵 音声シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
                     }
                   },
                   child: Container(
@@ -1683,7 +1737,8 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         // シークハンドル
                         Positioned(
-                          left: MediaQuery.of(context).size.width * progress - 6,
+                          left:
+                              MediaQuery.of(context).size.width * progress - 6,
                           top: 4,
                           child: Container(
                             width: 12,
@@ -1783,10 +1838,11 @@ class _HomeScreenState extends State<HomeScreen>
               },
               onTapDown: (details) {
                 if (!controller.value.isInitialized) return;
-                
+
                 // シークバーのコンテナ内の座標を取得
                 final containerWidth = MediaQuery.of(context).size.width;
-                final tapX = details.localPosition.dx.clamp(0.0, containerWidth);
+                final tapX =
+                    details.localPosition.dx.clamp(0.0, containerWidth);
                 final tapRatio = tapX / containerWidth;
                 final targetPosition = Duration(
                   milliseconds: (tapRatio.clamp(0.0, 1.0) *
@@ -1795,9 +1851,10 @@ class _HomeScreenState extends State<HomeScreen>
                 );
 
                 controller.seekTo(targetPosition);
-                
+
                 if (kDebugMode) {
-                  debugPrint('🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
+                  debugPrint(
+                      '🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
                 }
               },
               child: Container(
@@ -1905,15 +1962,22 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
+    // 画面サイズを取得してキャッシュサイズを計算
+    final screenSize = MediaQuery.of(context).size;
+    final cacheWidth =
+        (screenSize.width * MediaQuery.of(context).devicePixelRatio).round();
+    final cacheHeight =
+        (screenSize.height * MediaQuery.of(context).devicePixelRatio).round();
+
     return Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.black,
-      child: Center(
-        child: RobustNetworkImage(
-          imageUrl: imageUrl,
-          fit: BoxFit.contain,
-        ),
+      child: RobustNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.contain,
+        maxWidth: cacheWidth,
+        maxHeight: cacheHeight,
       ),
     );
   }
@@ -2012,14 +2076,17 @@ class _HomeScreenState extends State<HomeScreen>
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            SpotLightColors.getSpotlightColor(2).withOpacity(0.6),
-                            SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+                            SpotLightColors.getSpotlightColor(2)
+                                .withOpacity(0.6),
+                            SpotLightColors.getSpotlightColor(2)
+                                .withOpacity(0.2),
                             Colors.transparent,
                           ],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: SpotLightColors.getSpotlightColor(2).withOpacity(0.5),
+                            color: SpotLightColors.getSpotlightColor(2)
+                                .withOpacity(0.5),
                             blurRadius: isPlaying ? 40 : 20,
                             spreadRadius: isPlaying ? 10 : 5,
                           ),
@@ -2031,12 +2098,15 @@ class _HomeScreenState extends State<HomeScreen>
                           shape: BoxShape.circle,
                           color: Colors.black.withOpacity(0.3),
                           border: Border.all(
-                            color: SpotLightColors.getSpotlightColor(2).withOpacity(0.8),
+                            color: SpotLightColors.getSpotlightColor(2)
+                                .withOpacity(0.8),
                             width: 3,
                           ),
                         ),
                         child: Icon(
-                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
                           color: Colors.white,
                           size: isPlaying ? 90 : 70,
                         ),
@@ -2113,7 +2183,7 @@ class _HomeScreenState extends State<HomeScreen>
                     key: ValueKey(
                         '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
                     child: RobustNetworkImage(
-                      imageUrl: post.userIconUrl ?? 
+                      imageUrl: post.userIconUrl ??
                           (post.userIconPath.isNotEmpty
                               ? '${AppConfig.backendUrl}/icon/${post.userIconPath}'
                               : '${AppConfig.backendUrl}/icon/default_icon.jpg'),
@@ -2383,7 +2453,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _handleCommentButton(Post post) {
     final commentController = TextEditingController();
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2393,7 +2463,7 @@ class _HomeScreenState extends State<HomeScreen>
           builder: (context, setModalState) {
             bool isLoading = false;
             List<Comment> comments = [];
-            
+
             // コメント一覧を取得
             if (comments.isEmpty && !isLoading) {
               isLoading = true;
@@ -2406,7 +2476,7 @@ class _HomeScreenState extends State<HomeScreen>
                 }
               });
             }
-            
+
             return DraggableScrollableSheet(
               initialChildSize: 0.7,
               minChildSize: 0.5,
@@ -2442,7 +2512,8 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
-                              icon: const Icon(Icons.close, color: Colors.white),
+                              icon:
+                                  const Icon(Icons.close, color: Colors.white),
                             ),
                           ],
                         ),
@@ -2470,7 +2541,8 @@ class _HomeScreenState extends State<HomeScreen>
                                       controller: scrollController,
                                       itemCount: comments.length,
                                       itemBuilder: (context, index) {
-                                        return _buildCommentItem(comments[index]);
+                                        return _buildCommentItem(
+                                            comments[index]);
                                       },
                                     ),
                         ),
@@ -2493,7 +2565,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   style: const TextStyle(color: Colors.white),
                                   decoration: InputDecoration(
                                     hintText: 'コメントを追加...',
-                                    hintStyle: TextStyle(color: Colors.grey[400]),
+                                    hintStyle:
+                                        TextStyle(color: Colors.grey[400]),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(20),
                                       borderSide: BorderSide.none,
@@ -2510,46 +2583,60 @@ class _HomeScreenState extends State<HomeScreen>
                               const SizedBox(width: 10),
                               IconButton(
                                 onPressed: () async {
-                                  final commentText = commentController.text.trim();
+                                  final commentText =
+                                      commentController.text.trim();
                                   if (commentText.isEmpty) return;
-                                  
+
                                   // コメント送信
-                                  final success = await CommentService.addComment(
+                                  final success =
+                                      await CommentService.addComment(
                                     post.id,
                                     commentText,
                                   );
-                                  
+
                                   if (success && mounted) {
                                     commentController.clear();
                                     // コメント一覧を再取得
-                                    final fetchedComments = await CommentService.getComments(post.id);
+                                    final fetchedComments =
+                                        await CommentService.getComments(
+                                            post.id);
                                     setModalState(() {
                                       comments = fetchedComments;
                                     });
-                                    
+
                                     // 投稿のコメント数を更新
                                     setState(() {
                                       _posts[_currentIndex] = Post(
                                         id: _posts[_currentIndex].id,
                                         userId: _posts[_currentIndex].userId,
-                                        username: _posts[_currentIndex].username,
-                                        userIconPath: _posts[_currentIndex].userIconPath,
-                                        userIconUrl: _posts[_currentIndex].userIconUrl,
+                                        username:
+                                            _posts[_currentIndex].username,
+                                        userIconPath:
+                                            _posts[_currentIndex].userIconPath,
+                                        userIconUrl:
+                                            _posts[_currentIndex].userIconUrl,
                                         title: _posts[_currentIndex].title,
                                         content: _posts[_currentIndex].content,
-                                        contentPath: _posts[_currentIndex].contentPath,
+                                        contentPath:
+                                            _posts[_currentIndex].contentPath,
                                         type: _posts[_currentIndex].type,
-                                        mediaUrl: _posts[_currentIndex].mediaUrl,
-                                        thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
+                                        mediaUrl:
+                                            _posts[_currentIndex].mediaUrl,
+                                        thumbnailUrl:
+                                            _posts[_currentIndex].thumbnailUrl,
                                         likes: _posts[_currentIndex].likes,
                                         playNum: _posts[_currentIndex].playNum,
                                         link: _posts[_currentIndex].link,
-                                        comments: _posts[_currentIndex].comments + 1,
+                                        comments:
+                                            _posts[_currentIndex].comments + 1,
                                         shares: _posts[_currentIndex].shares,
-                                        isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                                        isSpotlighted:
+                                            _posts[_currentIndex].isSpotlighted,
                                         isText: _posts[_currentIndex].isText,
-                                        nextContentId: _posts[_currentIndex].nextContentId,
-                                        createdAt: _posts[_currentIndex].createdAt,
+                                        nextContentId:
+                                            _posts[_currentIndex].nextContentId,
+                                        createdAt:
+                                            _posts[_currentIndex].createdAt,
                                       );
                                     });
                                   }
@@ -2639,7 +2726,8 @@ class _HomeScreenState extends State<HomeScreen>
                           onPressed: () {
                             // 返信機能（将来実装）
                           },
-                          icon: const Icon(Icons.reply, color: Colors.grey, size: 16),
+                          icon: const Icon(Icons.reply,
+                              color: Colors.grey, size: 16),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -2656,7 +2744,9 @@ class _HomeScreenState extends State<HomeScreen>
             Padding(
               padding: const EdgeInsets.only(left: 42),
               child: Column(
-                children: comment.replies.map((reply) => _buildCommentItem(reply)).toList(),
+                children: comment.replies
+                    .map((reply) => _buildCommentItem(reply))
+                    .toList(),
               ),
             ),
           ],
@@ -2664,13 +2754,13 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-  
+
   String _formatCommentTime(String timestamp) {
     try {
       final dateTime = DateTime.parse(timestamp);
       final now = DateTime.now();
       final difference = now.difference(dateTime);
-      
+
       if (difference.inDays > 0) {
         return '${difference.inDays}日前';
       } else if (difference.inHours > 0) {
@@ -2684,21 +2774,21 @@ class _HomeScreenState extends State<HomeScreen>
       return timestamp;
     }
   }
-  
+
   /// プレイリスト追加ボタンの処理
   void _handlePlaylistButton(Post post) async {
     try {
       // プレイリスト一覧を取得
       final playlists = await PlaylistService.getPlaylists();
-      
+
       if (!mounted) return;
-      
+
       if (playlists.isEmpty) {
         // プレイリストがない場合は新規作成を促す
         _showCreatePlaylistDialog(post);
         return;
       }
-      
+
       // プレイリスト選択ダイアログを表示
       showModalBottomSheet(
         context: context,
@@ -2758,7 +2848,7 @@ class _HomeScreenState extends State<HomeScreen>
                           },
                         );
                       }
-                      
+
                       final playlist = playlists[index - 1];
                       return ListTile(
                         leading: playlist.thumbnailpath != null
@@ -2787,22 +2877,20 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         onTap: () async {
                           Navigator.pop(context);
-                          final success = await PlaylistService.addContentToPlaylist(
+                          final success =
+                              await PlaylistService.addContentToPlaylist(
                             playlist.playlistid,
                             post.id,
                           );
-                          
+
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  success
-                                      ? 'プレイリストに追加しました'
-                                      : '追加に失敗しました',
+                                  success ? 'プレイリストに追加しました' : '追加に失敗しました',
                                 ),
-                                backgroundColor: success
-                                    ? Colors.green
-                                    : Colors.red,
+                                backgroundColor:
+                                    success ? Colors.green : Colors.red,
                               ),
                             );
                           }
@@ -2820,7 +2908,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (kDebugMode) {
         debugPrint('📋 プレイリスト取得エラー: $e');
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2831,11 +2919,11 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
   }
-  
+
   /// プレイリスト作成ダイアログ
   void _showCreatePlaylistDialog(Post post) {
     final titleController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) {
@@ -2867,29 +2955,25 @@ class _HomeScreenState extends State<HomeScreen>
               onPressed: () async {
                 final title = titleController.text.trim();
                 if (title.isEmpty) return;
-                
+
                 Navigator.pop(context);
-                
+
                 final playlistId = await PlaylistService.createPlaylist(title);
-                
+
                 if (playlistId != null && mounted) {
                   // 作成したプレイリストにコンテンツを追加
                   final success = await PlaylistService.addContentToPlaylist(
                     playlistId,
                     post.id,
                   );
-                  
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          success
-                              ? 'プレイリストを作成して追加しました'
-                              : '追加に失敗しました',
+                          success ? 'プレイリストを作成して追加しました' : '追加に失敗しました',
                         ),
-                        backgroundColor: success
-                            ? Colors.green
-                            : Colors.red,
+                        backgroundColor: success ? Colors.green : Colors.red,
                       ),
                     );
                   }
@@ -3108,11 +3192,12 @@ class _HomeScreenState extends State<HomeScreen>
       }
       return;
     }
-    
+
     final newPost = _posts[newIndex];
-    
+
     if (kDebugMode) {
-      debugPrint('🔄 メディアページ変更: インデックス $newIndex, 投稿ID=${newPost.id}, type=${newPost.type}');
+      debugPrint(
+          '🔄 メディアページ変更: インデックス $newIndex, 投稿ID=${newPost.id}, type=${newPost.type}');
     }
 
     // 前の動画を停止
@@ -3123,10 +3208,10 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _currentPlayingVideo = null;
     }
-    
+
     // シークバー更新タイマーを停止
     _seekBarUpdateTimer?.cancel();
-    
+
     // シーク状態をリセット
     setState(() {
       _isSeeking = false;
@@ -3145,7 +3230,7 @@ class _HomeScreenState extends State<HomeScreen>
     // 新しいページが動画投稿の場合
     if (newPost.postType == PostType.video) {
       _currentPlayingVideo = newIndex;
-      
+
       // シークバー更新タイマーを開始
       _startSeekBarUpdateTimer();
 
@@ -3314,7 +3399,10 @@ class _HomeScreenState extends State<HomeScreen>
   void _startSeekBarUpdateTimer() {
     _seekBarUpdateTimer?.cancel();
     _seekBarUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!_isDisposed && mounted && _currentPlayingVideo != null && !_isSeeking) {
+      if (!_isDisposed &&
+          mounted &&
+          _currentPlayingVideo != null &&
+          !_isSeeking) {
         final controller = _videoControllers[_currentPlayingVideo];
         if (controller != null && controller.value.isInitialized) {
           setState(() {
@@ -3330,7 +3418,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     });
   }
-  
+
   /// 動画の再生位置が変更されたときのコールバック
   void _onVideoPositionChanged() {
     // シーク中でない場合のみ更新（シーク中は手動で更新しているため）
