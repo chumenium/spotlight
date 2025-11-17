@@ -82,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isLoadingMore = false;
   bool _hasMorePosts = true;
   static const int _initialLoadCount = 3; // 初回読み込み件数
-  static const int _batchLoadCount = 2; // 追加読み込み件数
+  static const int _preloadAheadCount = 3; // 現在のページから先読み込みする件数
 
   // ジェスチャー関連
   double _swipeOffset = 0.0;
@@ -128,6 +128,10 @@ class _HomeScreenState extends State<HomeScreen>
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
   String? _lastTargetPostId; // 最後に処理したターゲット投稿ID
+
+  // 初回起動時のリトライ管理
+  int _initialRetryCount = 0;
+  static const int _maxInitialRetries = 5; // 最大リトライ回数（初回ログイン後も確実に読み込むため増加）
 
   @override
   void initState() {
@@ -221,6 +225,9 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       if (kDebugMode) {
         debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件、startId=1）...');
+        if (_initialRetryCount > 0) {
+          debugPrint('🔄 リトライ試行: $_initialRetryCount回目');
+        }
       }
 
       // 初回読み込みは必ずID=1から開始
@@ -228,10 +235,39 @@ class _HomeScreenState extends State<HomeScreen>
           await PostService.fetchPosts(limit: _initialLoadCount, startId: 1);
 
       if (!_isDisposed && mounted) {
+        // 投稿が空の場合でも、初回起動時は自動リトライを続ける
+        if (posts.isEmpty && _initialRetryCount < _maxInitialRetries) {
+          _initialRetryCount++;
+          final retryDelay =
+              Duration(seconds: _initialRetryCount); // 1秒、2秒、3秒と段階的に増やす
+
+          if (kDebugMode) {
+            debugPrint(
+                '📝 投稿が空です。${retryDelay.inSeconds}秒後に自動リトライします（$_initialRetryCount/$_maxInitialRetries）');
+          }
+
+          // リトライ前にローディング状態を維持
+          setState(() {
+            _isLoading = true;
+            _errorMessage = null;
+          });
+
+          // 遅延後に自動リトライ
+          Future.delayed(retryDelay, () {
+            if (!_isDisposed && mounted) {
+              _fetchPosts();
+            }
+          });
+          return; // リトライするのでここで終了
+        }
+
+        // 投稿が取得できた、またはリトライ回数が上限に達した場合
         setState(() {
           _posts = posts;
           _isLoading = false;
+          // 投稿が空で、リトライ回数が上限に達した場合のみ「投稿がありません」と表示
           _errorMessage = posts.isEmpty ? '投稿がありません' : null;
+          _initialRetryCount = 0; // 成功したらリトライカウントをリセット
 
           // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
           _hasMorePosts = posts.length >= _initialLoadCount;
@@ -249,6 +285,9 @@ class _HomeScreenState extends State<HomeScreen>
         // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
         if (_posts.isNotEmpty) {
           _handleMediaPageChange(_currentIndex);
+
+          // 初回読み込み後、現在のページから3つ先までを事前読み込み
+          _preloadNextPosts(_currentIndex);
 
           // ターゲット投稿IDが設定されている場合はジャンプ
           final navigationProvider =
@@ -272,11 +311,38 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📝 投稿取得エラー: $e');
       }
 
-      if (!_isDisposed && mounted) {
+      // 初回起動時の自動リトライ（最大3回まで）
+      if (_initialRetryCount < _maxInitialRetries && !_isDisposed && mounted) {
+        _initialRetryCount++;
+        final retryDelay =
+            Duration(seconds: _initialRetryCount); // 1秒、2秒、3秒と段階的に増やす
+
+        if (kDebugMode) {
+          debugPrint(
+              '🔄 ${retryDelay.inSeconds}秒後に自動リトライします（$_initialRetryCount/$_maxInitialRetries）');
+        }
+
+        // リトライ前にローディング状態を維持
         setState(() {
-          _isLoading = false;
-          _errorMessage = '投稿の取得に失敗しました';
+          _isLoading = true;
+          _errorMessage = null;
         });
+
+        // 遅延後に自動リトライ
+        Future.delayed(retryDelay, () {
+          if (!_isDisposed && mounted) {
+            _fetchPosts();
+          }
+        });
+      } else {
+        // リトライ回数が上限に達した場合、エラーメッセージを表示
+        if (!_isDisposed && mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = '投稿の取得に失敗しました';
+            _initialRetryCount = 0; // リトライカウントをリセット
+          });
+        }
       }
     }
   }
@@ -716,9 +782,24 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// 追加の投稿を読み込む（遅延読み込み）
-  Future<void> _loadMorePosts() async {
+  /// 現在のページから3つ先までを事前読み込み
+  Future<void> _preloadNextPosts(int currentIndex) async {
     if (_isLoadingMore || !_hasMorePosts || _posts.isEmpty) return;
+
+    // 現在のページから3つ先まで既に読み込まれているかチェック
+    final targetIndex = currentIndex + _preloadAheadCount;
+    if (targetIndex < _posts.length) {
+      // 既に読み込まれている場合はスキップ
+      if (kDebugMode) {
+        debugPrint(
+            '⏭️ 既に読み込み済み: 現在のインデックス=$currentIndex, 目標インデックス=$targetIndex, 現在の投稿数=${_posts.length}');
+      }
+      return;
+    }
+
+    // 必要な投稿数を計算
+    final neededCount = targetIndex - _posts.length + 1;
+    if (neededCount <= 0) return;
 
     _isLoadingMore = true;
 
@@ -730,13 +811,16 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (kDebugMode) {
         debugPrint(
-            '📝 追加読み込み開始: 最後の投稿ID=$lastId, startId=$nextStartId, limit=$_batchLoadCount');
+            '📝 事前読み込み開始: 現在のインデックス=$currentIndex, 最後の投稿ID=$lastId, startId=$nextStartId, 必要件数=$neededCount');
         debugPrint('📝 取得済みID: ${_fetchedContentIds.toList()}');
       }
 
+      // 必要な件数分を読み込む（常に3件読み込む）
+      final loadCount = _preloadAheadCount;
+
       // 次のIDから追加読み込み
       final morePosts = await PostService.fetchPosts(
-        limit: _batchLoadCount,
+        limit: loadCount,
         startId: nextStartId,
       );
 
@@ -764,12 +848,12 @@ class _HomeScreenState extends State<HomeScreen>
             }
 
             // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
-            _hasMorePosts = newPosts.length >= _batchLoadCount;
+            _hasMorePosts = newPosts.length >= loadCount;
           });
 
           if (kDebugMode) {
             debugPrint(
-                '📝 追加読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
+                '📝 事前読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
           }
         } else {
           // 全て重複していた場合は、次のIDから再試行
@@ -791,7 +875,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('📝 追加読み込みエラー: $e');
+        debugPrint('📝 事前読み込みエラー: $e');
       }
     } finally {
       _isLoadingMore = false;
@@ -804,6 +888,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     _isUpdating = true;
 
+    // 手動再試行の場合はリトライカウントをリセット
+    _initialRetryCount = 0;
+
     try {
       // 初回読み込みと同じ件数を取得
       final posts = await PostService.fetchPosts(limit: _initialLoadCount);
@@ -813,6 +900,7 @@ class _HomeScreenState extends State<HomeScreen>
           _posts = posts;
           _errorMessage = null;
           _hasMorePosts = posts.length >= _initialLoadCount;
+          _initialRetryCount = 0; // リトライカウントをリセット
 
           // 取得済みコンテンツIDを更新
           _fetchedContentIds.clear();
@@ -1101,7 +1189,11 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton(
-                              onPressed: _fetchPosts,
+                              onPressed: () {
+                                // 手動再試行の場合はリトライカウントをリセット
+                                _initialRetryCount = 0;
+                                _fetchPosts();
+                              },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFFF6B35),
                               ),
@@ -1194,11 +1286,8 @@ class _HomeScreenState extends State<HomeScreen>
                                         _handleMediaPageChange(index);
                                       });
 
-                                      // 遅延読み込み: 残り2件以下になったら追加読み込み
-                                      if (_hasMorePosts &&
-                                          index >= _posts.length - 2) {
-                                        _loadMorePosts();
-                                      }
+                                      // 現在のページから3つ先までを事前読み込み
+                                      _preloadNextPosts(index);
                                     },
                                     itemCount: _hasMorePosts
                                         ? _posts.length + 1
