@@ -18,6 +18,10 @@ import '../services/user_service.dart';
 import '../services/icon_update_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/badge.dart';
+import '../models/post.dart';
+import '../services/post_service.dart';
+import '../widgets/robust_network_image.dart';
+import '../providers/navigation_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -31,9 +35,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   // アイコン更新時のタイムスタンプ（キャッシュ回避用）
   int _iconUpdateTimestamp = 0;
-  
+  // 自分の投稿リスト
+  List<Post> _myPosts = [];
+  bool _isLoadingPosts = false;
+  // 視聴履歴リスト
+  List<Post> _historyPosts = [];
+  bool _isLoadingHistory = false;
+
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
-  /// 
+  ///
   /// [oldIconUrl] 古いアイコンのURL（指定された場合のみクリア）
   Future<void> _clearIconCache({String? oldIconUrl}) async {
     try {
@@ -44,10 +54,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint('🗑️ 古いアイコンキャッシュをクリア: $oldIconUrl');
         }
       }
-      
+
       // デフォルトアイコンのキャッシュもクリア
-      await CachedNetworkImage.evictFromCache('${AppConfig.backendUrl}/icon/default_icon.jpg');
-      
+      await CachedNetworkImage.evictFromCache(
+          '${AppConfig.backendUrl}/icon/default_icon.jpg');
+
       if (kDebugMode) {
         debugPrint('🗑️ アイコンキャッシュをクリアしました');
       }
@@ -57,7 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
   }
-  
+
   // 安全なメッセージ表示のためのヘルパーメソッド
   void _showSafeSnackBar(String message, {Color? backgroundColor}) {
     if (mounted) {
@@ -79,7 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // 安全なダイアログ表示のためのヘルパーメソッド
   Future<T?> _showSafeDialog<T>(Widget dialog) async {
     if (!mounted) return null;
-    
+
     try {
       return await showDialog<T>(
         context: context,
@@ -139,6 +150,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _fetchSpotlightCount();
+    _fetchMyPosts();
+    _fetchHistory();
+  }
+
+  /// 視聴履歴を取得
+  Future<void> _fetchHistory() async {
+    setState(() {
+      _isLoadingHistory = true;
+    });
+
+    try {
+      final posts = await PostService.getPlayHistory();
+
+      if (kDebugMode) {
+        debugPrint('📝 プロフィール: 視聴履歴取得完了: ${posts.length}件');
+      }
+
+      if (mounted) {
+        setState(() {
+          _historyPosts = posts;
+          _isLoadingHistory = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ プロフィール: 視聴履歴取得エラー: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+        });
+      }
+    }
+  }
+
+  /// 自分の投稿を取得
+  Future<void> _fetchMyPosts() async {
+    setState(() {
+      _isLoadingPosts = true;
+    });
+
+    try {
+      final posts = await PostService.getUserContents();
+
+      if (kDebugMode) {
+        debugPrint('📝 プロフィール: 自分の投稿取得完了: ${posts.length}件');
+      }
+
+      if (mounted) {
+        setState(() {
+          _myPosts = posts;
+          _isLoadingPosts = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ プロフィール: 自分の投稿取得エラー: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLoadingPosts = false;
+        });
+      }
+    }
   }
 
   Future<void> _fetchSpotlightCount() async {
@@ -177,10 +254,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           _spotlightCount = data['spotlightnum'] ?? 0;
         });
-        
+
         if (kDebugMode) {
           debugPrint('✅ スポットライト数取得成功: $_spotlightCount');
-          debugPrint('🎖️ 解放バッジ数: ${BadgeManager.getUnlockedBadges(_spotlightCount).length}/8');
+          debugPrint(
+              '🎖️ 解放バッジ数: ${BadgeManager.getUnlockedBadges(_spotlightCount).length}/8');
         }
       } else {
         if (kDebugMode) {
@@ -195,7 +273,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -206,37 +283,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             // プロフィールヘッダー
             _buildProfileHeader(),
-            
+
             const SizedBox(height: 20),
-            
+
             // スポットライトセクション
             _buildSpotlightSection(context),
-            
+
             const SizedBox(height: 20),
-            
+
             // 履歴セクション
             _buildHistorySection(context),
-            
+
             const SizedBox(height: 20),
-            
+
             // 再生リストセクション
             _buildPlaylistSection(context),
-            
+
             const SizedBox(height: 20),
-            
+
             // バッジセクション
             _buildBadgeSection(),
-            
+
             const SizedBox(height: 20),
-            
+
             // 統計・ヘルプセクション
             _buildStatsAndHelpSection(context),
-            
+
             const SizedBox(height: 20),
-            
+
             // ログアウトボタン
             _buildLogoutButton(context),
-            
+
             const SizedBox(height: 100), // ボトムナビゲーション分の余白
           ],
         ),
@@ -252,7 +329,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final user = authProvider.currentUser;
           // バックエンドから取得したDBのusernameを優先表示
           final displayName = user?.backendUsername ?? 'ユーザー';
-          
+
           return Row(
             children: [
               GestureDetector(
@@ -260,17 +337,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Builder(
                   builder: (context) {
                     // アイコンURLとiconPathから一意のキーを生成（キャッシュ回避のため）
-                    final baseIconUrl = user?.avatarUrl ?? 
-                        (user?.iconPath != null 
-                            ? '${AppConfig.backendUrl}/icon/${user!.iconPath}' 
+                    final baseIconUrl = user?.avatarUrl ??
+                        (user?.iconPath != null
+                            ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
                             : '${AppConfig.backendUrl}/icon/default_icon.jpg');
                     // キャッシュ回避のため、アイコン更新時にタイムスタンプを追加
-                    final iconUrl = _iconUpdateTimestamp > 0 && user?.iconPath != null
-                        ? '$baseIconUrl?t=$_iconUpdateTimestamp'
-                        : baseIconUrl;
+                    final iconUrl =
+                        _iconUpdateTimestamp > 0 && user?.iconPath != null
+                            ? '$baseIconUrl?t=$_iconUpdateTimestamp'
+                            : baseIconUrl;
                     // iconPathが変更されたときに再構築されるようにキーを設定
-                    final iconKey = '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}_$_iconUpdateTimestamp';
-                    
+                    final iconKey =
+                        '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}_$_iconUpdateTimestamp';
+
                     return CircleAvatar(
                       radius: 40,
                       backgroundColor: const Color(0xFFFF6B35),
@@ -282,7 +361,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           memCacheWidth: 160,
                           memCacheHeight: 160,
                           httpHeaders: const {
-                            'Accept': 'image/webp,image/avif,image/*, */*;q=0.8',
+                            'Accept':
+                                'image/webp,image/avif,image/*, */*;q=0.8',
                             'User-Agent': 'Flutter-Spotlight/1.0',
                           },
                           placeholder: (context, url) => Container(),
@@ -330,9 +410,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (unlockedBadges.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     final maxBadge = unlockedBadges.last; // 最後のバッジが最大（requiredSpotlightsが最大）
-    
+
     return Container(
       width: 24,
       height: 24,
@@ -369,7 +449,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'スポットライト',
+                '自分の投稿',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -397,79 +477,196 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 120,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: 8,
-            itemBuilder: (context, index) {
-              return Container(
-                width: 160,
-                margin: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[800],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Stack(
+        _isLoadingPosts
+            ? const SizedBox(
+                height: 120,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6B35),
+                  ),
+                ),
+              )
+            : _myPosts.isEmpty
+                ? SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Center(
-                            child: Icon(
-                              Icons.play_circle_outline,
-                              color: Colors.white,
-                              size: 32,
-                            ),
+                          Icon(
+                            Icons.upload_outlined,
+                            color: Colors.grey[600],
+                            size: 32,
                           ),
-                          // スポットライトアイコン
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: SpotLightColors.getSpotlightColor(index),
-                                borderRadius: BorderRadius.circular(4),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: SpotLightColors.getSpotlightColor(index).withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.star,
-                                color: Colors.white,
-                                size: 16,
-                              ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '投稿がありません',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'スポットライト投稿 ${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  )
+                : SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _myPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _myPosts[index];
+                        return _buildPostThumbnail(context, post, index);
+                      },
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+                  ),
       ],
+    );
+  }
+
+  /// サムネイルURLが有効かチェック（null/undefined/空文字列を安全にチェック）
+  bool _hasValidThumbnail(String? thumbnailUrl) {
+    if (thumbnailUrl == null) return false;
+    try {
+      return thumbnailUrl.isNotEmpty;
+    } catch (e) {
+      // undefinedやその他のエラーの場合もfalseを返す
+      if (kDebugMode) {
+        debugPrint('⚠️ サムネイルURLチェックエラー: $e');
+      }
+      return false;
+    }
+  }
+
+  /// タイトルを安全に取得（null/undefined/空文字列を安全にチェック）
+  String _getSafeTitle(String? title) {
+    if (title == null) return 'タイトルなし';
+    try {
+      if (title.isNotEmpty) {
+        return title;
+      }
+      return 'タイトルなし';
+    } catch (e) {
+      // undefinedやその他のエラーの場合もデフォルト値を返す
+      if (kDebugMode) {
+        debugPrint('⚠️ タイトル取得エラー: $e');
+      }
+      return 'タイトルなし';
+    }
+  }
+
+  /// 投稿のサムネイルを表示
+  Widget _buildPostThumbnail(BuildContext context, Post post, int index) {
+    return GestureDetector(
+      onTap: () {
+        // 投稿をタップしたらホーム画面に遷移してその投稿を表示
+        try {
+          final postId = post.id;
+          // undefinedの可能性があるため、安全にチェック
+          final postIdStr = postId.toString();
+          if (postIdStr.isNotEmpty) {
+            final navigationProvider =
+                Provider.of<NavigationProvider>(context, listen: false);
+            navigationProvider.navigateToHome(postId: postIdStr);
+
+            if (kDebugMode) {
+              debugPrint(
+                  '📱 プロフィール: 投稿をタップ: ID=$postIdStr, タイトル=${_getSafeTitle(post.title)}');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 投稿タップエラー: $e');
+          }
+        }
+      },
+      child: Container(
+        width: 160,
+        margin: const EdgeInsets.only(right: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 90,
+                color: Colors.grey[800],
+                child: _hasValidThumbnail(post.thumbnailUrl)
+                    ? RobustNetworkImage(
+                        imageUrl: post.thumbnailUrl ?? '',
+                        fit: BoxFit.cover,
+                        maxWidth: 320,
+                        maxHeight: 180,
+                        placeholder: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              post.postType == PostType.video
+                                  ? Icons.play_circle_outline
+                                  : post.postType == PostType.image
+                                      ? Icons.image_outlined
+                                      : post.postType == PostType.audio
+                                          ? Icons.audiotrack_outlined
+                                          : Icons.text_fields_outlined,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          // スポットライトアイコン
+                          if (post.isSpotlighted)
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      SpotLightColors.getSpotlightColor(index),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: SpotLightColors.getSpotlightColor(
+                                              index)
+                                          .withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.star,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _getSafeTitle(post.title),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -483,7 +680,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                '履歴',
+                '視聴履歴',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -511,51 +708,165 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 120,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: 10,
-            itemBuilder: (context, index) {
-              return Container(
-                width: 160,
-                margin: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[800],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '投稿タイトル ${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+        _isLoadingHistory
+            ? const SizedBox(
+                height: 120,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6B35),
+                  ),
                 ),
-              );
-            },
-          ),
-        ),
+              )
+            : _historyPosts.isEmpty
+                ? SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.history,
+                            color: Colors.grey[600],
+                            size: 32,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '視聴履歴がありません',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _historyPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _historyPosts[index];
+                        return _buildHistoryThumbnail(context, post, index);
+                      },
+                    ),
+                  ),
       ],
+    );
+  }
+
+  /// 視聴履歴のサムネイルを表示
+  Widget _buildHistoryThumbnail(BuildContext context, Post post, int index) {
+    return GestureDetector(
+      onTap: () {
+        // 投稿をタップしたらホーム画面に遷移してその投稿を表示
+        try {
+          final postId = post.id;
+          // undefinedの可能性があるため、安全にチェック
+          final postIdStr = postId.toString();
+          if (postIdStr.isNotEmpty) {
+            final navigationProvider =
+                Provider.of<NavigationProvider>(context, listen: false);
+            navigationProvider.navigateToHome(postId: postIdStr);
+
+            if (kDebugMode) {
+              debugPrint(
+                  '📱 プロフィール: 視聴履歴をタップ: ID=$postIdStr, タイトル=${_getSafeTitle(post.title)}');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 視聴履歴タップエラー: $e');
+          }
+        }
+      },
+      child: Container(
+        width: 160,
+        margin: const EdgeInsets.only(right: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 90,
+                color: Colors.grey[800],
+                child: _hasValidThumbnail(post.thumbnailUrl)
+                    ? RobustNetworkImage(
+                        imageUrl: post.thumbnailUrl ?? '',
+                        fit: BoxFit.cover,
+                        maxWidth: 320,
+                        maxHeight: 180,
+                        placeholder: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              post.postType == PostType.video
+                                  ? Icons.play_circle_outline
+                                  : post.postType == PostType.image
+                                      ? Icons.image_outlined
+                                      : post.postType == PostType.audio
+                                          ? Icons.audiotrack_outlined
+                                          : Icons.text_fields_outlined,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          // スポットライトアイコン
+                          if (post.isSpotlighted)
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      SpotLightColors.getSpotlightColor(index),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: SpotLightColors.getSpotlightColor(
+                                              index)
+                                          .withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.star,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _getSafeTitle(post.title),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -674,7 +985,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildBadgeSection() {
     final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
     final allBadges = BadgeManager.allBadges;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -711,7 +1022,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             itemBuilder: (context, index) {
               final badge = allBadges[index];
               final isUnlocked = unlockedBadges.any((b) => b.id == badge.id);
-              
+
               return Container(
                 width: 80,
                 margin: const EdgeInsets.only(right: 12),
@@ -721,7 +1032,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        gradient: isUnlocked 
+                        gradient: isUnlocked
                             ? LinearGradient(
                                 colors: SpotLightColors.getGradient(index),
                                 begin: Alignment.topLeft,
@@ -773,10 +1084,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         children: [
           // 総視聴時間
-          
-          
+
           const SizedBox(height: 16),
-          
+
           // ヘルプ・フィードバック
           _buildMenuTile(
             icon: Icons.help_outline,
@@ -854,7 +1164,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
           final isGuest = authProvider.currentUser?.id == 'guest';
-          
+
           return Container(
             width: double.infinity,
             height: 56,
@@ -888,9 +1198,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: TextStyle(color: Colors.white),
                       ),
                       content: Text(
-                        isGuest 
-                            ? 'ログイン画面に戻りますか？' 
-                            : 'ログアウトしてログイン画面に戻りますか？',
+                        isGuest ? 'ログイン画面に戻りますか？' : 'ログアウトしてログイン画面に戻りますか？',
                         style: const TextStyle(color: Colors.white70),
                       ),
                       actions: [
@@ -916,7 +1224,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (confirmed == true && context.mounted) {
                     // ログアウト処理（ゲストモードもログイン中も同じ処理）
                     await authProvider.logout();
-                    
+
                     if (kDebugMode) {
                       debugPrint('✅ ログアウト完了: ログイン画面へ遷移');
                     }
@@ -1012,7 +1320,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// 画像を選択してアップロード
-  Future<void> _pickAndUploadIcon(BuildContext context, AuthProvider authProvider) async {
+  Future<void> _pickAndUploadIcon(
+      BuildContext context, AuthProvider authProvider) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -1032,7 +1341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final imageBytes = await pickedFile.readAsBytes();
       final user = authProvider.currentUser;
       final username = user?.backendUsername;
-      
+
       if (username == null) {
         _closeSafeLoadingDialog();
         if (mounted) {
@@ -1044,32 +1353,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Uint8Listを直接渡す（Webでも動作）
       final iconPath = await UserService.uploadIcon(username, imageBytes);
       _closeSafeLoadingDialog();
-      
+
       if (!mounted) return;
 
       if (iconPath != null) {
         if (kDebugMode) {
           debugPrint('📸 アイコンアップロード成功: $iconPath');
         }
-        
+
         // 4. 画像のURLを取得
         final newIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
-        
+
         if (kDebugMode) {
           debugPrint('🔗 新しいアイコンURL: $newIconUrl');
         }
-        
+
         // 古いアイコンURLを取得
-        final oldIconUrl = user?.avatarUrl ?? 
-            (user?.iconPath != null ? '${AppConfig.backendUrl}/icon/${user!.iconPath}' : null);
-        
+        final oldIconUrl = user?.avatarUrl ??
+            (user?.iconPath != null
+                ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
+                : null);
+
         if (kDebugMode) {
           debugPrint('🔗 古いアイコンURL: $oldIconUrl');
         }
-        
+
         // 古いキャッシュをクリア（古いURLとデフォルトアイコン）
         await _clearIconCache(oldIconUrl: oldIconUrl);
-        
+
         // 新しいアイコンのキャッシュもクリア（強制的に再読み込み）
         try {
           await CachedNetworkImage.evictFromCache(newIconUrl);
@@ -1081,24 +1392,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             debugPrint('⚠️ 新しいアイコンキャッシュクリアエラー: $e');
           }
         }
-        
+
         // 5. フロントにURLを元に画像を設定 & 6. キャッシュを更新
         // サーバー側で画像処理が完了するまで少し待機
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         // バックエンドから最新のユーザー情報を再取得して反映
         final refreshed = await authProvider.refreshUserInfoFromBackend();
-        
+
         if (kDebugMode) {
           debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
         }
-        
+
         // 新しいアイコンのURLを再度クリア（再取得後のURLもクリア）
         try {
           final refreshedUser = authProvider.currentUser;
-          final refreshedIconUrl = refreshedUser?.avatarUrl ?? 
-              (refreshedUser?.iconPath != null 
-                  ? '${AppConfig.backendUrl}/icon/${refreshedUser!.iconPath}' 
+          final refreshedIconUrl = refreshedUser?.avatarUrl ??
+              (refreshedUser?.iconPath != null
+                  ? '${AppConfig.backendUrl}/icon/${refreshedUser!.iconPath}'
                   : null);
           if (refreshedIconUrl != null) {
             await CachedNetworkImage.evictFromCache(refreshedIconUrl);
@@ -1111,23 +1422,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             debugPrint('⚠️ 再取得後のキャッシュクリアエラー: $e');
           }
         }
-        
+
         // 他の画面にアイコン更新を通知（ホーム画面など）
         IconUpdateService().notifyIconUpdate(
           username,
           iconPath: iconPath,
         );
-        
+
         if (mounted) {
           // アイコン更新タイムスタンプを更新（キャッシュ回避のため）
           setState(() {
             _iconUpdateTimestamp = DateTime.now().millisecondsSinceEpoch;
           });
-          
+
           if (kDebugMode) {
             debugPrint('🔄 プロフィール画面を再構築しました（タイムスタンプ: $_iconUpdateTimestamp）');
           }
-          
+
           // 7. レスポンスメッセージ表示
           if (refreshed) {
             _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
@@ -1146,31 +1457,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (kDebugMode) {
         debugPrint('❌ アイコンアップロードエラー: $e');
       }
-      
+
       _closeSafeLoadingDialog();
-      
+
       // 7. エラーメッセージ表示
       if (mounted) {
         String errorMessage = 'エラーが発生しました';
-        
+
         // エラーの種類に応じてメッセージをカスタマイズ
-        if (e.toString().contains('timeout') || e.toString().contains('タイムアウト')) {
+        if (e.toString().contains('timeout') ||
+            e.toString().contains('タイムアウト')) {
           errorMessage = '通信がタイムアウトしました';
-        } else if (e.toString().contains('network') || e.toString().contains('ネットワーク')) {
+        } else if (e.toString().contains('network') ||
+            e.toString().contains('ネットワーク')) {
           errorMessage = 'ネットワークエラーが発生しました';
         } else if (e.toString().contains('404')) {
           errorMessage = 'サーバーが見つかりません';
         } else if (e.toString().contains('500')) {
           errorMessage = 'サーバーエラーが発生しました';
         }
-        
+
         _showSafeSnackBar(errorMessage, backgroundColor: Colors.red);
       }
     }
   }
 
   /// アイコンを削除
-  Future<void> _deleteIcon(BuildContext context, AuthProvider authProvider) async {
+  Future<void> _deleteIcon(
+      BuildContext context, AuthProvider authProvider) async {
     // 確認ダイアログを表示
     final confirmed = await _showSafeDialog<bool>(
       Builder(
@@ -1213,7 +1527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final user = authProvider.currentUser;
     final username = user?.backendUsername;
-    
+
     if (username == null) {
       _closeSafeLoadingDialog();
       if (mounted) {
@@ -1224,43 +1538,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final success = await UserService.deleteIcon(username);
     _closeSafeLoadingDialog();
-    
+
     if (!mounted) return;
 
     if (success) {
       if (kDebugMode) {
         debugPrint('🗑️ アイコン削除成功');
       }
-      
+
       // アイコンキャッシュをクリア（アイコン削除を反映するため）
       _clearIconCache();
-      
+
       // デフォルトアイコンの処理
       await _setDefaultIcon(authProvider);
-      
+
       // サーバー側で処理が完了するまで待機（300ms）
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       if (kDebugMode) {
-        debugPrint('📤 アイコン削除通知を送信: username=$username, iconPath=null (default)');
+        debugPrint(
+            '📤 アイコン削除通知を送信: username=$username, iconPath=null (default)');
       }
-      
+
       // 他の画面にアイコン削除を通知（ホーム画面など）
       IconUpdateService().notifyIconUpdate(
         username,
         iconPath: null, // nullでdefault_icon.jpgを使用
       );
-      
+
       if (mounted) {
         // 画面を強制的に再構築してデフォルトアイコンを表示
         setState(() {});
-        
+
         if (kDebugMode) {
           debugPrint('🔄 プロフィール画面を再構築しました（デフォルトアイコン）');
         }
-        
+
         _showSafeSnackBar('アイコンをデフォルトに変更しました', backgroundColor: Colors.green);
-        
+
         if (kDebugMode) {
           debugPrint('✅ アイコン削除完了: デフォルトアイコンに変更');
         }
@@ -1278,29 +1593,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // バックエンドのデフォルトアイコンパスを設定
     const defaultIconPath = '/icon/default_icon.jpg';
     final defaultIconUrl = '${AppConfig.backendUrl}$defaultIconPath';
-    
+
     if (kDebugMode) {
       debugPrint('🖼️ デフォルトアイコン確認中: $defaultIconUrl');
     }
-    
+
     try {
       // バックエンドのデフォルトアイコンが利用可能かを確認
       final response = await http.head(Uri.parse(defaultIconUrl)).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => http.Response('', 404),
-      );
-      
+            const Duration(seconds: 3),
+            onTimeout: () => http.Response('', 404),
+          );
+
       if (response.statusCode == 200) {
         // デフォルトアイコンが存在する場合は設定
         await authProvider.updateUserInfo(iconPath: defaultIconPath);
-        
+
         if (kDebugMode) {
           debugPrint('✅ バックエンドのデフォルトアイコンを設定: $defaultIconPath');
         }
       } else {
         // デフォルトアイコンが存在しない場合はnullを設定（ローカルのPersonアイコンを表示）
         await authProvider.updateUserInfo(iconPath: '');
-        
+
         if (kDebugMode) {
           debugPrint('⚠️ バックエンドのデフォルトアイコンが存在しません (${response.statusCode})');
           debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
@@ -1309,16 +1624,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       // ネットワークエラーの場合もnullを設定（ローカルのPersonアイコンを表示）
       await authProvider.updateUserInfo(iconPath: '');
-      
+
       if (kDebugMode) {
         debugPrint('❌ デフォルトアイコン確認エラー: $e');
         debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
       }
     }
-    
+
     // アイコンキャッシュもクリアしてデフォルトアイコンを確実に表示
     _clearIconCache();
-    
+
     // 画面を再描画
     if (mounted) {
       setState(() {});

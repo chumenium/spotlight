@@ -343,6 +343,70 @@ class PostService {
     return null;
   }
 
+  /// 視聴履歴を取得（他のユーザーの投稿のみ、視聴順に降順）
+  static Future<List<Post>> getPlayHistory() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 JWTトークンが取得できません');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/users/getplayhistory';
+
+      if (kDebugMode) {
+        debugPrint('📝 視聴履歴取得URL: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📝 視聴履歴取得レスポンス: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> postsJson = responseData['data'];
+
+          if (kDebugMode) {
+            debugPrint('📝 視聴履歴数: ${postsJson.length}');
+          }
+
+          return postsJson.map((json) {
+            // contentIDをidとして設定
+            final contentId = json['contentID']?.toString() ?? '';
+            json['id'] = contentId;
+            return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
+          }).toList();
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 視聴履歴取得エラー: ${response.statusCode}');
+          debugPrint('レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 視聴履歴取得例外: $e');
+      }
+    }
+
+    return [];
+  }
+
   /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
   static Future<List<Post>> getUserContents() async {
     try {
