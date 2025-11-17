@@ -17,6 +17,7 @@ import '../providers/navigation_provider.dart';
 import '../services/comment_service.dart';
 import '../services/playlist_service.dart';
 import '../models/comment.dart';
+import '../auth/auth_provider.dart';
 
 /// 音声背景用のカスタムペインター
 class _AudioBackgroundPainter extends CustomPainter {
@@ -128,6 +129,9 @@ class _HomeScreenState extends State<HomeScreen>
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
   String? _lastTargetPostId; // 最後に処理したターゲット投稿ID
+
+  // 視聴履歴記録管理
+  String? _lastRecordedPostId; // 最後に記録した投稿ID（重複防止用）
 
   // 初回起動時のリトライ管理
   int _initialRetryCount = 0;
@@ -3332,6 +3336,9 @@ class _HomeScreenState extends State<HomeScreen>
             if (controller != null && controller.value.isInitialized) {
               controller.play();
               controller.setLooping(true);
+
+              // 動画読み込み完了時に視聴履歴を記録
+              _recordPlayHistory(newPost);
             }
           }
         });
@@ -3341,6 +3348,9 @@ class _HomeScreenState extends State<HomeScreen>
         if (controller != null && controller.value.isInitialized) {
           controller.play();
           controller.setLooping(true);
+
+          // 既に初期化済みの場合も視聴履歴を記録（動画が読み込まれている）
+          _recordPlayHistory(newPost);
         }
       }
     } else if (newPost.postType == PostType.audio) {
@@ -3358,6 +3368,9 @@ class _HomeScreenState extends State<HomeScreen>
               player.play();
               // シークバー更新タイマーを開始
               _startSeekBarUpdateTimerAudio();
+
+              // 音声読み込み完了時に視聴履歴を記録
+              _recordPlayHistory(newPost);
             }
           }
         });
@@ -3369,12 +3382,117 @@ class _HomeScreenState extends State<HomeScreen>
           player.play();
           // シークバー更新タイマーを開始
           _startSeekBarUpdateTimerAudio();
+
+          // 既に初期化済みの場合も視聴履歴を記録（音声が読み込まれている）
+          _recordPlayHistory(newPost);
         }
       }
     } else if (newPost.postType == PostType.image) {
       // 画像は表示時に直接読み込む（事前読み込みなし）
       // _preloadImagesAround(newIndex);
       // _releaseDistantResources(newIndex);
+
+      // 画像の場合は表示時に視聴履歴を記録（画像は即座に表示される）
+      _recordPlayHistory(newPost);
+    }
+    // 動画と音声の場合は、読み込み完了時に視聴履歴を記録（上記の初期化処理内で実行）
+  }
+
+  /// 視聴履歴を記録
+  /// ユーザーが視聴した動画の直近50件を記録、重複がある場合は最新分だけを残す
+  Future<void> _recordPlayHistory(Post post) async {
+    if (kDebugMode) {
+      debugPrint(
+          '📝 視聴履歴記録開始: 投稿ID=${post.id}, タイトル=${post.title}, userId=${post.userId}');
+    }
+
+    try {
+      // 自分の投稿は記録しない
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUserId = authProvider.currentUser?.id;
+
+      if (kDebugMode) {
+        debugPrint('📝 現在のユーザーID: $currentUserId');
+      }
+
+      if (currentUserId == null) {
+        if (kDebugMode) {
+          debugPrint('📝 視聴履歴記録スキップ: ユーザー未ログイン');
+        }
+        return;
+      }
+
+      // 自分の投稿も視聴履歴に記録する（すべての投稿を記録）
+      // userIdの比較（デバッグ用）
+      final postUserId = post.userId.toString().trim();
+      final currentUserIdStr = currentUserId.toString().trim();
+
+      if (kDebugMode) {
+        debugPrint(
+            '📝 ユーザーID比較: post.userId="$postUserId", currentUserId="$currentUserIdStr"');
+        if (postUserId.isNotEmpty && postUserId == currentUserIdStr) {
+          debugPrint('📝 自分の投稿も視聴履歴に記録します');
+        }
+        if (postUserId.isEmpty) {
+          debugPrint('⚠️ 投稿のuserIdが空です。バックエンド側で判定されます。');
+        }
+      }
+
+      // 同じ投稿を連続して表示した場合は記録しない（重複防止）
+      // ただし、初回表示時は必ず記録する
+      if (_lastRecordedPostId == post.id.toString()) {
+        if (kDebugMode) {
+          debugPrint(
+              '📝 視聴履歴記録スキップ: 同じ投稿を連続表示 (postId: ${post.id}, lastRecorded: $_lastRecordedPostId)');
+        }
+        return;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 視聴履歴記録実行: 投稿ID=${post.id} の詳細を取得して記録します');
+        debugPrint('   - 投稿タイプ: ${post.postType}');
+        debugPrint('   - タイトル: ${post.title}');
+      }
+
+      // 視聴履歴を記録（fetchPostDetailを呼び出すことで自動的に記録される）
+      // API仕様: POST /api/content/detail は「再生用の次コンテンツを取得し、再生履歴を記録」
+      // 非同期で実行し、UIをブロックしない
+      if (kDebugMode) {
+        debugPrint('📝 視聴履歴記録: fetchPostDetailを呼び出します (postId: ${post.id})');
+        debugPrint('   - API: ${AppConfig.apiBaseUrl}/content/detail');
+        debugPrint('   - contentID: ${post.id}');
+      }
+
+      try {
+        final updatedPost =
+            await PostService.fetchPostDetail(post.id.toString());
+
+        if (updatedPost != null && !_isDisposed) {
+          _lastRecordedPostId = post.id.toString();
+          if (kDebugMode) {
+            debugPrint('✅ 視聴履歴記録完了: 投稿ID=${post.id}, タイトル=${post.title}');
+            debugPrint('   - バックエンド側で視聴履歴が記録されたはずです');
+            debugPrint('   - 視聴履歴一覧を表示すると最新のデータが表示されます');
+            debugPrint('   - 重複がある場合は最新分だけが残ります');
+            debugPrint('   - 直近50件まで記録されます');
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('⚠️ 視聴履歴記録失敗: 投稿詳細の取得に失敗しました (postId: ${post.id})');
+            debugPrint('   - updatedPost: $updatedPost');
+            debugPrint('   - _isDisposed: $_isDisposed');
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('❌ 視聴履歴記録エラー: $e');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ 視聴履歴記録例外: $e');
+        debugPrint('スタックトレース: $stackTrace');
+      }
     }
   }
 

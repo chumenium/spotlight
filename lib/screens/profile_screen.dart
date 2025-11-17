@@ -22,6 +22,7 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
+import '../services/playlist_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -41,6 +42,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // 視聴履歴リスト
   List<Post> _historyPosts = [];
   bool _isLoadingHistory = false;
+  // 再生リスト
+  List<Playlist> _playlists = [];
+  bool _isLoadingPlaylists = false;
+  // 前回のナビゲーションインデックス（リロード制御用）
+  int? _lastNavigationIndex;
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -152,9 +158,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchSpotlightCount();
     _fetchMyPosts();
     _fetchHistory();
+    _fetchPlaylists();
   }
 
-  /// 視聴履歴を取得
+  /// 視聴履歴を取得（最前の5件まで）
   Future<void> _fetchHistory() async {
     setState(() {
       _isLoadingHistory = true;
@@ -169,7 +176,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (mounted) {
         setState(() {
-          _historyPosts = posts;
+          // 最前の5件までを表示
+          _historyPosts = posts.take(5).toList();
           _isLoadingHistory = false;
         });
       }
@@ -186,7 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// 自分の投稿を取得
+  /// 自分の投稿を取得（最前の5件まで）
   Future<void> _fetchMyPosts() async {
     setState(() {
       _isLoadingPosts = true;
@@ -201,7 +209,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (mounted) {
         setState(() {
-          _myPosts = posts;
+          // 最前の5件までを表示
+          _myPosts = posts.take(5).toList();
           _isLoadingPosts = false;
         });
       }
@@ -213,6 +222,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           _isLoadingPosts = false;
+        });
+      }
+    }
+  }
+
+  /// 再生リストを取得（最前の5件まで）
+  Future<void> _fetchPlaylists() async {
+    setState(() {
+      _isLoadingPlaylists = true;
+    });
+
+    try {
+      final playlists = await PlaylistService.getPlaylists();
+
+      if (kDebugMode) {
+        debugPrint('📝 プロフィール: 再生リスト取得完了: ${playlists.length}件');
+      }
+
+      if (mounted) {
+        setState(() {
+          // 最前の5件までを表示
+          _playlists = playlists.take(5).toList();
+          _isLoadingPlaylists = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ プロフィール: 再生リスト取得エラー: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLoadingPlaylists = false;
         });
       }
     }
@@ -275,6 +317,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // NavigationProviderを監視して、プロフィール画面が表示されたときにデータを再取得
+    return Consumer<NavigationProvider>(
+      builder: (context, navigationProvider, child) {
+        final currentIndex = navigationProvider.currentIndex;
+        const profileIndex = 4; // プロフィール画面のインデックス
+
+        // プロフィール画面が表示されたとき（インデックスが4になったとき）にデータを再取得
+        if (currentIndex == profileIndex &&
+            _lastNavigationIndex != profileIndex) {
+          _lastNavigationIndex = profileIndex;
+
+          if (kDebugMode) {
+            debugPrint('🔄 プロフィール画面が表示されました。データを再取得します...');
+          }
+
+          // 次のフレームでデータを再取得（build中にsetStateを呼ばないように）
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && navigationProvider.currentIndex == profileIndex) {
+              _fetchSpotlightCount();
+              _fetchMyPosts();
+              _fetchHistory();
+              _fetchPlaylists();
+            }
+          });
+        } else if (currentIndex != profileIndex) {
+          // プロフィール画面以外が表示された場合は、前回のインデックスをリセット
+          _lastNavigationIndex = currentIndex;
+        }
+
+        return _buildScaffold(context);
+      },
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: SingleChildScrollView(
@@ -479,7 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 12),
         _isLoadingPosts
             ? const SizedBox(
-                height: 120,
+                height: 150,
                 child: Center(
                   child: CircularProgressIndicator(
                     color: Color(0xFFFF6B35),
@@ -488,7 +565,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               )
             : _myPosts.isEmpty
                 ? SizedBox(
-                    height: 120,
+                    height: 150,
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -511,16 +588,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   )
                 : SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _myPosts.length,
-                      itemBuilder: (context, index) {
-                        final post = _myPosts[index];
-                        return _buildPostThumbnail(context, post, index);
-                      },
-                    ),
+                    height: 150,
+                    child: _myPosts.length <= 5
+                        ? ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _myPosts.length,
+                            itemBuilder: (context, index) {
+                              final post = _myPosts[index];
+                              return _buildPostThumbnail(context, post, index);
+                            },
+                          )
+                        : PageView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: (_myPosts.length / 5).ceil(),
+                            itemBuilder: (context, pageIndex) {
+                              final chunks = _chunkList(_myPosts, 5);
+                              final pagePosts = chunks.length > pageIndex
+                                  ? chunks[pageIndex]
+                                  : <Post>[];
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                child: Row(
+                                  children: List.generate(
+                                    pagePosts.length,
+                                    (index) {
+                                      final post = pagePosts[index];
+                                      final globalIndex = pageIndex * 5 + index;
+                                      return _buildPostThumbnail(
+                                          context, post, globalIndex);
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
       ],
     );
@@ -538,6 +642,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       return false;
     }
+  }
+
+  /// リストを5件ずつに分割するヘルパーメソッド
+  List<List<T>> _chunkList<T>(List<T> list, int chunkSize) {
+    final chunks = <List<T>>[];
+    for (int i = 0; i < list.length; i += chunkSize) {
+      chunks.add(list.sublist(
+        i,
+        i + chunkSize > list.length ? list.length : i + chunkSize,
+      ));
+    }
+    return chunks;
   }
 
   /// タイトルを安全に取得（null/undefined/空文字列を安全にチェック）
@@ -559,6 +675,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// 投稿のサムネイルを表示
   Widget _buildPostThumbnail(BuildContext context, Post post, int index) {
+    // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = 20.0 * 2; // 左右のパディング
+    final itemMargin = 12.0; // アイテム間のマージン
+    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    final availableWidth = screenWidth - horizontalPadding - totalMargin;
+    final itemWidth =
+        (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
+
     return GestureDetector(
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
@@ -583,15 +708,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       },
       child: Container(
-        width: 160,
-        margin: const EdgeInsets.only(right: 12),
+        width: itemWidth,
+        margin: EdgeInsets.only(
+            right: index < _myPosts.length - 1 ? itemMargin : 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                height: 90,
+                height: 120,
                 color: Colors.grey[800],
                 child: _hasValidThumbnail(post.thumbnailUrl)
                     ? RobustNetworkImage(
@@ -710,7 +836,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 12),
         _isLoadingHistory
             ? const SizedBox(
-                height: 120,
+                height: 150,
                 child: Center(
                   child: CircularProgressIndicator(
                     color: Color(0xFFFF6B35),
@@ -719,7 +845,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               )
             : _historyPosts.isEmpty
                 ? SizedBox(
-                    height: 120,
+                    height: 150,
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -742,16 +868,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   )
                 : SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _historyPosts.length,
-                      itemBuilder: (context, index) {
-                        final post = _historyPosts[index];
-                        return _buildHistoryThumbnail(context, post, index);
-                      },
-                    ),
+                    height: 150,
+                    child: _historyPosts.length <= 5
+                        ? ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _historyPosts.length,
+                            itemBuilder: (context, index) {
+                              final post = _historyPosts[index];
+                              return _buildHistoryThumbnail(
+                                  context, post, index);
+                            },
+                          )
+                        : PageView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: (_historyPosts.length / 5).ceil(),
+                            itemBuilder: (context, pageIndex) {
+                              final chunks = _chunkList(_historyPosts, 5);
+                              final pagePosts = chunks.length > pageIndex
+                                  ? chunks[pageIndex]
+                                  : <Post>[];
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                child: Row(
+                                  children: List.generate(
+                                    pagePosts.length,
+                                    (index) {
+                                      final post = pagePosts[index];
+                                      final globalIndex = pageIndex * 5 + index;
+                                      return _buildHistoryThumbnail(
+                                          context, post, globalIndex);
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
       ],
     );
@@ -759,6 +913,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// 視聴履歴のサムネイルを表示
   Widget _buildHistoryThumbnail(BuildContext context, Post post, int index) {
+    // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = 20.0 * 2; // 左右のパディング
+    final itemMargin = 12.0; // アイテム間のマージン
+    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    final availableWidth = screenWidth - horizontalPadding - totalMargin;
+    final itemWidth =
+        (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
+
     return GestureDetector(
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
@@ -783,15 +946,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       },
       child: Container(
-        width: 160,
-        margin: const EdgeInsets.only(right: 12),
+        width: itemWidth,
+        margin: EdgeInsets.only(
+            right: index < _historyPosts.length - 1 ? itemMargin : 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                height: 90,
+                height: 120,
                 color: Colors.grey[800],
                 child: _hasValidThumbnail(post.thumbnailUrl)
                     ? RobustNetworkImage(
@@ -870,6 +1034,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// 再生リストのサムネイルを表示
+  Widget _buildPlaylistThumbnail(
+      BuildContext context, Playlist playlist, int index) {
+    // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = 20.0 * 2; // 左右のパディング
+    final itemMargin = 12.0; // アイテム間のマージン
+    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    final availableWidth = screenWidth - horizontalPadding - totalMargin;
+    final itemWidth =
+        (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
+
+    return GestureDetector(
+      onTap: () {
+        // 再生リストをタップしたら再生リスト詳細画面に遷移（将来実装）
+        if (kDebugMode) {
+          debugPrint(
+              '📱 プロフィール: 再生リストをタップ: ID=${playlist.playlistid}, タイトル=${playlist.title}');
+        }
+      },
+      child: Container(
+        width: itemWidth,
+        margin: EdgeInsets.only(
+            right: index < _playlists.length - 1 ? itemMargin : 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 120,
+                color: Colors.grey[800],
+                child: playlist.thumbnailpath != null &&
+                        playlist.thumbnailpath!.isNotEmpty
+                    ? RobustNetworkImage(
+                        imageUrl:
+                            '${AppConfig.backendUrl}${playlist.thumbnailpath}',
+                        fit: BoxFit.cover,
+                        maxWidth: 320,
+                        maxHeight: 180,
+                        placeholder: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF6B35),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          const Center(
+                            child: Icon(
+                              Icons.playlist_play,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              playlist.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlaylistSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,76 +1149,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 120,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: 5,
-            itemBuilder: (context, index) {
-              return Container(
-                width: 160,
-                margin: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[800],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Stack(
+        _isLoadingPlaylists
+            ? const SizedBox(
+                height: 150,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6B35),
+                  ),
+                ),
+              )
+            : _playlists.isEmpty
+                ? SizedBox(
+                    height: 150,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Center(
-                            child: Icon(
-                              Icons.playlist_play,
-                              color: Colors.white,
-                              size: 32,
-                            ),
+                          Icon(
+                            Icons.playlist_play,
+                            color: Colors.grey[600],
+                            size: 32,
                           ),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.8),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '${(index + 1) * 3}件',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '再生リストがありません',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '再生リスト ${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+                  )
+                : SizedBox(
+                    height: 150,
+                    child: _playlists.length <= 5
+                        ? ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _playlists.length,
+                            itemBuilder: (context, index) {
+                              final playlist = _playlists[index];
+                              return _buildPlaylistThumbnail(
+                                  context, playlist, index);
+                            },
+                          )
+                        : PageView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: (_playlists.length / 5).ceil(),
+                            itemBuilder: (context, pageIndex) {
+                              final chunks = _chunkList(_playlists, 5);
+                              final pagePlaylists = chunks.length > pageIndex
+                                  ? chunks[pageIndex]
+                                  : <Playlist>[];
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                child: Row(
+                                  children: List.generate(
+                                    pagePlaylists.length,
+                                    (index) {
+                                      final playlist = pagePlaylists[index];
+                                      final globalIndex = pageIndex * 5 + index;
+                                      return _buildPlaylistThumbnail(
+                                          context, playlist, globalIndex);
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
       ],
     );
   }

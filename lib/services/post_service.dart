@@ -288,7 +288,7 @@ class PostService {
     }
   }
 
-  /// 投稿詳細を取得
+  /// 投稿詳細を取得（視聴履歴を記録する）
   static Future<Post?> fetchPostDetail(String contentId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
@@ -301,10 +301,7 @@ class PostService {
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/detail';
-
-      if (kDebugMode) {
-        debugPrint('📝 投稿詳細取得URL: $url');
-      }
+      final contentIdInt = int.tryParse(contentId) ?? 0;
 
       final response = await http.post(
         Uri.parse(url),
@@ -312,26 +309,17 @@ class PostService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
-        body: jsonEncode({'contentID': int.tryParse(contentId) ?? 0}),
+        body: jsonEncode({'contentID': contentIdInt}),
       );
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📝 投稿詳細レスポンス: ${responseData.toString()}');
-        }
-
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final Map<String, dynamic> data = responseData['data'];
-          // contentIDを追加してPostモデルに変換
           data['contentID'] = contentId;
           return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 投稿詳細取得エラー: ${response.statusCode}');
         }
       }
     } catch (e) {
@@ -343,14 +331,32 @@ class PostService {
     return null;
   }
 
-  /// 視聴履歴を取得（他のユーザーの投稿のみ、視聴順に降順）
+  /// 視聴履歴を取得
+  ///
+  /// ER図に基づくテーブル構造:
+  /// - playhistory: userID, playID, contentID のみ
+  /// - content: contentID, userID, title, contentpath, link, posttimestamp, spotlightnum
+  /// - user: userID, username, iconimagpath
+  ///
+  /// 重複排除ロジック:
+  /// - 同じ contentID が複数ある場合、playID が最大のもの（最新の視聴履歴）だけを残す
+  /// - 直近50件までに制限
+  /// - playID の降順でソート（最新が先頭）
+  ///
+  /// 手順:
+  /// 1. /api/users/getplayhistory から playhistory のデータを取得
+  /// 2. 同じ contentID の重複を排除（最新の playID だけを残す）
+  /// 3. playID の降順でソート
+  /// 4. 50件までに制限
+  /// 5. 各 contentID を使って /api/content/detail からコンテンツ情報を取得
+  /// 6. Post オブジェクトに変換して返す
   static Future<List<Post>> getPlayHistory() async {
     try {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
         if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
+          debugPrint('📝 [視聴履歴] JWTトークンが取得できません');
         }
         return [];
       }
@@ -358,9 +364,10 @@ class PostService {
       final url = '${AppConfig.apiBaseUrl}/users/getplayhistory';
 
       if (kDebugMode) {
-        debugPrint('📝 視聴履歴取得URL: $url');
+        debugPrint('📝 [視聴履歴] API呼び出し: $url');
       }
 
+      // ステップ1: playhistory テーブルからデータを取得
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -370,41 +377,177 @@ class PostService {
         body: jsonEncode({}),
       );
 
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-
+      if (response.statusCode != 200) {
         if (kDebugMode) {
-          debugPrint('📝 視聴履歴取得レスポンス: ${responseData.toString()}');
+          debugPrint('📝 [視聴履歴] APIエラー: ${response.statusCode}');
         }
-
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final List<dynamic> postsJson = responseData['data'];
-
-          if (kDebugMode) {
-            debugPrint('📝 視聴履歴数: ${postsJson.length}');
-          }
-
-          return postsJson.map((json) {
-            // contentIDをidとして設定
-            final contentId = json['contentID']?.toString() ?? '';
-            json['id'] = contentId;
-            return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
-          }).toList();
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 視聴履歴取得エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
+        return [];
       }
-    } catch (e) {
+
+      final responseData = jsonDecode(response.body);
+
+      if (responseData['status'] != 'success' || responseData['data'] == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [視聴履歴] APIレスポンスエラー: ${responseData['status']}');
+        }
+        return [];
+      }
+
+      final List<dynamic> historyJson = responseData['data'] as List;
+
       if (kDebugMode) {
-        debugPrint('📝 視聴履歴取得例外: $e');
+        debugPrint('📝 [視聴履歴] playhistory取得: ${historyJson.length}件');
+        if (historyJson.isNotEmpty && historyJson[0] is Map) {
+          debugPrint(
+              '📝 [視聴履歴] 最初の項目のキー: ${(historyJson[0] as Map).keys.toList()}');
+        }
       }
-    }
 
-    return [];
+      if (historyJson.isEmpty) {
+        return [];
+      }
+
+      // ステップ2: 各履歴項目を解析
+      final List<Map<String, dynamic>> historyItems = [];
+
+      for (final item in historyJson) {
+        if (item is! Map<String, dynamic>) continue;
+
+        // contentID を取得（大文字小文字を考慮）
+        final contentId = item['contentID']?.toString() ??
+            item['contentid']?.toString() ??
+            item['contentId']?.toString() ??
+            '';
+
+        if (contentId.isEmpty) continue;
+
+        // playID を取得（数値として扱う）
+        final playIdStr = item['playID']?.toString() ??
+            item['playid']?.toString() ??
+            item['playId']?.toString() ??
+            '0';
+        final playId = int.tryParse(playIdStr) ?? 0;
+
+        historyItems.add({
+          'contentId': contentId,
+          'playId': playId,
+        });
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 履歴項目解析完了: ${historyItems.length}件');
+      }
+
+      // ステップ3: 同じ contentID の重複を排除（最新の playID だけを残す）
+      final Map<String, Map<String, dynamic>> uniqueHistory = {};
+
+      for (final item in historyItems) {
+        final contentId = item['contentId'] as String;
+        final playId = item['playId'] as int;
+
+        if (!uniqueHistory.containsKey(contentId)) {
+          // 初めて見つかった contentID
+          uniqueHistory[contentId] = item;
+        } else {
+          // 既に存在する contentID の場合、playID が大きい方（新しい方）を残す
+          final existingPlayId = uniqueHistory[contentId]!['playId'] as int;
+          if (playId > existingPlayId) {
+            uniqueHistory[contentId] = item;
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 重複排除後: ${uniqueHistory.length}件');
+      }
+
+      // ステップ4: playID の降順でソート（最新が先頭）
+      final sortedHistory = uniqueHistory.values.toList()
+        ..sort((a, b) => (b['playId'] as int).compareTo(a['playId'] as int));
+
+      // ステップ5: 50件までに制限
+      final limitedHistory = sortedHistory.take(50).toList();
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] ソート・制限後: ${limitedHistory.length}件');
+      }
+
+      // ステップ6: 各 contentID を収集
+      final Set<String> contentIds = {};
+      for (final item in limitedHistory) {
+        contentIds.add(item['contentId'] as String);
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 取得対象のcontentID: ${contentIds.length}件');
+      }
+
+      // ステップ7: 各 contentID を使ってコンテンツ情報を取得（並列処理）
+      final Map<String, Post> contentMap = {};
+
+      if (contentIds.isNotEmpty) {
+        final futures = contentIds.map((contentId) async {
+          try {
+            final post = await fetchPostDetail(contentId);
+            if (post != null) {
+              return MapEntry(contentId, post);
+            }
+            return null;
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint(
+                  '📝 [視聴履歴] コンテンツ取得エラー: contentID=$contentId, error=$e');
+            }
+            return null;
+          }
+        }).toList();
+
+        final results = await Future.wait(futures);
+        for (final result in results) {
+          if (result != null) {
+            contentMap[result.key] = result.value;
+          }
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [視聴履歴] コンテンツ情報取得完了: ${contentMap.length}件 / ${contentIds.length}件');
+        }
+      }
+
+      // ステップ8: 視聴履歴の順序を保持しながら Post オブジェクトのリストを作成
+      final List<Post> posts = [];
+      for (final item in limitedHistory) {
+        final contentId = item['contentId'] as String;
+        final post = contentMap[contentId];
+
+        if (post != null) {
+          posts.add(post);
+        } else {
+          if (kDebugMode) {
+            debugPrint('📝 [視聴履歴] コンテンツ情報が見つかりません: contentID=$contentId');
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 最終結果: ${posts.length}件');
+        if (posts.isNotEmpty) {
+          debugPrint(
+              '📝 [視聴履歴] 最初の項目: ID=${posts[0].id}, タイトル=${posts[0].title}, 投稿者=${posts[0].username}');
+          debugPrint(
+              '📝 [視聴履歴] 最後の項目: ID=${posts[posts.length - 1].id}, タイトル=${posts[posts.length - 1].title}');
+        }
+      }
+
+      return posts;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 例外: $e');
+        debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
+      }
+      return [];
+    }
   }
 
   /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
