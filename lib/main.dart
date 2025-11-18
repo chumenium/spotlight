@@ -3,13 +3,7 @@ import 'package:provider/provider.dart';
 import 'providers/navigation_provider.dart';
 import 'auth/auth_provider.dart';
 import 'services/firebase_service.dart';
-import 'widgets/bottom_navigation_bar.dart';
-import 'screens/home_screen.dart';
-import 'screens/search_screen.dart';
-import 'screens/create_post_screen.dart';
-import 'screens/notifications_screen.dart';
-import 'screens/profile_screen.dart';
-import 'auth/social_login_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,58 +46,9 @@ class SpotLightApp extends StatelessWidget {
             elevation: 0,
           ),
         ),
-        home: Consumer<AuthProvider>(
-          builder: (context, authProvider, _) {
-            // ログイン状態に応じて画面を切り替え
-            if (authProvider.isLoggedIn) {
-              return const MainScreen();
-            } else {
-              return const SocialLoginScreen();
-            }
-          },
-        ),
+        home: const SplashScreen(), // スプラッシュスクリーンを最初に表示
       ),
     );
   }
 }
 
-class MainScreen extends StatelessWidget {
-  const MainScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<NavigationProvider>(
-      builder: (context, navigationProvider, _) {
-        return Scaffold(
-          body: IndexedStack(
-            index: navigationProvider.currentIndex,
-            children: const [
-              HomeScreen(),
-              SearchScreen(),
-              SizedBox.shrink(), // CreatePostScreenは別途モーダルで表示
-              NotificationsScreen(),
-              ProfileScreen(),
-            ],
-          ),
-          bottomNavigationBar: CustomBottomNavigationBar(
-            currentIndex: navigationProvider.currentIndex,
-            onTap: (index) {
-              if (index == 2) {
-                // プラスボタンの場合はモーダルで表示
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const CreatePostModal(),
-                );
-                // 現在のインデックスを変更しない
-                return;
-              }
-              navigationProvider.setCurrentIndex(index);
-            },
-          ),
-        );
-      },
-    );
-  }
-}
