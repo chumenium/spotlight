@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -7,6 +8,23 @@ import '../services/jwt_service.dart';
 
 /// 投稿APIサービス
 class PostService {
+  // 最近記録された視聴履歴のcontentIDを保存（最新の視聴履歴を確実に取得するため）
+  static final List<String> _recentlyRecordedContentIds = [];
+  static const int _maxRecentContentIds = 10; // 最大10件まで保持
+
+  /// 最近記録されたcontentIDを追加
+  static void _addRecentlyRecordedContentId(String contentId) {
+    // 既に存在する場合は削除してから先頭に追加（最新のものを先頭に）
+    _recentlyRecordedContentIds.remove(contentId);
+    _recentlyRecordedContentIds.insert(0, contentId);
+
+    // 最大件数を超える場合は古いものを削除
+    if (_recentlyRecordedContentIds.length > _maxRecentContentIds) {
+      _recentlyRecordedContentIds.removeRange(
+          _maxRecentContentIds, _recentlyRecordedContentIds.length);
+    }
+  }
+
   /// 最小情報で投稿を作成（type, title, link のみ）
   static Future<Map<String, dynamic>?> createContentMinimal({
     required String type, // "video" | "image" | "audio" | "text"
@@ -288,69 +306,207 @@ class PostService {
     }
   }
 
-  /// 投稿詳細を取得
-  static Future<Post?> fetchPostDetail(String contentId) async {
+  /// 視聴履歴を記録する
+  static Future<bool> recordPlayHistory(String contentId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
         if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
+          debugPrint('📝 [視聴履歴記録] JWTトークンが取得できません: contentID=$contentId');
         }
-        return null;
+        return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/content/detail';
+      final url = '${AppConfig.apiBaseUrl}/content/playnum';
+      final contentIdInt = int.tryParse(contentId) ?? 0;
+
+      if (contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('📝 [視聴履歴記録] 無効なcontentID: $contentId');
+        }
+        return false;
+      }
 
       if (kDebugMode) {
-        debugPrint('📝 投稿詳細取得URL: $url');
+        debugPrint('📝 [視聴履歴記録] 記録開始: contentID=$contentId');
       }
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
-        body: jsonEncode({'contentID': int.tryParse(contentId) ?? 0}),
+        body: jsonEncode({'contentID': contentIdInt}),
+      )
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('📝 [視聴履歴記録] タイムアウト: contentID=$contentId');
+          }
+          return http.Response('', 408);
+        },
       );
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📝 投稿詳細レスポンス: ${responseData.toString()}');
+        if (responseData['status'] == 'success') {
+          // 視聴履歴を記録したcontentIDをキャッシュに保存（最新の視聴履歴を確実に取得するため）
+          _addRecentlyRecordedContentId(contentId);
+
+          if (kDebugMode) {
+            debugPrint('📝 [視聴履歴記録] 記録成功: contentID=$contentId');
+          }
+
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [視聴履歴記録] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
+          }
         }
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [視聴履歴記録] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
+          debugPrint('📝 [視聴履歴記録] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴記録] 例外: contentID=$contentId, error=$e');
+        debugPrint('📝 [視聴履歴記録] スタックトレース: $stackTrace');
+      }
+    }
+
+    return false;
+  }
+
+  /// 投稿詳細を取得（視聴履歴を記録しない）
+  /// 視聴履歴を記録せずに投稿詳細を取得する場合に使用
+  static Future<Post?> fetchPostDetailWithoutRecording(String contentId) async {
+    return _fetchPostDetailInternal(contentId, recordHistory: false);
+  }
+
+  /// 投稿詳細を取得（視聴履歴を記録しない）
+  /// 注意: このメソッドは視聴履歴を記録しません。視聴履歴を記録するには recordPlayHistory() を使用してください。
+  static Future<Post?> fetchPostDetail(String contentId) async {
+    return _fetchPostDetailInternal(contentId, recordHistory: false);
+  }
+
+  /// 投稿詳細を取得（内部実装）
+  static Future<Post?> _fetchPostDetailInternal(String contentId,
+      {required bool recordHistory}) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿詳細] JWTトークンが取得できません: contentID=$contentId');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/detail';
+      final contentIdInt = int.tryParse(contentId) ?? 0;
+
+      if (contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿詳細] 無効なcontentID: $contentId');
+        }
+        return null;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿詳細] 取得開始: contentID=$contentId');
+      }
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({'contentID': contentIdInt}),
+      )
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('📝 [投稿詳細] タイムアウト: contentID=$contentId');
+          }
+          throw TimeoutException('Request timeout for contentID: $contentId');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
 
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final Map<String, dynamic> data = responseData['data'];
-          // contentIDを追加してPostモデルに変換
           data['contentID'] = contentId;
-          return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+          final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [投稿詳細] 取得成功: contentID=$contentId, タイトル=${post.title}');
+          }
+
+          return post;
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [投稿詳細] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
+          }
         }
       } else {
         if (kDebugMode) {
-          debugPrint('📝 投稿詳細取得エラー: ${response.statusCode}');
+          debugPrint(
+              '📝 [投稿詳細] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
+          debugPrint('📝 [投稿詳細] レスポンス: ${response.body}');
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('📝 投稿詳細取得例外: $e');
+        debugPrint('📝 [投稿詳細] 例外: contentID=$contentId, error=$e');
+        debugPrint('📝 [投稿詳細] スタックトレース: $stackTrace');
       }
     }
 
     return null;
   }
 
-  /// 視聴履歴を取得（他のユーザーの投稿のみ、視聴順に降順）
+  /// 視聴履歴を取得
+  ///
+  /// テーブル構造（postgreDBSQL.txt参照）:
+  /// - playhistory: userID, playID, contentID
+  /// - content: contentID, userID, title, contentpath, link, posttimestamp, spotlightnum, playnum, thumbnailpath
+  /// - user: userID, username, iconimgpath
+  ///
+  /// バックエンドの /api/users/getplayhistory は以下のデータを返す:
+  /// - contentID, title, spotlightnum, posttimestamp, playnum, link, thumbnailpath
+  /// - 既に playID の降順でソート済み（ORDER BY p.playID DESC）
+  ///
+  /// 手順:
+  /// 1. /api/users/getplayhistory から視聴履歴データを取得
+  /// 2. 同じ contentID の重複を排除（最初に見つかったものを残す = 最新の視聴履歴）
+  /// 3. 50件までに制限
+  /// 4. 各 contentID を使って /api/content/detail から完全なコンテンツ情報を取得
+  ///    （username, iconimgpath, contentpath, textflag, spotlightflag を取得するため）
+  /// 5. Post オブジェクトに変換して返す
   static Future<List<Post>> getPlayHistory() async {
     try {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
         if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
+          debugPrint('📝 [視聴履歴] JWTトークンが取得できません');
         }
         return [];
       }
@@ -358,9 +514,15 @@ class PostService {
       final url = '${AppConfig.apiBaseUrl}/users/getplayhistory';
 
       if (kDebugMode) {
-        debugPrint('📝 視聴履歴取得URL: $url');
+        debugPrint('📝 [視聴履歴] ========== 視聴履歴取得開始 ==========');
+        debugPrint('📝 [視聴履歴] API呼び出し: $url');
+        debugPrint(
+            '📝 [視聴履歴] JWTトークン: ${jwtToken.substring(0, 20)}... (先頭20文字)');
+        debugPrint('📝 [視聴履歴] バックエンドは WHERE p.userID = %s でフィルタリング');
+        debugPrint('📝 [視聴履歴] バックエンドは ORDER BY p.playID DESC で降順ソート');
       }
 
+      // ステップ1: /api/users/getplayhistory から視聴履歴データを取得
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -370,41 +532,357 @@ class PostService {
         body: jsonEncode({}),
       );
 
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-
+      if (response.statusCode != 200) {
         if (kDebugMode) {
-          debugPrint('📝 視聴履歴取得レスポンス: ${responseData.toString()}');
+          debugPrint('📝 [視聴履歴] APIエラー: ${response.statusCode}');
+          debugPrint('📝 [視聴履歴] レスポンス: ${response.body}');
+        }
+        return [];
+      }
+
+      final responseData = jsonDecode(response.body);
+
+      if (responseData['status'] != 'success' || responseData['data'] == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [視聴履歴] APIレスポンスエラー: ${responseData['status']}');
+          debugPrint('📝 [視聴履歴] レスポンスデータ: ${responseData.toString()}');
+        }
+        return [];
+      }
+
+      final List<dynamic> historyJson = responseData['data'] as List;
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] ========== バックエンドレスポンス ==========');
+        debugPrint('📝 [視聴履歴] 取得件数: ${historyJson.length}件');
+        debugPrint('📝 [視聴履歴] バックエンドは ORDER BY p.playID DESC でソート済み');
+        debugPrint('📝 [視聴履歴] → playIDが大きい（新しい）ものが最初に来る');
+        if (historyJson.isNotEmpty) {
+          if (historyJson[0] is Map) {
+            debugPrint(
+                '📝 [視聴履歴] 最初の項目のキー: ${(historyJson[0] as Map).keys.toList()}');
+            debugPrint('📝 [視聴履歴] 最初の項目（最新の視聴履歴）: ${historyJson[0]}');
+          }
+          debugPrint(
+              '📝 [視聴履歴] 全項目のcontentID（順序）: ${historyJson.map((item) => item is Map ? (item['contentID'] ?? item['contentid'] ?? item['contentId'] ?? 'N/A').toString() : 'N/A').join(", ")}');
+          debugPrint('📝 [視聴履歴] → 最初に来るcontentIDが最新の視聴履歴');
+
+          // contentIDの分布を確認
+          final contentIdCounts = <String, int>{};
+          for (final item in historyJson) {
+            if (item is Map) {
+              final contentId = (item['contentID'] ??
+                      item['contentid'] ??
+                      item['contentId'] ??
+                      'N/A')
+                  .toString();
+              contentIdCounts[contentId] =
+                  (contentIdCounts[contentId] ?? 0) + 1;
+            }
+          }
+          debugPrint('📝 [視聴履歴] contentIDの分布（視聴回数）:');
+          contentIdCounts.forEach((contentId, count) {
+            debugPrint('   contentID=$contentId: $count回視聴');
+          });
+          final uniqueContentIds = contentIdCounts.keys.toSet();
+          debugPrint('📝 [視聴履歴] ユニークなcontentID数: ${uniqueContentIds.length}件');
+          debugPrint('📝 [視聴履歴] 注意: 同じcontentIDが複数回視聴されている場合、重複排除されます');
+          debugPrint(
+              '📝 [視聴履歴] 注意: バックエンドのクエリは JOIN content c ON p.contentID = c.contentID でJOINしているため、');
+          debugPrint('📝 [視聴履歴]      contentが存在しない視聴履歴は返されません');
+
+          // 最初の5件の詳細を表示
+          debugPrint('📝 [視聴履歴] 最初の5件の詳細:');
+          for (int i = 0; i < historyJson.length && i < 5; i++) {
+            final item = historyJson[i];
+            if (item is Map) {
+              debugPrint(
+                  '   [$i] contentID=${item['contentID']}, title=${item['title']}, posttimestamp=${item['posttimestamp']}');
+            }
+          }
+        } else {
+          debugPrint('⚠️ [視聴履歴] バックエンドからデータが返されていません');
+          debugPrint('⚠️ [視聴履歴] 考えられる原因:');
+          debugPrint('   1. playhistoryテーブルに現在のユーザーのデータが存在しない');
+          debugPrint('   2. バックエンドのクエリエラー（WHERE p.userID = %s の条件が一致しない）');
+          debugPrint('   3. 認証トークンの問題（JWTトークンに含まれるfirebase_uidが正しくない）');
+          debugPrint(
+              '   4. JOIN content c ON p.contentID = c.contentID で一致するcontentが存在しない');
+        }
+        debugPrint('📝 [視聴履歴] ===========================================');
+      }
+
+      // ステップ1.5: 最近記録されたcontentIDを確認し、バックエンドから返されるデータに含まれていない場合は直接取得
+      final Set<String> backendContentIds = {};
+      for (final item in historyJson) {
+        if (item is Map) {
+          final contentId = (item['contentID'] ??
+                  item['contentid'] ??
+                  item['contentId'] ??
+                  '')
+              .toString();
+          if (contentId.isNotEmpty) {
+            backendContentIds.add(contentId);
+          }
+        }
+      }
+
+      // 最近記録されたcontentIDのうち、バックエンドから返されていないものを取得
+      final List<Post> missingPosts = [];
+      final List<String> missingContentIds = _recentlyRecordedContentIds
+          .where((contentId) => !backendContentIds.contains(contentId))
+          .toList();
+
+      if (missingContentIds.isNotEmpty) {
+        for (final contentId in missingContentIds) {
+          try {
+            // 視聴履歴を記録せずに投稿詳細を取得（既に記録済みのため）
+            final post = await fetchPostDetailWithoutRecording(contentId);
+            if (post != null) {
+              missingPosts.add(post);
+            }
+          } catch (e) {
+            // エラーは無視（取得できない場合はスキップ）
+          }
+        }
+      }
+
+      if (historyJson.isEmpty && missingPosts.isEmpty) {
+        return [];
+      }
+
+      // ステップ2: contentID を抽出し、重複を排除
+      // バックエンドは既に playID DESC でソート済みなので、最初に見つかったcontentIDが最新の視聴履歴
+      // 順序を保持するため、Listを使用して順番を記録
+      // 各contentIDの最初の出現位置（インデックス）を記録して、最新の視聴履歴を保持
+      // バックエンドから返されるデータの情報（title, posttimestamp等）も保持
+      final Map<String, int> contentIdToFirstIndex = {};
+      final List<String> orderedContentIds = [];
+      final Map<String, Map<String, dynamic>> contentIdToHistoryData = {};
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] ========== contentID抽出開始 ==========');
+        debugPrint('📝 [視聴履歴] バックエンドは既に playID DESC でソート済み');
+        debugPrint('📝 [視聴履歴] 最初に見つかったcontentIDが最新の視聴履歴');
+      }
+
+      for (int index = 0; index < historyJson.length; index++) {
+        final item = historyJson[index];
+        if (item is! Map<String, dynamic>) {
+          if (kDebugMode) {
+            debugPrint('⚠️ [視聴履歴] 無効なアイテム形式[$index]: ${item.runtimeType}');
+          }
+          continue;
         }
 
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final List<dynamic> postsJson = responseData['data'];
+        // contentID を取得（大文字小文字を考慮）
+        final contentId = item['contentID']?.toString() ??
+            item['contentid']?.toString() ??
+            item['contentId']?.toString() ??
+            '';
+
+        if (contentId.isEmpty) {
+          if (kDebugMode) {
+            debugPrint('⚠️ [視聴履歴] contentIDが空[$index]: $item');
+          }
+          continue;
+        }
+
+        // 重複を排除（最初に見つかったものを残す = 最新の視聴履歴）
+        // バックエンドは既に playID DESC でソート済みなので、最初に見つかったものが最新
+        if (!contentIdToFirstIndex.containsKey(contentId)) {
+          contentIdToFirstIndex[contentId] = index;
+          orderedContentIds.add(contentId);
+          // バックエンドから返されるデータの情報を保持（title, posttimestamp等）
+          contentIdToHistoryData[contentId] = Map<String, dynamic>.from(item);
+          if (kDebugMode) {
+            debugPrint('✅ [視聴履歴] contentID追加[$index]: $contentId (最新の視聴履歴)');
+            debugPrint(
+                '   📝 保持したデータ: title=${item['title']}, posttimestamp=${item['posttimestamp']}');
+          }
+        } else {
+          if (kDebugMode) {
+            final firstIndex = contentIdToFirstIndex[contentId]!;
+            debugPrint(
+                '⏭️ [視聴履歴] contentID重複スキップ[$index]: $contentId (既に追加済み、最初の出現: $firstIndex)');
+          }
+        }
+      }
+
+      // 順序を保持したまま重複排除されたリスト
+      final uniqueContentIds = orderedContentIds;
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 重複排除後: ${uniqueContentIds.length}件');
+        debugPrint(
+            '📝 [視聴履歴] 抽出したcontentID（順序保持）: ${uniqueContentIds.join(", ")}');
+        debugPrint('📝 [視聴履歴] ===========================================');
+      }
+
+      // ステップ3: 50件までに制限
+      final limitedContentIds = uniqueContentIds.take(50).toList();
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 制限後: ${limitedContentIds.length}件');
+      }
+
+      // ステップ4: 各 contentID を使って /api/content/detail から完全なコンテンツ情報を取得
+      // 並列処理で取得（最大10件ずつ処理してタイムアウトを防ぐ）
+      final Map<String, Post> contentMap = {};
+      final List<String> failedContentIds = [];
+
+      if (limitedContentIds.isNotEmpty) {
+        // 10件ずつバッチ処理
+        const batchSize = 10;
+        for (int i = 0; i < limitedContentIds.length; i += batchSize) {
+          final batch = limitedContentIds.skip(i).take(batchSize).toList();
 
           if (kDebugMode) {
-            debugPrint('📝 視聴履歴数: ${postsJson.length}');
+            debugPrint(
+                '📝 [視聴履歴] バッチ処理: ${i + 1}-${i + batch.length} / ${limitedContentIds.length}件');
           }
 
-          return postsJson.map((json) {
-            // contentIDをidとして設定
-            final contentId = json['contentID']?.toString() ?? '';
-            json['id'] = contentId;
-            return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
-          }).toList();
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 視聴履歴取得エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 視聴履歴取得例外: $e');
-      }
-    }
+          final futures = batch.map((contentId) async {
+            try {
+              final post = await fetchPostDetail(contentId);
+              if (post != null) {
+                // バックエンドから返されるデータの情報をマージ
+                final historyData = contentIdToHistoryData[contentId];
+                if (historyData != null) {
+                  // バックエンドから返されるデータのtitleとposttimestampを優先
+                  // （視聴履歴の順序を正確に反映するため）
+                  final mergedData = Map<String, dynamic>.from(historyData);
+                  // /api/content/detailから取得したデータで不足している情報を補完
+                  mergedData['username'] = post.username;
+                  mergedData['iconimgpath'] = post.userIconPath;
+                  mergedData['contentpath'] = post.contentPath;
+                  mergedData['textflag'] = post.isText;
+                  mergedData['spotlightflag'] = post.isSpotlighted;
 
-    return [];
+                  // Postオブジェクトを再構築（バックエンドのデータを優先）
+                  final mergedPost = Post.fromJson(mergedData,
+                      backendUrl: AppConfig.backendUrl);
+
+                  if (kDebugMode) {
+                    debugPrint('📝 [視聴履歴] データマージ: contentID=$contentId');
+                    debugPrint('   バックエンドのtitle: ${historyData['title']}');
+                    debugPrint('   マージ後のtitle: ${mergedPost.title}');
+                  }
+
+                  return MapEntry(contentId, mergedPost);
+                }
+                return MapEntry(contentId, post);
+              } else {
+                if (kDebugMode) {
+                  debugPrint('📝 [視聴履歴] コンテンツ取得失敗（null）: contentID=$contentId');
+                }
+                failedContentIds.add(contentId);
+                return null;
+              }
+            } catch (e, stackTrace) {
+              if (kDebugMode) {
+                debugPrint(
+                    '📝 [視聴履歴] コンテンツ取得エラー: contentID=$contentId, error=$e');
+                debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
+              }
+              failedContentIds.add(contentId);
+              return null;
+            }
+          }).toList();
+
+          try {
+            final results = await Future.wait(futures, eagerError: false);
+            for (final result in results) {
+              if (result != null) {
+                contentMap[result.key] = result.value;
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('📝 [視聴履歴] バッチ処理エラー: $e');
+            }
+          }
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [視聴履歴] コンテンツ情報取得完了: ${contentMap.length}件 / ${limitedContentIds.length}件');
+          if (failedContentIds.isNotEmpty) {
+            debugPrint('📝 [視聴履歴] 取得失敗したcontentID: $failedContentIds');
+          }
+        }
+      }
+
+      // ステップ5: 視聴履歴の順序を保持しながら Post オブジェクトのリストを作成
+      List<Post> posts = [];
+      for (final contentId in limitedContentIds) {
+        final post = contentMap[contentId];
+
+        if (post != null) {
+          posts.add(post);
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [視聴履歴] 追加: contentID=$contentId, タイトル=${post.title}');
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('📝 [視聴履歴] コンテンツ情報が見つかりません: contentID=$contentId');
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] ========== 最終結果 ==========');
+        debugPrint('📝 [視聴履歴] バックエンドから取得: ${historyJson.length}件');
+        debugPrint('📝 [視聴履歴] 重複排除後: ${uniqueContentIds.length}件');
+        debugPrint('📝 [視聴履歴] 制限後（50件まで）: ${limitedContentIds.length}件');
+        debugPrint('📝 [視聴履歴] コンテンツ詳細取得成功: ${contentMap.length}件');
+        debugPrint('📝 [視聴履歴] 最終的に返す件数: ${posts.length}件');
+        debugPrint('📝 [視聴履歴] 失敗件数: ${failedContentIds.length}件');
+        if (failedContentIds.isNotEmpty) {
+          debugPrint('📝 [視聴履歴] 失敗したcontentID: ${failedContentIds.join(", ")}');
+        }
+        if (posts.isNotEmpty) {
+          debugPrint(
+              '📝 [視聴履歴] 最初の項目（最新の視聴履歴）: ID=${posts[0].id}, タイトル=${posts[0].title}, 投稿者=${posts[0].username}');
+          if (posts.length > 1) {
+            debugPrint(
+                '📝 [視聴履歴] 最後の項目: ID=${posts[posts.length - 1].id}, タイトル=${posts[posts.length - 1].title}');
+          }
+          debugPrint(
+              '📝 [視聴履歴] 全項目のID（表示順序）: ${posts.map((p) => p.id).join(", ")}');
+          debugPrint(
+              '📝 [視聴履歴] 全項目のタイトル: ${posts.map((p) => p.title).join(", ")}');
+        } else {
+          debugPrint('⚠️ [視聴履歴] 取得したデータが空です');
+          debugPrint(
+              '📝 [視聴履歴] バックエンドから取得したcontentID: ${limitedContentIds.join(", ")}');
+          debugPrint('⚠️ [視聴履歴] 考えられる原因:');
+          debugPrint('   1. コンテンツ詳細の取得に失敗した');
+          debugPrint('   2. Post.fromJson()の変換に失敗した');
+          debugPrint('   3. バックエンドから返されたcontentIDが無効');
+        }
+        debugPrint('📝 [視聴履歴] ================================');
+      }
+
+      // 最近記録されたcontentIDで取得できた投稿を先頭に追加（最新の視聴履歴として）
+      if (missingPosts.isNotEmpty) {
+        // 重複を排除（既にpostsに含まれているcontentIDは除外）
+        final existingIds = posts.map((p) => p.id.toString()).toSet();
+        final newPosts = missingPosts
+            .where((p) => !existingIds.contains(p.id.toString()))
+            .toList();
+        posts = [...newPosts, ...posts];
+      }
+
+      return posts;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴] 例外: $e');
+        debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
+      }
+      return [];
+    }
   }
 
   /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得

@@ -295,182 +295,222 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // タイトル入力セクション
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'タイトル',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _titleController,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '投稿のタイトルを入力',
-                      hintStyle: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 16,
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // タイトル入力セクション
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${_titleController.text.length}/100',
+                      const Text(
+                        'タイトル',
                         style: TextStyle(
-                          color: _titleController.text.length > 100
-                              ? Colors.red
-                              : Colors.grey,
-                          fontSize: 12,
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _titleController,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '投稿のタイトルを入力',
+                          hintStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF2A2A2A),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${_titleController.text.length}/100',
+                            style: TextStyle(
+                              color: _titleController.text.length > 100
+                                  ? Colors.red
+                                  : Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 背景メディアプレビューエリア
+                Expanded(
+                  child: _selectedMedia == null && _selectedAudio == null
+                      ? _buildMediaSelectionPrompt()
+                      : _selectedMedia != null
+                          ? _buildMediaPreviewWithOverlays()
+                          : _buildAudioPreview(),
+                ),
+
+                // 選択済み音声ファイル表示（背景メディアがある場合は下に表示）
+                if (_selectedAudio != null)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                        left: 16.0, right: 16.0, bottom: 8.0),
+                    child: _buildSelectedAudioPreview(),
+                  ),
+
+                // メディア選択ボタン
+                if (_selectedMedia == null && _selectedAudio == null)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildOptionButton(
+                            icon: Icons.image_outlined,
+                            label: '写真',
+                            onTap: () =>
+                                _pickMedia(ImageSource.gallery, isVideo: false),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildOptionButton(
+                            icon: Icons.videocam_outlined,
+                            label: '動画',
+                            onTap: () =>
+                                _pickMedia(ImageSource.gallery, isVideo: true),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildOptionButton(
+                            icon: Icons.audiotrack_outlined,
+                            label: '音声',
+                            onTap: _pickAudioFile,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (_selectedMedia != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildOptionButton(
+                            icon: Icons.edit_outlined,
+                            label: '背景を変更',
+                            onTap: () => _showMediaSelectionDialog(),
+                          ),
+                          // 画像の場合のみテキスト追加ボタンを表示
+                          if (!_isSelectedMediaVideo()) ...[
+                            const SizedBox(width: 12),
+                            _buildOptionButton(
+                              icon: Icons.text_fields,
+                              label: 'テキストを追加',
+                              onTap: () => _addTextOverlay(Offset(
+                                MediaQuery.of(context).size.width / 2 - 75,
+                                MediaQuery.of(context).size.height / 3,
+                              )),
+                            ),
+                          ],
+                          const SizedBox(width: 12),
+                          _buildOptionButton(
+                            icon: Icons.audiotrack_outlined,
+                            label: '音声に変更',
+                            onTap: _pickAudioFile,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (_selectedAudio != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildOptionButton(
+                            icon: Icons.image_outlined,
+                            label: '写真を追加',
+                            onTap: () =>
+                                _pickMedia(ImageSource.gallery, isVideo: false),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildOptionButton(
+                            icon: Icons.videocam_outlined,
+                            label: '動画を追加',
+                            onTap: () =>
+                                _pickMedia(ImageSource.gallery, isVideo: true),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildOptionButton(
+                            icon: Icons.edit_outlined,
+                            label: '音声に変更',
+                            onTap: _pickAudioFile,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 投稿中の画面ブロックとローディング表示
+          if (_isPosting)
+            AbsorbPointer(
+              child: Container(
+                color: Colors.black.withOpacity(0.7),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                        strokeWidth: 4,
+                      ),
+                      SizedBox(height: 24),
+                      Text(
+                        '投稿中...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'しばらくお待ちください',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
-
-            // 背景メディアプレビューエリア
-            Expanded(
-              child: _selectedMedia == null && _selectedAudio == null
-                  ? _buildMediaSelectionPrompt()
-                  : _selectedMedia != null
-                      ? _buildMediaPreviewWithOverlays()
-                      : _buildAudioPreview(),
-            ),
-
-            // 選択済み音声ファイル表示（背景メディアがある場合は下に表示）
-            if (_selectedAudio != null)
-              Padding(
-                padding:
-                    const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
-                child: _buildSelectedAudioPreview(),
-              ),
-
-            // メディア選択ボタン
-            if (_selectedMedia == null && _selectedAudio == null)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildOptionButton(
-                        icon: Icons.image_outlined,
-                        label: '写真',
-                        onTap: () =>
-                            _pickMedia(ImageSource.gallery, isVideo: false),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildOptionButton(
-                        icon: Icons.videocam_outlined,
-                        label: '動画',
-                        onTap: () =>
-                            _pickMedia(ImageSource.gallery, isVideo: true),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildOptionButton(
-                        icon: Icons.audiotrack_outlined,
-                        label: '音声',
-                        onTap: _pickAudioFile,
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else if (_selectedMedia != null)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildOptionButton(
-                        icon: Icons.edit_outlined,
-                        label: '背景を変更',
-                        onTap: () => _showMediaSelectionDialog(),
-                      ),
-                      // 画像の場合のみテキスト追加ボタンを表示
-                      if (!_isSelectedMediaVideo()) ...[
-                        const SizedBox(width: 12),
-                        _buildOptionButton(
-                          icon: Icons.text_fields,
-                          label: 'テキストを追加',
-                          onTap: () => _addTextOverlay(Offset(
-                            MediaQuery.of(context).size.width / 2 - 75,
-                            MediaQuery.of(context).size.height / 3,
-                          )),
-                        ),
-                      ],
-                      const SizedBox(width: 12),
-                      _buildOptionButton(
-                        icon: Icons.audiotrack_outlined,
-                        label: '音声に変更',
-                        onTap: _pickAudioFile,
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else if (_selectedAudio != null)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildOptionButton(
-                        icon: Icons.image_outlined,
-                        label: '写真を追加',
-                        onTap: () =>
-                            _pickMedia(ImageSource.gallery, isVideo: false),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildOptionButton(
-                        icon: Icons.videocam_outlined,
-                        label: '動画を追加',
-                        onTap: () =>
-                            _pickMedia(ImageSource.gallery, isVideo: true),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildOptionButton(
-                        icon: Icons.edit_outlined,
-                        label: '音声に変更',
-                        onTap: _pickAudioFile,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }

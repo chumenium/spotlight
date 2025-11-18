@@ -19,35 +19,108 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  // 前回の再取得時刻を記録（頻繁な再取得を防ぐ）
+  DateTime? _lastFetchTime;
+
   @override
   void initState() {
     super.initState();
     _fetchHistory();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 画面が表示されるたびにデータを再取得
+    // ただし、1秒以内の再取得はスキップ（頻繁な再取得を防ぐ）
+    final now = DateTime.now();
+    if (_lastFetchTime == null ||
+        now.difference(_lastFetchTime!).inSeconds >= 1) {
+      _lastFetchTime = now;
+      // 少し遅延させてから再取得（画面遷移のアニメーション完了後）
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _fetchHistory();
+        }
+      });
+    }
+  }
+
   /// 視聴履歴を取得
   Future<void> _fetchHistory() async {
+    if (kDebugMode) {
+      debugPrint('📝 [画面] ========== 視聴履歴取得開始 ==========');
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
+      if (kDebugMode) {
+        debugPrint('📝 [画面] PostService.getPlayHistory()を呼び出します');
+      }
+
       final posts = await PostService.getPlayHistory();
 
       if (kDebugMode) {
-        debugPrint('📝 視聴履歴取得完了: ${posts.length}件');
+        debugPrint('📝 [画面] ========== PostServiceから取得完了 ==========');
+        debugPrint('📝 [画面] 取得件数: ${posts.length}件');
+        if (posts.isNotEmpty) {
+          debugPrint('📝 [画面] 視聴履歴の最初の項目:');
+          debugPrint('   - ID: ${posts[0].id}');
+          debugPrint('   - タイトル: ${posts[0].title}');
+          debugPrint('   - 投稿者: ${posts[0].username}');
+          debugPrint('   - タイプ: ${posts[0].postType}');
+          debugPrint('   - 作成日時: ${posts[0].createdAt}');
+          debugPrint('   - playNum: ${posts[0].playNum}');
+          debugPrint('   - thumbnailUrl: ${posts[0].thumbnailUrl}');
+          debugPrint('   - userIconUrl: ${posts[0].userIconUrl}');
+
+          // すべての項目のタイトルと投稿者を確認
+          debugPrint('📝 [画面] 視聴履歴の全項目:');
+          for (int i = 0; i < posts.length; i++) {
+            final post = posts[i];
+            debugPrint(
+                '   [$i] ID=${post.id}, タイトル="${post.title}", 投稿者="${post.username}", playNum=${post.playNum}');
+          }
+        } else {
+          debugPrint('⚠️ [画面] 視聴履歴が空です');
+        }
+        debugPrint('📝 [画面] ===========================================');
       }
 
       if (mounted) {
         setState(() {
+          final previousCount = _historyPosts.length;
           _historyPosts = posts;
           _isLoading = false;
+
+          if (kDebugMode) {
+            debugPrint('📝 [画面] ========== 状態更新完了 ==========');
+            debugPrint('📝 [画面] 前回の件数: $previousCount件');
+            debugPrint('📝 [画面] 今回の件数: ${_historyPosts.length}件');
+            debugPrint('📝 [画面] リストに格納: ${_historyPosts.length}件');
+            if (_historyPosts.isNotEmpty) {
+              debugPrint('📝 [画面] 最初の項目ID: ${_historyPosts[0].id}');
+              debugPrint(
+                  '📝 [画面] 最後の項目ID: ${_historyPosts[_historyPosts.length - 1].id}');
+            }
+            debugPrint('📝 [画面] ===========================================');
+          }
         });
+      } else {
+        if (kDebugMode) {
+          debugPrint('⚠️ [画面] Widgetがマウントされていません。状態を更新しません。');
+        }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('❌ 視聴履歴取得エラー: $e');
+        debugPrint('❌ [画面] ========== 視聴履歴取得エラー ==========');
+        debugPrint('❌ [画面] エラー: $e');
+        debugPrint('❌ [画面] スタックトレース: $stackTrace');
+        debugPrint('❌ [画面] ===========================================');
       }
 
       if (mounted) {
@@ -147,7 +220,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '他のユーザーの投稿を視聴すると\nここに表示されます',
+                            'コンテンツを視聴すると\nここに表示されます',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.grey[500],
@@ -175,13 +248,21 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
   Widget _buildHistoryItem(BuildContext context, Post post, int index) {
     return GestureDetector(
       onTap: () {
-        // 投稿をタップしたらホーム画面に遷移してその投稿を表示
-        final navigationProvider =
-            Provider.of<NavigationProvider>(context, listen: false);
-        navigationProvider.navigateToHome(postId: post.id);
+        try {
+          final postId = post.id.toString();
+          if (postId.isNotEmpty) {
+            final navigationProvider =
+                Provider.of<NavigationProvider>(context, listen: false);
+            navigationProvider.navigateToHome(postId: postId);
 
-        if (kDebugMode) {
-          debugPrint('📱 視聴履歴: 投稿をタップ: ID=${post.id}, タイトル=${post.title}');
+            if (kDebugMode) {
+              debugPrint('📱 [画面] 投稿をタップ: ID=$postId, タイトル=${post.title}');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ [画面] タップエラー: $e');
+          }
         }
       },
       child: Container(
@@ -195,9 +276,10 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                 width: 160,
                 height: 90,
                 color: Colors.grey[800],
-                child: _hasValidThumbnail(post.thumbnailUrl)
+                child: post.thumbnailUrl != null &&
+                        post.thumbnailUrl!.isNotEmpty
                     ? RobustNetworkImage(
-                        imageUrl: post.thumbnailUrl ?? '',
+                        imageUrl: post.thumbnailUrl!,
                         fit: BoxFit.cover,
                         maxWidth: 320,
                         maxHeight: 180,
@@ -223,7 +305,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                               size: 32,
                             ),
                           ),
-                          // スポットライトアイコン
                           if (post.isSpotlighted)
                             Positioned(
                               top: 8,
@@ -262,7 +343,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _getSafeTitle(post.title),
+                    post.title.isNotEmpty ? post.title : 'タイトルなし',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -273,7 +354,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    post.username,
+                    post.username.isNotEmpty ? post.username : 'ユーザー名なし',
                     style: TextStyle(
                       color: Colors.grey[400],
                       fontSize: 14,
@@ -318,36 +399,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
     );
   }
 
-  /// サムネイルURLが有効かチェック（null/undefined/空文字列を安全にチェック）
-  bool _hasValidThumbnail(String? thumbnailUrl) {
-    if (thumbnailUrl == null) return false;
-    try {
-      return thumbnailUrl.isNotEmpty;
-    } catch (e) {
-      // undefinedやその他のエラーの場合もfalseを返す
-      if (kDebugMode) {
-        debugPrint('⚠️ サムネイルURLチェックエラー: $e');
-      }
-      return false;
-    }
-  }
-
-  /// タイトルを安全に取得（null/undefined/空文字列を安全にチェック）
-  String _getSafeTitle(String title) {
-    try {
-      if (title.isNotEmpty) {
-        return title;
-      }
-      return 'タイトルなし';
-    } catch (e) {
-      // undefinedやその他のエラーの場合もデフォルト値を返す
-      if (kDebugMode) {
-        debugPrint('⚠️ タイトル取得エラー: $e');
-      }
-      return 'タイトルなし';
-    }
-  }
-
   void _showMenuBottomSheet(BuildContext context, Post post, int index) {
     showModalBottomSheet(
       context: context,
@@ -365,7 +416,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
               title: '再生リストに追加',
               onTap: () {
                 Navigator.pop(context);
-                // 再生リストに追加（将来実装）
               },
             ),
             _buildMenuOption(
@@ -373,7 +423,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
               title: '共有',
               onTap: () {
                 Navigator.pop(context);
-                // 共有機能（将来実装）
               },
             ),
             _buildMenuOption(
@@ -381,7 +430,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
               title: '履歴から削除',
               onTap: () {
                 Navigator.pop(context);
-                // 履歴から削除（将来実装）
               },
             ),
           ],
