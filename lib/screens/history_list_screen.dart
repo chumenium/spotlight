@@ -19,16 +19,37 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  // 前回の再取得時刻を記録（頻繁な再取得を防ぐ）
+  DateTime? _lastFetchTime;
+
   @override
   void initState() {
     super.initState();
     _fetchHistory();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 画面が表示されるたびにデータを再取得
+    // ただし、1秒以内の再取得はスキップ（頻繁な再取得を防ぐ）
+    final now = DateTime.now();
+    if (_lastFetchTime == null ||
+        now.difference(_lastFetchTime!).inSeconds >= 1) {
+      _lastFetchTime = now;
+      // 少し遅延させてから再取得（画面遷移のアニメーション完了後）
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _fetchHistory();
+        }
+      });
+    }
+  }
+
   /// 視聴履歴を取得
   Future<void> _fetchHistory() async {
     if (kDebugMode) {
-      debugPrint('📝 [画面] 視聴履歴取得開始');
+      debugPrint('📝 [画面] ========== 視聴履歴取得開始 ==========');
     }
 
     setState(() {
@@ -37,29 +58,69 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
     });
 
     try {
+      if (kDebugMode) {
+        debugPrint('📝 [画面] PostService.getPlayHistory()を呼び出します');
+      }
+
       final posts = await PostService.getPlayHistory();
 
       if (kDebugMode) {
-        debugPrint('📝 [画面] 視聴履歴取得完了: ${posts.length}件');
+        debugPrint('📝 [画面] ========== PostServiceから取得完了 ==========');
+        debugPrint('📝 [画面] 取得件数: ${posts.length}件');
         if (posts.isNotEmpty) {
-          for (int i = 0; i < posts.length && i < 3; i++) {
+          debugPrint('📝 [画面] 視聴履歴の最初の項目:');
+          debugPrint('   - ID: ${posts[0].id}');
+          debugPrint('   - タイトル: ${posts[0].title}');
+          debugPrint('   - 投稿者: ${posts[0].username}');
+          debugPrint('   - タイプ: ${posts[0].postType}');
+          debugPrint('   - 作成日時: ${posts[0].createdAt}');
+          debugPrint('   - playNum: ${posts[0].playNum}');
+          debugPrint('   - thumbnailUrl: ${posts[0].thumbnailUrl}');
+          debugPrint('   - userIconUrl: ${posts[0].userIconUrl}');
+
+          // すべての項目のタイトルと投稿者を確認
+          debugPrint('📝 [画面] 視聴履歴の全項目:');
+          for (int i = 0; i < posts.length; i++) {
             final post = posts[i];
             debugPrint(
-                '📝 [画面] 項目[$i]: ID=${post.id}, タイトル="${post.title}", 投稿者="${post.username}", playNum=${post.playNum}');
+                '   [$i] ID=${post.id}, タイトル="${post.title}", 投稿者="${post.username}", playNum=${post.playNum}');
           }
+        } else {
+          debugPrint('⚠️ [画面] 視聴履歴が空です');
         }
+        debugPrint('📝 [画面] ===========================================');
       }
 
       if (mounted) {
         setState(() {
+          final previousCount = _historyPosts.length;
           _historyPosts = posts;
           _isLoading = false;
+
+          if (kDebugMode) {
+            debugPrint('📝 [画面] ========== 状態更新完了 ==========');
+            debugPrint('📝 [画面] 前回の件数: $previousCount件');
+            debugPrint('📝 [画面] 今回の件数: ${_historyPosts.length}件');
+            debugPrint('📝 [画面] リストに格納: ${_historyPosts.length}件');
+            if (_historyPosts.isNotEmpty) {
+              debugPrint('📝 [画面] 最初の項目ID: ${_historyPosts[0].id}');
+              debugPrint(
+                  '📝 [画面] 最後の項目ID: ${_historyPosts[_historyPosts.length - 1].id}');
+            }
+            debugPrint('📝 [画面] ===========================================');
+          }
         });
+      } else {
+        if (kDebugMode) {
+          debugPrint('⚠️ [画面] Widgetがマウントされていません。状態を更新しません。');
+        }
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('❌ [画面] 視聴履歴取得エラー: $e');
-        debugPrint('スタックトレース: $stackTrace');
+        debugPrint('❌ [画面] ========== 視聴履歴取得エラー ==========');
+        debugPrint('❌ [画面] エラー: $e');
+        debugPrint('❌ [画面] スタックトレース: $stackTrace');
+        debugPrint('❌ [画面] ===========================================');
       }
 
       if (mounted) {

@@ -3454,32 +3454,30 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('   - タイトル: ${post.title}');
       }
 
-      // 視聴履歴を記録（fetchPostDetailを呼び出すことで自動的に記録される）
-      // API仕様: POST /api/content/detail は「再生用の次コンテンツを取得し、再生履歴を記録」
+      // 視聴履歴を記録（/api/content/playnum エンドポイントを使用）
       // 非同期で実行し、UIをブロックしない
       if (kDebugMode) {
-        debugPrint('📝 視聴履歴記録: fetchPostDetailを呼び出します (postId: ${post.id})');
-        debugPrint('   - API: ${AppConfig.apiBaseUrl}/content/detail');
+        debugPrint('📝 視聴履歴記録: recordPlayHistoryを呼び出します (postId: ${post.id})');
+        debugPrint('   - API: ${AppConfig.apiBaseUrl}/content/playnum');
         debugPrint('   - contentID: ${post.id}');
       }
 
       try {
-        final updatedPost =
-            await PostService.fetchPostDetail(post.id.toString());
+        final success = await PostService.recordPlayHistory(post.id.toString());
 
-        if (updatedPost != null && !_isDisposed) {
+        if (success && !_isDisposed) {
           _lastRecordedPostId = post.id.toString();
           if (kDebugMode) {
             debugPrint('✅ 視聴履歴記録完了: 投稿ID=${post.id}, タイトル=${post.title}');
-            debugPrint('   - バックエンド側で視聴履歴が記録されたはずです');
+            debugPrint('   - バックエンド側で視聴履歴が記録されました');
             debugPrint('   - 視聴履歴一覧を表示すると最新のデータが表示されます');
             debugPrint('   - 重複がある場合は最新分だけが残ります');
             debugPrint('   - 直近50件まで記録されます');
           }
         } else {
           if (kDebugMode) {
-            debugPrint('⚠️ 視聴履歴記録失敗: 投稿詳細の取得に失敗しました (postId: ${post.id})');
-            debugPrint('   - updatedPost: $updatedPost');
+            debugPrint('⚠️ 視聴履歴記録失敗: 記録に失敗しました (postId: ${post.id})');
+            debugPrint('   - success: $success');
             debugPrint('   - _isDisposed: $_isDisposed');
           }
         }
