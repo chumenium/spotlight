@@ -85,9 +85,9 @@ flutter_launcher_icons:
 # 画像がない場合は、image行をコメントアウトして背景色のみで動作します
 flutter_native_splash:
   color: "#FFFFFF"
-  # image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
+  image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
   android: true
-  ios: false
+  ios: true
   android_12:
-    # image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
+    image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
     color: "#FFFFFF"

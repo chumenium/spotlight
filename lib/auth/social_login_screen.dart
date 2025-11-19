@@ -5,6 +5,7 @@ import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
 import '../providers/navigation_provider.dart';
+import '../screens/splash_screen.dart';
 
 /// ソーシャルログイン専用画面
 /// Google、Twitter（X）でのログインをサポート
@@ -23,9 +24,13 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
-      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      // NavigationProviderをリセット
       final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
+      // MainScreenに遷移
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
@@ -38,10 +43,13 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
-      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      // NavigationProviderをリセット
       final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
-      
+      // MainScreenに遷移
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
       // 新規登録成功のメッセージを表示
       _showSuccessSnackBar('アカウントが作成されました！');
     } else if (mounted && authProvider.errorMessage != null) {
@@ -56,9 +64,13 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final success = await authProvider.loginWithTwitter();
 
     if (success && mounted) {
-      // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+      // NavigationProviderをリセット
       final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
+      // MainScreenに遷移
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
@@ -68,9 +80,13 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     authProvider.skipLogin();
     
-    // NavigationProviderをリセット（main.dartで自動的にMainScreenに遷移）
+    // NavigationProviderをリセット
     final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
     navigationProvider.reset();
+    // MainScreenに遷移
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MainScreen()),
+    );
   }
 
   void _showErrorSnackBar(String message) {

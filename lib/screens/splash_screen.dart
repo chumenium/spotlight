@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
 import '../providers/navigation_provider.dart';
@@ -11,7 +10,7 @@ import 'notifications_screen.dart';
 import 'profile_screen.dart';
 import '../auth/social_login_screen.dart';
 
-/// アニメーション付きスプラッシュスクリーン
+/// 静止画スプラッシュスクリーン
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -19,35 +18,13 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-
+class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
     
-    // フェードアニメーション用のコントローラー
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeIn,
-    ));
-
-    // アニメーション開始
-    _controller.forward();
-    
-    // スプラッシュスクリーンを表示する時間（ミリ秒）
-    // アニメーションの長さに合わせて調整してください
-    const splashDuration = Duration(seconds: 3);
+    // スプラッシュスクリーンを表示する時間
+    const splashDuration = Duration(seconds: 2);
     
     Future.delayed(splashDuration, () {
       if (mounted) {
@@ -72,45 +49,26 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212), // アプリの背景色に合わせる
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Lottieアニメーションを表示
-              // ファイル名: assets/splash/splash_animation.json
-              SizedBox(
-                width: MediaQuery.of(context).size.width * 0.8,
-                height: MediaQuery.of(context).size.width * 0.8,
-                child: Lottie.asset(
-                  'assets/splash/splash_animation.json',
-                  fit: BoxFit.contain,
-                  repeat: true, // ループ再生
-                  // repeat: false, // 1回のみ再生する場合はこちら
+      backgroundColor: const Color(0xFF121212),
+      body: SizedBox.expand(
+        child: Image.asset(
+          'assets/splash/splash.png',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // 画像が見つからない場合のフォールバック
+            return const Center(
+              child: Text(
+                'SpotLight',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
-              // オプション: アプリ名やロゴを追加
-              // const SizedBox(height: 32),
-              // Text(
-              //   'SpotLight',
-              //   style: TextStyle(
-              //     fontSize: 32,
-              //     fontWeight: FontWeight.bold,
-              //     color: Colors.white,
-              //   ),
-              // ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
