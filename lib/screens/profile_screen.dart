@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
+import 'playlist_detail_screen.dart';
 import 'spotlight_list_screen.dart';
 import 'help_screen.dart';
 import 'feedback_screen.dart';
@@ -1049,11 +1050,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
 
     return GestureDetector(
-      onTap: () {
-        // 再生リストをタップしたら再生リスト詳細画面に遷移（将来実装）
+      onTap: () async {
         if (kDebugMode) {
           debugPrint(
               '📱 プロフィール: 再生リストをタップ: ID=${playlist.playlistid}, タイトル=${playlist.title}');
+        }
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlaylistDetailScreen(
+              playlistId: playlist.playlistid,
+              playlistTitle: playlist.title,
+            ),
+          ),
+        );
+        // 戻ってきた時にプレイリスト一覧を再取得（更新があった可能性があるため）
+        if (result == true || mounted) {
+          if (kDebugMode) {
+            debugPrint('📋 [プロフィール] プレイリスト詳細画面から戻ってきました。再取得します。');
+          }
+          _fetchPlaylists();
         }
       },
       child: Container(
