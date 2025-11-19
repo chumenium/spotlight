@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/playlist_service.dart';
 import '../config/app_config.dart';
 import '../widgets/robust_network_image.dart';
+import 'playlist_detail_screen.dart';
 
 class PlaylistListScreen extends StatefulWidget {
   const PlaylistListScreen({super.key});
@@ -149,76 +150,102 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                       itemCount: _playlists.length,
                       itemBuilder: (context, index) {
                         final playlist = _playlists[index];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          child: Row(
-                            children: [
-                              // サムネイル
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  width: 160,
-                                  height: 90,
-                                  color: Colors.grey[800],
-                                  child: playlist.thumbnailpath != null &&
-                                          playlist.thumbnailpath!.isNotEmpty
-                                      ? RobustNetworkImage(
-                                          imageUrl:
-                                              '${AppConfig.backendUrl}${playlist.thumbnailpath}',
-                                          fit: BoxFit.cover,
-                                          maxWidth: 320,
-                                          maxHeight: 180,
-                                          placeholder: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6B35),
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        )
-                                      : Stack(
-                                          children: [
-                                            const Center(
-                                              child: Icon(
-                                                Icons.playlist_play,
-                                                color: Colors.white,
-                                                size: 32,
+                        return GestureDetector(
+                          onTap: () async {
+                            if (kDebugMode) {
+                              debugPrint(
+                                  '📋 プレイリストをタップ: ID=${playlist.playlistid}, タイトル=${playlist.title}');
+                            }
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PlaylistDetailScreen(
+                                  playlistId: playlist.playlistid,
+                                  playlistTitle: playlist.title,
+                                ),
+                              ),
+                            );
+                            // 戻ってきた時にプレイリスト一覧を再取得（更新があった可能性があるため）
+                            if (result == true || mounted) {
+                              if (kDebugMode) {
+                                debugPrint(
+                                    '📋 [プレイリスト一覧] 詳細画面から戻ってきました。再取得します。');
+                              }
+                              _fetchPlaylists();
+                            }
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Row(
+                              children: [
+                                // サムネイル
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    width: 160,
+                                    height: 90,
+                                    color: Colors.grey[800],
+                                    child: playlist.thumbnailpath != null &&
+                                            playlist.thumbnailpath!.isNotEmpty
+                                        ? RobustNetworkImage(
+                                            imageUrl:
+                                                '${AppConfig.backendUrl}${playlist.thumbnailpath}',
+                                            fit: BoxFit.cover,
+                                            maxWidth: 320,
+                                            maxHeight: 180,
+                                            placeholder: const Center(
+                                              child: CircularProgressIndicator(
+                                                color: Color(0xFFFF6B35),
+                                                strokeWidth: 2,
                                               ),
                                             ),
-                                          ],
+                                          )
+                                        : Stack(
+                                            children: [
+                                              const Center(
+                                                child: Icon(
+                                                  Icons.playlist_play,
+                                                  color: Colors.white,
+                                                  size: 32,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // タイトルと情報
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        playlist.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
                                         ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // タイトルと情報
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      playlist.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              // メニューボタン
-                              IconButton(
-                                onPressed: () {
-                                  _showPlaylistMenuBottomSheet(
-                                      context, playlist, index);
-                                },
-                                icon: const Icon(
-                                  Icons.more_vert,
-                                  color: Colors.grey,
+                                // メニューボタン
+                                IconButton(
+                                  onPressed: () {
+                                    _showPlaylistMenuBottomSheet(
+                                        context, playlist, index);
+                                  },
+                                  icon: const Icon(
+                                    Icons.more_vert,
+                                    color: Colors.grey,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },

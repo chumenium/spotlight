@@ -2970,11 +2970,25 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         onTap: () async {
                           Navigator.pop(context);
+
+                          if (kDebugMode) {
+                            debugPrint('📋 [ホーム画面] プレイリストにコンテンツを追加');
+                            debugPrint(
+                                '   - playlistID: ${playlist.playlistid}');
+                            debugPrint('   - contentID: ${post.id}');
+                            debugPrint(
+                                '   - contentID type: ${post.id.runtimeType}');
+                          }
+
                           final success =
                               await PlaylistService.addContentToPlaylist(
                             playlist.playlistid,
                             post.id,
                           );
+
+                          if (kDebugMode) {
+                            debugPrint('📋 [ホーム画面] 追加結果: $success');
+                          }
 
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -2986,6 +3000,17 @@ class _HomeScreenState extends State<HomeScreen>
                                     success ? Colors.green : Colors.red,
                               ),
                             );
+
+                            // 追加成功時、少し待ってからプレイリスト詳細画面が開いている場合は更新を促す
+                            if (success) {
+                              if (kDebugMode) {
+                                debugPrint(
+                                    '📋 [ホーム画面] コンテンツ追加成功。プレイリスト詳細画面の更新を促します。');
+                              }
+                              // グローバルキーやRouteObserverを使わず、単純に少し待ってから通知
+                              // 実際には、プレイリスト詳細画面が開いている場合のみ更新が必要
+                              // ここでは、ユーザーが手動で更新ボタンを押すか、画面に戻った時に更新される
+                            }
                           }
                         },
                       );
@@ -3053,7 +3078,16 @@ class _HomeScreenState extends State<HomeScreen>
 
                 final playlistId = await PlaylistService.createPlaylist(title);
 
-                if (playlistId != null && mounted) {
+                if (kDebugMode) {
+                  debugPrint('📋 [ホーム画面] プレイリスト作成結果: playlistId=$playlistId');
+                }
+
+                if (playlistId != null && playlistId > 0 && mounted) {
+                  if (kDebugMode) {
+                    debugPrint('📋 [ホーム画面] 作成したプレイリストにコンテンツを追加');
+                    debugPrint('   - playlistID: $playlistId');
+                    debugPrint('   - contentID: ${post.id}');
+                  }
                   // 作成したプレイリストにコンテンツを追加
                   final success = await PlaylistService.addContentToPlaylist(
                     playlistId,
