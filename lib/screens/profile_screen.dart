@@ -9,6 +9,8 @@ import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'spotlight_list_screen.dart';
 import 'help_screen.dart';
+import 'feedback_screen.dart';
+import 'about_screen.dart';
 import 'jwt_test_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
@@ -1347,12 +1349,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuTile(
             icon: Icons.feedback_outlined,
             title: 'フィードバック',
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeedbackScreen(),
+                ),
+              );
+            },
           ),
           _buildMenuTile(
             icon: Icons.info_outline,
             title: 'アプリについて',
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AboutScreen(),
+                ),
+              );
+            },
           ),
           _buildMenuTile(
             icon: Icons.security,
