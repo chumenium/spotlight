@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
+import '../config/app_config.dart';
 
 /// 投稿タイプ
 enum PostType {
@@ -139,28 +140,29 @@ class Post {
     final nextContentId = json['nextcontentid'];
     final nextContentIdStr = nextContentId?.toString();
     
-    // contentpathから完全なURLを生成
+    // メディアファイルはCloudFront経由で配信（S3から）
+    // contentpathから完全なURLを生成（CloudFront URLを使用）
     final contentPath = json['contentpath'] as String? ?? '';
-    final mediaUrl = _buildFullUrl(backendUrl, contentPath);
+    final mediaUrl = _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
 
-    // thumbnailpathから完全なURLを生成
+    // thumbnailpathから完全なURLを生成（CloudFront URLを使用）
     final thumbnailPath = json['thumbnailpath'] as String?;
-    final thumbnailUrl = _buildFullUrl(backendUrl, thumbnailPath);
+    final thumbnailUrl = _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
 
-    // iconimgpathから完全なアイコンURLを生成
+    // iconimgpathから完全なアイコンURLを生成（CloudFront URLを使用）
     final iconPath = json['iconimgpath'] as String? ?? '';
-    final userIconUrl = _buildFullUrl(backendUrl, iconPath);
+    final userIconUrl = _buildFullUrl(AppConfig.mediaBaseUrl, iconPath);
     
     // デバッグログ出力
     if (kDebugMode) {
       debugPrint('📦 Post.fromJson:');
       debugPrint('  contentPath: $contentPath');
-      debugPrint('  mediaUrl: $mediaUrl');
+      debugPrint('  mediaUrl: $mediaUrl (CloudFront経由)');
       debugPrint('  thumbnailPath: $thumbnailPath');
-      debugPrint('  thumbnailUrl: $thumbnailUrl');
+      debugPrint('  thumbnailUrl: $thumbnailUrl (CloudFront経由)');
       debugPrint('  iconPath: $iconPath');
-      debugPrint('  userIconUrl: $userIconUrl');
-      debugPrint('  backendUrl: $backendUrl');
+      debugPrint('  userIconUrl: $userIconUrl (CloudFront経由)');
+      debugPrint('  mediaBaseUrl: ${AppConfig.mediaBaseUrl}');
     }
     
     // typeフィールドがない場合、contentpathから推測
