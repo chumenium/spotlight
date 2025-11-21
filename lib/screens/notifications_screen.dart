@@ -11,7 +11,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> 
     with SingleTickerProviderStateMixin {
-  late List<NotificationItem> notifications;
+  late List<NotificationItem> notifications=[];
   late TabController _tabController;
   
   // タブの定義
@@ -20,8 +20,22 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   @override
   void initState() {
     super.initState();
-    notifications = NotificationItem.getSampleNotifications();
+    // notifications = NotificationItem.getSampleNotifications();
     _tabController = TabController(length: _tabs.length, vsync: this);
+    _loadNotifications();
+    print(notifications);
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final fetched = await NotificationService.fetchNotifications();
+
+      setState(() {
+        notifications = fetched;
+      });
+    } catch (e) {
+      print("通知取得エラー: $e");
+    }
   }
 
   @override
