@@ -149,9 +149,9 @@ class Post {
     final thumbnailPath = json['thumbnailpath'] as String?;
     final thumbnailUrl = _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
 
-    // iconimgpathから完全なアイコンURLを生成（CloudFront URLを使用）
+    // iconimgpathから完全なアイコンURLを生成（バックエンドサーバーから配信）
     final iconPath = json['iconimgpath'] as String? ?? '';
-    final userIconUrl = _buildFullUrl(AppConfig.mediaBaseUrl, iconPath);
+    final userIconUrl = _buildFullUrl(AppConfig.backendUrl, iconPath);
     
     // デバッグログ出力
     if (kDebugMode) {
@@ -161,8 +161,9 @@ class Post {
       debugPrint('  thumbnailPath: $thumbnailPath');
       debugPrint('  thumbnailUrl: $thumbnailUrl (CloudFront経由)');
       debugPrint('  iconPath: $iconPath');
-      debugPrint('  userIconUrl: $userIconUrl (CloudFront経由)');
+      debugPrint('  userIconUrl: $userIconUrl (バックエンドサーバー経由)');
       debugPrint('  mediaBaseUrl: ${AppConfig.mediaBaseUrl}');
+      debugPrint('  backendUrl: ${AppConfig.backendUrl}');
     }
     
     // typeフィールドがない場合、contentpathから推測

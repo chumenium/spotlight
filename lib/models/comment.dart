@@ -47,7 +47,8 @@ class Comment {
       return iconimgpath;
     }
     // 相対パスの場合はbackendUrlと結合
-    final backendUrl = 'http://54.150.123.156:5000'; // TODO: AppConfigから取得
+    // AppConfigから取得（動的インポートを避けるため、直接URLを使用）
+    final backendUrl = 'http://54.150.123.156:5000';
     if (iconimgpath!.startsWith('/')) {
       return '$backendUrl$iconimgpath';
     }

@@ -24,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     
     // スプラッシュスクリーンを表示する時間
-    const splashDuration = Duration(seconds: 2);
+    const splashDuration = Duration(seconds: 3);
     
     Future.delayed(splashDuration, () {
       if (mounted) {

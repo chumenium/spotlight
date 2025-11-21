@@ -21,14 +21,15 @@ class AppConfig {
   static String get backendUrl => 'http://54.150.123.156:5000';
   
   // CloudFrontのURL（S3コンテンツ配信用）
-  // メディアファイル（画像、動画、サムネイル、アイコン）はCloudFront経由で配信
+  // メディアファイル（画像、動画、サムネイル）はCloudFront経由で配信
+  // アイコンはバックエンドサーバーから配信されるため、cloudFrontUrlは使用しない
   static String get cloudFrontUrl {
     if (isDevelopment) {
-      // 開発環境: CloudFrontのURL（実際のURLに置き換えてください）
-      return 'https://d1234567890.cloudfront.net';
+      // 開発環境: CloudFrontのURL
+      return 'https://d30se1secd7t6t.cloudfront.net';
     } else {
-      // 本番環境: CloudFrontのURL（実際のURLに置き換えてください）
-      return 'https://d1234567890.cloudfront.net';
+      // 本番環境: CloudFrontのURL
+      return 'https://d30se1secd7t6t.cloudfront.net';
     }
   }
   
