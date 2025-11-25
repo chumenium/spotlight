@@ -925,6 +925,33 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// アイコンURLにキャッシュキーを追加（1時間に1回の読み込み制限）
+  /// 同じURLを使用することで、CachedNetworkImageのキャッシュが効く
+  String _getCachedIconUrl(String? userIconUrl, String userIconPath) {
+    String iconUrl;
+    if (userIconUrl != null && userIconUrl.isNotEmpty) {
+      iconUrl = userIconUrl;
+    } else if (userIconPath.isNotEmpty) {
+      iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
+    } else {
+      iconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+    }
+
+    // 既にキャッシュキーが含まれている場合はそのまま返す
+    if (iconUrl.contains('?cache=')) {
+      return iconUrl;
+    }
+
+    // 1時間ごとに更新されるキャッシュキーを生成（同じ時間帯は同じキー）
+    final now = DateTime.now();
+    final cacheKey =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+
+    // URLにキャッシュキーを追加
+    final separator = iconUrl.contains('?') ? '&' : '?';
+    return '$iconUrl${separator}cache=$cacheKey';
+  }
+
   /// アイコン更新イベントを受信したときの処理
   void _onIconUpdated(IconUpdateEvent event) async {
     if (!mounted) return;
@@ -963,7 +990,8 @@ class _HomeScreenState extends State<HomeScreen>
         if (_posts[i].username == event.username) {
           // アイコンが削除された場合はdefault_icon.jpgに変更
           final newIconPath = event.iconPath ?? 'default_icon.jpg';
-          final newIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+          final baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+          final newIconUrl = _getCachedIconUrl(baseIconUrl, newIconPath);
 
           if (kDebugMode) {
             debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
@@ -1388,62 +1416,60 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           // 動画プレイヤー
           if (controller != null && controller.value.isInitialized)
-            Center(
-              child: AspectRatio(
-                aspectRatio: controller.value.aspectRatio,
-                child: VideoPlayer(controller),
+            Positioned.fill(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: controller.value.aspectRatio.isFinite &&
+                          controller.value.aspectRatio > 0
+                      ? controller.value.aspectRatio
+                      : 16 / 9, // デフォルトのアスペクト比
+                  child: VideoPlayer(controller),
+                ),
               ),
             )
           else
             // 動画初期化中またはサムネイル表示
-            Center(
-              child: Container(
-                width: double.infinity,
-                height: double.infinity,
-                color: Colors.grey[900],
-                child: Stack(
-                  children: [
-                    // サムネイル画像
-                    if (post.thumbnailUrl != null &&
-                        post.thumbnailUrl!.isNotEmpty)
-                      Center(
-                        child: Image.network(
-                          post.thumbnailUrl!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorBuilder: (context, error, stackTrace) {
-                            if (kDebugMode) {
-                              debugPrint(
-                                  '❌ サムネイル読み込みエラー: ${post.thumbnailUrl}');
-                            }
-                            return Container();
-                          },
-                        ),
-                      ),
-                    // 再生ボタン
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_outline,
-                        color: Colors.white,
-                        size: 80,
+            Stack(
+              children: [
+                // 背景色
+                Container(
+                  color: Colors.grey[900],
+                ),
+                // サムネイル画像
+                if (post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty)
+                  Positioned.fill(
+                    child: Image.network(
+                      post.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        if (kDebugMode) {
+                          debugPrint('❌ サムネイル読み込みエラー: ${post.thumbnailUrl}');
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                // 再生ボタン
+                const Center(
+                  child: Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white,
+                    size: 80,
+                  ),
+                ),
+                // 動画初期化中のローディング表示
+                if (postIndex == _currentIndex &&
+                    post.postType == PostType.video &&
+                    !_initializedVideos.contains(postIndex))
+                  Container(
+                    color: Colors.black54,
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6B35),
                       ),
                     ),
-                    // 動画初期化中のローディング表示
-                    if (postIndex == _currentIndex &&
-                        post.postType == PostType.video &&
-                        !_initializedVideos.contains(postIndex))
-                      Container(
-                        color: Colors.black54,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
 
           // タップで一時停止/再生、シークバー表示
@@ -1721,9 +1747,15 @@ class _HomeScreenState extends State<HomeScreen>
                     .round())
             : (positionSnapshot.data ?? Duration.zero);
         final duration = player.duration ?? Duration.zero;
-        final progress = duration.inMilliseconds > 0
-            ? position.inMilliseconds / duration.inMilliseconds
-            : 0.0;
+        double progress = 0.0;
+        if (duration.inMilliseconds > 0 && position.inMilliseconds >= 0) {
+          final calculatedProgress =
+              position.inMilliseconds / duration.inMilliseconds;
+          // NaN、Infinity、不正な値をチェックしてクランプ
+          if (calculatedProgress.isFinite) {
+            progress = calculatedProgress.clamp(0.0, 1.0);
+          }
+        }
 
         // ナビゲーションバーの高さを考慮（約80px）
         return Positioned(
@@ -1797,60 +1829,66 @@ class _HomeScreenState extends State<HomeScreen>
                           '🎵 音声シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
                     }
                   },
-                  child: Container(
-                    width: double.infinity,
-                    height: 20, // タップ領域を広げる
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Stack(
-                      children: [
-                        // 背景バー
-                        Container(
-                          width: double.infinity,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        // 再生済み部分（左から右へ）
-                        Positioned(
-                          left: 0,
-                          top: 8,
-                          child: FractionallySizedBox(
-                            widthFactor: progress,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
+                  child: Builder(
+                    builder: (context) {
+                      final safeProgress =
+                          progress.isFinite ? progress.clamp(0.0, 1.0) : 0.0;
+                      final containerWidth = MediaQuery.of(context).size.width;
+                      final progressWidth = containerWidth * safeProgress;
+                      return Container(
+                        width: double.infinity,
+                        height: 20, // タップ領域を広げる
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Stack(
+                          children: [
+                            // 背景バー
+                            Container(
+                              width: double.infinity,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B35),
+                                color: Colors.white.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
-                          ),
-                        ),
-                        // シークハンドル
-                        Positioned(
-                          left:
-                              MediaQuery.of(context).size.width * progress - 6,
-                          top: 4,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.3),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                            // 再生済み部分（左から右へ）
+                            Positioned(
+                              left: 0,
+                              top: 8,
+                              child: SizedBox(
+                                width: progressWidth,
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF6B35),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            // シークハンドル
+                            Positioned(
+                              left: progressWidth - 6,
+                              top: 4,
+                              child: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1874,9 +1912,15 @@ class _HomeScreenState extends State<HomeScreen>
                     .round())
         : controller.value.position;
     final duration = controller.value.duration;
-    final progress = duration.inMilliseconds > 0
-        ? position.inMilliseconds / duration.inMilliseconds
-        : 0.0;
+    double progress = 0.0;
+    if (duration.inMilliseconds > 0 && position.inMilliseconds >= 0) {
+      final calculatedProgress =
+          position.inMilliseconds / duration.inMilliseconds;
+      // NaN、Infinity、不正な値をチェックしてクランプ
+      if (calculatedProgress.isFinite) {
+        progress = calculatedProgress.clamp(0.0, 1.0);
+      }
+    }
 
     // ナビゲーションバーの高さを考慮（約80px）
     return Positioned(
@@ -1950,59 +1994,66 @@ class _HomeScreenState extends State<HomeScreen>
                       '🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
                 }
               },
-              child: Container(
-                width: double.infinity,
-                height: 20, // タップ領域を広げる
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Stack(
-                  children: [
-                    // 背景バー
-                    Container(
-                      width: double.infinity,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // 再生済み部分（左から右へ）
-                    Positioned(
-                      left: 0,
-                      top: 8,
-                      child: FractionallySizedBox(
-                        widthFactor: progress,
-                        alignment: Alignment.centerLeft,
-                        child: Container(
+              child: Builder(
+                builder: (context) {
+                  final safeProgress =
+                      progress.isFinite ? progress.clamp(0.0, 1.0) : 0.0;
+                  final containerWidth = MediaQuery.of(context).size.width;
+                  final progressWidth = containerWidth * safeProgress;
+                  return Container(
+                    width: double.infinity,
+                    height: 20, // タップ領域を広げる
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Stack(
+                      children: [
+                        // 背景バー
+                        Container(
+                          width: double.infinity,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B35),
+                            color: Colors.white.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                      ),
-                    ),
-                    // シークハンドル
-                    Positioned(
-                      left: MediaQuery.of(context).size.width * progress - 6,
-                      top: 4,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                        // 再生済み部分（左から右へ）
+                        Positioned(
+                          left: 0,
+                          top: 8,
+                          child: SizedBox(
+                            width: progressWidth,
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B35),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        // シークハンドル
+                        Positioned(
+                          left: progressWidth - 6,
+                          top: 4,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -2276,10 +2327,8 @@ class _HomeScreenState extends State<HomeScreen>
                     key: ValueKey(
                         '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
                     child: RobustNetworkImage(
-                      imageUrl: post.userIconUrl ??
-                          (post.userIconPath.isNotEmpty
-                              ? '${AppConfig.backendUrl}/icon/${post.userIconPath}'
-                              : '${AppConfig.backendUrl}/icon/default_icon.jpg'),
+                      imageUrl: _getCachedIconUrl(
+                          post.userIconUrl, post.userIconPath),
                       fit: BoxFit.cover,
                       maxWidth: 80,
                       maxHeight: 80,
@@ -2765,7 +2814,8 @@ class _HomeScreenState extends State<HomeScreen>
                 radius: 16,
                 backgroundColor: const Color(0xFFFF6B35),
                 backgroundImage: comment.userIconUrl != null
-                    ? CachedNetworkImageProvider(comment.userIconUrl!)
+                    ? CachedNetworkImageProvider(
+                        _getCachedIconUrl(comment.userIconUrl, ''))
                     : null,
                 child: comment.userIconUrl == null
                     ? const Icon(Icons.person, size: 16, color: Colors.white)
@@ -3245,11 +3295,12 @@ class _HomeScreenState extends State<HomeScreen>
     final post = _posts[postIndex];
 
     // 動画投稿でない場合、またはmediaUrlが空の場合は何もしない
-    if (post.postType != PostType.video || 
-        post.mediaUrl == null || 
+    if (post.postType != PostType.video ||
+        post.mediaUrl == null ||
         post.mediaUrl!.isEmpty) {
       if (kDebugMode) {
-        debugPrint('⚠️ 動画初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
+        debugPrint(
+            '⚠️ 動画初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
       }
       return;
     }
@@ -3368,7 +3419,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return;
       }
-      
+
       _currentPlayingVideo = newIndex;
 
       // シークバー更新タイマーを開始
@@ -3409,7 +3460,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return;
       }
-      
+
       _currentPlayingAudio = newIndex;
 
       // 音声プレイヤーが初期化されていない場合は初期化
@@ -3554,11 +3605,12 @@ class _HomeScreenState extends State<HomeScreen>
     final post = _posts[postIndex];
 
     // 音声投稿でない場合、またはmediaUrlが空の場合は何もしない
-    if (post.postType != PostType.audio || 
-        post.mediaUrl == null || 
+    if (post.postType != PostType.audio ||
+        post.mediaUrl == null ||
         post.mediaUrl!.isEmpty) {
       if (kDebugMode) {
-        debugPrint('⚠️ 音声初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
+        debugPrint(
+            '⚠️ 音声初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
       }
       return;
     }

@@ -229,7 +229,8 @@ class AuthProvider extends ChangeNotifier {
       }
 
       // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
-      _fetchUserInfoAndTokens(firebaseUser.uid);
+      // ログイン時は強制更新（キャッシュを無視）
+      _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true);
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -779,92 +780,57 @@ class AuthProvider extends ChangeNotifier {
   /// バックエンドからユーザー情報とJWTトークンを取得
   ///
   /// 1. JWTトークンを取得して保存
-  /// 2. ユーザー名とアイコンパスを取得してユーザー情報を更新
+  /// 2. ユーザー名とアイコンパスを取得してユーザー情報を更新（キャッシュ機能付き）
   ///
   /// パラメータ:
   /// - uid: Firebase UID
-  Future<void> _fetchUserInfoAndTokens(String uid) async {
+  /// - forceRefresh: trueの場合、キャッシュを無視して強制的に再取得（ログイン時のみ使用）
+  Future<void> _fetchUserInfoAndTokens(String uid,
+      {bool forceRefresh = false}) async {
     try {
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 ユーザー情報取得開始: $uid');
+        debugPrint('🔐 ユーザー情報取得開始: $uid (forceRefresh: $forceRefresh)');
       }
 
       // 1. JWTトークンを取得
       await sendTokensToBackend();
 
-      // 2. ユーザー名とアイコンパスを取得
-      final jwtToken = await JwtService.getJwtToken();
-      if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ JWTトークンが取得できません');
+      // 2. ユーザー名とアイコンパスを取得（キャッシュ機能を使用）
+      // ログイン時は強制更新、それ以外はキャッシュを使用（1時間に1回）
+      final data =
+          await UserService.refreshUserInfo(uid, forceRefresh: forceRefresh);
+
+      if (data != null) {
+        final username = data['username'] as String?;
+        final iconPath = data['iconimgpath'] as String?;
+
+        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+          debugPrint('🔐 バックエンドから受け取った情報:');
+          debugPrint('  username: $username');
+          debugPrint('  iconPath: $iconPath');
         }
-        return;
-      }
 
-      final response = await http.post(
-        Uri.parse('${AppConfig.backendUrl}/api/users/getusername'),
-        headers: {
-          'Authorization': 'Bearer $jwtToken',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'firebase_uid': uid,
-        }),
-      );
-
-      if (kDebugMode) {
-        debugPrint('📥 ユーザー情報取得完了: ${response.statusCode}');
-        debugPrint('📄 レスポンス内容: ${response.body}');
-      }
-
-      if (response.statusCode == 200) {
-        try {
-          final responseData = jsonDecode(response.body);
-
-          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('🔐 レスポンス全体: $responseData');
-          }
-
-          final status = responseData['status'] as String?;
-          final data = responseData['data'] as Map<String, dynamic>?;
-
-          if (status == 'success' && data != null) {
-            final username = data['username'] as String?;
-            final iconPath = data['iconimgpath'] as String?;
-
+        // ユーザー情報を更新
+        if (_currentUser != null && username != null) {
+          // iconPathが存在する場合は、serverURLと結合して完全なURLにする
+          // iconPathはバックエンドでusername_icon.png形式で生成される
+          String? fullIconUrl;
+          if (iconPath != null && iconPath.isNotEmpty) {
+            fullIconUrl = '${AppConfig.backendUrl}$iconPath';
             if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-              debugPrint('🔐 バックエンドから受け取った情報:');
-              debugPrint('  username: $username');
-              debugPrint('  iconPath: $iconPath');
-            }
-
-            // ユーザー情報を更新
-            if (_currentUser != null && username != null) {
-              // iconPathが存在する場合は、serverURLと結合して完全なURLにする
-              // iconPathはバックエンドでusername_icon.png形式で生成される
-              String? fullIconUrl;
-              if (iconPath != null && iconPath.isNotEmpty) {
-                fullIconUrl = '${AppConfig.backendUrl}$iconPath';
-                if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-                  debugPrint('🔐 アイコンURL: $fullIconUrl');
-                }
-              }
-
-              _currentUser = User(
-                id: _currentUser!.id,
-                email: _currentUser!.email,
-                username: _currentUser!.username,
-                avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
-                backendUsername: username,
-                iconPath: iconPath,
-              );
-              notifyListeners();
+              debugPrint('🔐 アイコンURL: $fullIconUrl');
             }
           }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('🔐 ユーザー情報のパースエラー: $e');
-          }
+
+          _currentUser = User(
+            id: _currentUser!.id,
+            email: _currentUser!.email,
+            username: _currentUser!.username,
+            avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
+            backendUsername: username,
+            iconPath: iconPath,
+          );
+          notifyListeners();
         }
       }
     } catch (e) {
@@ -945,6 +911,28 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// アイコンURLにキャッシュキーを追加（1時間に1回の読み込み制限）
+  /// 同じURLを使用することで、CachedNetworkImageのキャッシュが効く
+  String? _addIconCacheKey(String? iconUrl) {
+    if (iconUrl == null || iconUrl.isEmpty) {
+      return null;
+    }
+
+    // 既にキャッシュキーが含まれている場合はそのまま返す
+    if (iconUrl.contains('?cache=')) {
+      return iconUrl;
+    }
+
+    // 1時間ごとに更新されるキャッシュキーを生成（同じ時間帯は同じキー）
+    final now = DateTime.now();
+    final cacheKey =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+
+    // URLにキャッシュキーを追加
+    final separator = iconUrl.contains('?') ? '&' : '?';
+    return '$iconUrl${separator}cache=$cacheKey';
+  }
+
   /// ユーザー情報を更新
   ///
   /// アイコン更新後にユーザー情報を再取得して更新するために使用
@@ -973,12 +961,14 @@ class AuthProvider extends ChangeNotifier {
         } else {
           // iconPathはバックエンドでusername_icon.png形式で生成される
           finalIconPath = iconPath;
-          fullIconUrl = '${AppConfig.backendUrl}$iconPath';
+          final baseIconUrl = '${AppConfig.backendUrl}$iconPath';
+          fullIconUrl = _addIconCacheKey(baseIconUrl);
         }
       } else if (_currentUser!.iconPath != null &&
           _currentUser!.iconPath!.isNotEmpty) {
         finalIconPath = _currentUser!.iconPath;
-        fullIconUrl = '${AppConfig.backendUrl}${_currentUser!.iconPath}';
+        final baseIconUrl = '${AppConfig.backendUrl}${_currentUser!.iconPath}';
+        fullIconUrl = _addIconCacheKey(baseIconUrl);
       } else {
         finalIconPath = _currentUser!.iconPath;
       }

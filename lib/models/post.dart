@@ -9,6 +9,28 @@ enum PostType {
   audio,
 }
 
+/// アイコンURLにキャッシュキーを追加（1時間に1回の読み込み制限）
+/// 同じURLを使用することで、CachedNetworkImageのキャッシュが効く
+String? _addIconCacheKey(String? iconUrl) {
+  if (iconUrl == null || iconUrl.isEmpty) {
+    return null;
+  }
+
+  // 既にキャッシュキーが含まれている場合はそのまま返す
+  if (iconUrl.contains('?cache=')) {
+    return iconUrl;
+  }
+
+  // 1時間ごとに更新されるキャッシュキーを生成（同じ時間帯は同じキー）
+  final now = DateTime.now();
+  final cacheKey =
+      '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+
+  // URLにキャッシュキーを追加
+  final separator = iconUrl.contains('?') ? '&' : '?';
+  return '$iconUrl${separator}cache=$cacheKey';
+}
+
 /// パスをCloudFront URLに正規化（バックエンドのnormalize_content_url相当）
 /// /content/movie/filename.mp4 -> https://d30se1secd7t6t.cloudfront.net/movie/filename.mp4
 String? _normalizeContentUrl(String? path) {
@@ -193,8 +215,10 @@ class Post {
         _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
 
     // iconimgpathから完全なアイコンURLを生成（バックエンドサーバーから配信）
+    // アイコンURLにキャッシュキーを追加して、1時間以内は同じURLを使用（AWS使用量削減）
     final iconPath = json['iconimgpath'] as String? ?? '';
-    final userIconUrl = _buildFullUrl(AppConfig.backendUrl, iconPath);
+    final baseIconUrl = _buildFullUrl(AppConfig.backendUrl, iconPath);
+    final userIconUrl = _addIconCacheKey(baseIconUrl);
 
     // デバッグログ出力
     if (kDebugMode) {

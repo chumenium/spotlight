@@ -38,8 +38,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   final ImagePicker _imagePicker = ImagePicker();
-  // アイコン更新時のタイムスタンプ（キャッシュ回避用）
-  int _iconUpdateTimestamp = 0;
   // 自分の投稿リスト
   List<Post> _myPosts = [];
   bool _isLoadingPosts = false;
@@ -417,19 +415,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => _showIconMenu(context, authProvider),
                 child: Builder(
                   builder: (context) {
-                    // アイコンURLとiconPathから一意のキーを生成（キャッシュ回避のため）
-                    final baseIconUrl = user?.avatarUrl ??
-                        (user?.iconPath != null
-                            ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
-                            : '${AppConfig.backendUrl}/icon/default_icon.jpg');
-                    // キャッシュ回避のため、アイコン更新時にタイムスタンプを追加
-                    final iconUrl =
-                        _iconUpdateTimestamp > 0 && user?.iconPath != null
-                            ? '$baseIconUrl?t=$_iconUpdateTimestamp'
-                            : baseIconUrl;
+                    // authProviderから取得したavatarUrlを使用（キャッシュキーが既に含まれている）
+                    // キャッシュキーにより、1時間以内は同じURLが使用されるため、CachedNetworkImageのキャッシュが効く
+                    String? iconUrl = user?.avatarUrl;
+                    if (iconUrl == null || iconUrl.isEmpty) {
+                      // avatarUrlがnullの場合は、iconPathから生成（キャッシュキーを追加）
+                      final baseIconUrl = user?.iconPath != null
+                          ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
+                          : '${AppConfig.backendUrl}/icon/default_icon.jpg';
+                      // キャッシュキーを追加（1時間に1回の読み込み制限）
+                      if (!baseIconUrl.contains('?cache=')) {
+                        final now = DateTime.now();
+                        final cacheKey =
+                            '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+                        final separator = baseIconUrl.contains('?') ? '&' : '?';
+                        iconUrl = '$baseIconUrl${separator}cache=$cacheKey';
+                      } else {
+                        iconUrl = baseIconUrl;
+                      }
+                    }
                     // iconPathが変更されたときに再構築されるようにキーを設定
                     final iconKey =
-                        '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}_$_iconUpdateTimestamp';
+                        '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}';
 
                     return CircleAvatar(
                       radius: 40,
@@ -1718,13 +1725,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
 
         if (mounted) {
-          // アイコン更新タイムスタンプを更新（キャッシュ回避のため）
-          setState(() {
-            _iconUpdateTimestamp = DateTime.now().millisecondsSinceEpoch;
-          });
+          // 画面を再構築してアイコンを更新
+          setState(() {});
 
           if (kDebugMode) {
-            debugPrint('🔄 プロフィール画面を再構築しました（タイムスタンプ: $_iconUpdateTimestamp）');
+            debugPrint('🔄 プロフィール画面を再構築しました（アイコン更新）');
           }
 
           // 7. レスポンスメッセージ表示
