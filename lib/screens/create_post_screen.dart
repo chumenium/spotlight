@@ -3,9 +3,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import 'dart:io';
 import 'dart:ui';
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
@@ -126,12 +126,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _isPosting = true;
     });
 
-    // コンテンツタイプ判定（catchブロックでも使用するため、tryブロックの外で定義）
-    final String type = _selectedMedia != null
-        ? (_isSelectedMediaVideo() ? 'video' : 'image')
-        : (_selectedAudio != null ? 'audio' : 'text');
-
     try {
+      // コンテンツタイプ判定
+      final String type = _selectedMedia != null
+          ? (_isSelectedMediaVideo() ? 'video' : 'image')
+          : (_selectedAudio != null ? 'audio' : 'text');
 
       // backend要件: file(base64), thumbnail(base64) 必須
       String? fileBase64;
@@ -143,49 +142,33 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         fileBase64 = base64Encode(imageBytes);
         thumbBase64 = base64Encode(await _generateImageThumbnail(imageBytes));
       } else if (type == 'video') {
+        final bytes = await File(_selectedMedia!.path).readAsBytes();
+        fileBase64 = base64Encode(bytes);
+        // 動画から最初のフレームをサムネイルとして抽出
         try {
-          // 動画ファイルのサイズチェック（100MB制限）
-          final videoFile = File(_selectedMedia!.path);
-          final fileSize = await videoFile.length();
-          if (fileSize > 100 * 1024 * 1024) {
-            _showSnackBar(
-              '動画ファイルが大きすぎます（100MB以下にしてください）',
-              Colors.red,
-            );
-            setState(() {
-              _isPosting = false;
-            });
-            return;
+          final thumbnailBytes =
+              await _generateVideoThumbnail(_selectedMedia!.path);
+          if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
+            thumbBase64 = base64Encode(thumbnailBytes);
+            if (kDebugMode) {
+              debugPrint('✅ 動画から最初のフレームをサムネイルとして抽出成功');
+            }
+          } else {
+            // サムネイル抽出に失敗した場合はプレースホルダーを使用
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画サムネイル抽出失敗、プレースホルダーを使用');
+            }
+            thumbBase64 = base64Encode(
+                _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
           }
-
+        } catch (e) {
+          // エラーが発生した場合はプレースホルダーを使用
           if (kDebugMode) {
-            debugPrint('📹 動画ファイル読み込み開始: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+            debugPrint('❌ 動画サムネイル抽出エラー: $e');
+            debugPrint('   プレースホルダーを使用します');
           }
-
-          final bytes = await videoFile.readAsBytes();
-          
-          if (kDebugMode) {
-            debugPrint('📹 動画ファイル読み込み完了: ${bytes.length} bytes');
-            debugPrint('📹 Base64エンコード開始...');
-          }
-
-          fileBase64 = base64Encode(bytes);
-          
-          if (kDebugMode) {
-            debugPrint('📹 Base64エンコード完了: ${fileBase64.length} 文字');
-          }
-
           thumbBase64 = base64Encode(
               _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ 動画ファイル読み込みエラー: $e');
-          }
-          _showSnackBar('動画ファイルの読み込みに失敗しました: $e', Colors.red);
-          setState(() {
-            _isPosting = false;
-          });
-          return;
         }
       } else if (type == 'audio') {
         final bytes = await File(_selectedAudio!.path!).readAsBytes();
@@ -204,13 +187,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         link = _selectedAudio!.path;
       }
 
-      if (kDebugMode) {
-        debugPrint('📤 投稿送信開始: type=$type, title=${_titleController.text.trim()}');
-        if (fileBase64 != null) {
-          debugPrint('📤 ファイルサイズ: ${fileBase64.length} 文字（Base64）');
-        }
-      }
-
       final result = await PostService.createPost(
         type: type,
         title: _titleController.text.trim(),
@@ -221,15 +197,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (mounted) {
         if (result == null) {
-          if (kDebugMode) {
-            debugPrint('❌ 投稿に失敗しました（無効な応答）');
-          }
-          _showSnackBar('投稿に失敗しました。ネットワーク接続を確認してください。', Colors.red);
+          _showSnackBar('投稿に失敗しました（無効な応答）', Colors.red);
           return;
-        }
-        
-        if (kDebugMode) {
-          debugPrint('✅ 投稿成功: $result');
         }
         _showSnackBar('投稿が完了しました！', Colors.green);
         _titleController.clear();
@@ -251,32 +220,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // モーダルを閉じる
         Navigator.of(context).pop();
       }
-    } on TimeoutException catch (e) {
-      if (mounted) {
-        if (kDebugMode) {
-          debugPrint('❌ 投稿タイムアウト: $e');
-        }
-        _showSnackBar(
-          type == 'video'
-              ? '動画のアップロードに時間がかかりすぎています。ファイルサイズを小さくするか、ネットワーク接続を確認してください。'
-              : '投稿に時間がかかりすぎています。ネットワーク接続を確認してください。',
-          Colors.red,
-        );
-      }
     } catch (e) {
       if (mounted) {
-        if (kDebugMode) {
-          debugPrint('❌ 投稿エラー: $e');
-        }
-        String errorMessage = '投稿に失敗しました';
-        if (e.toString().contains('timeout') || e.toString().contains('タイムアウト')) {
-          errorMessage = '投稿に時間がかかりすぎています。ネットワーク接続を確認してください。';
-        } else if (e.toString().contains('network') || e.toString().contains('ネットワーク')) {
-          errorMessage = 'ネットワークエラーが発生しました。接続を確認してください。';
-        } else if (e.toString().contains('413') || e.toString().contains('Request Entity Too Large')) {
-          errorMessage = 'ファイルが大きすぎます。ファイルサイズを小さくしてください。';
-        }
-        _showSnackBar(errorMessage, Colors.red);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('投稿に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -299,6 +250,69 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       interpolation: img.Interpolation.linear,
     );
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+  }
+
+  // 動画から最初のフレームをサムネイルとして抽出
+  Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('🎬 動画サムネイル抽出開始: $videoPath');
+      }
+
+      // 動画から最初のフレーム（timeMs: 0）を抽出
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: (await Directory.systemTemp).path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 320, // 最大幅320px
+        maxHeight: 320, // 最大高さ320px
+        quality: 80, // JPEG品質
+        timeMs: 0, // 最初のフレーム（0ミリ秒）
+      );
+
+      if (thumbnailPath == null || thumbnailPath.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画サムネイル抽出失敗: パスが空');
+        }
+        return null;
+      }
+
+      // 抽出したサムネイル画像を読み込む
+      final thumbnailFile = File(thumbnailPath);
+      if (!await thumbnailFile.exists()) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画サムネイル抽出失敗: ファイルが存在しない');
+        }
+        return null;
+      }
+
+      final thumbnailBytes = await thumbnailFile.readAsBytes();
+
+      if (kDebugMode) {
+        debugPrint('✅ 動画サムネイル抽出成功: ${thumbnailBytes.length} bytes');
+      }
+
+      // 一時ファイルを削除
+      try {
+        await thumbnailFile.delete();
+        if (kDebugMode) {
+          debugPrint('🗑️ 一時サムネイルファイルを削除: $thumbnailPath');
+        }
+      } catch (e) {
+        // 削除エラーは無視
+        if (kDebugMode) {
+          debugPrint('⚠️ 一時ファイル削除エラー（無視）: $e');
+        }
+      }
+
+      return thumbnailBytes;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ 動画サムネイル抽出例外: $e');
+        debugPrint('   スタックトレース: $stackTrace');
+      }
+      return null;
+    }
   }
 
   // 動画/音声の簡易サムネイル（プレースホルダ）
