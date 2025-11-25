@@ -1029,6 +1029,21 @@ class PostService {
         }
       }
 
+      // 動画投稿の場合は長めのタイムアウトを設定（60秒）
+      // 画像・音声は30秒、テキストは10秒
+      final timeoutDuration = type == 'video' 
+          ? const Duration(seconds: 60)
+          : (type == 'image' || type == 'audio')
+              ? const Duration(seconds: 30)
+              : const Duration(seconds: 10);
+
+      if (kDebugMode) {
+        debugPrint('📝 タイムアウト設定: ${timeoutDuration.inSeconds}秒 (type=$type)');
+        if (fileBase64 != null) {
+          debugPrint('📝 Base64データサイズ: ${fileBase64.length} 文字');
+        }
+      }
+
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -1036,6 +1051,14 @@ class PostService {
           'Authorization': 'Bearer $jwtToken',
         },
         body: jsonEncode(body),
+      ).timeout(
+        timeoutDuration,
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ 投稿作成タイムアウト: ${timeoutDuration.inSeconds}秒経過 (type=$type)');
+          }
+          throw TimeoutException('Request timeout after ${timeoutDuration.inSeconds} seconds');
+        },
       );
 
       if (response.statusCode == 200) {
@@ -1047,15 +1070,33 @@ class PostService {
 
         if (responseData['status'] == 'success') {
           return responseData['data'];
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 投稿作成失敗: status=${responseData['status']}, message=${responseData['message'] ?? 'N/A'}');
+          }
         }
       } else {
         if (kDebugMode) {
-          debugPrint('📝 投稿作成エラー: ${response.statusCode}');
+          debugPrint('❌ 投稿作成HTTPエラー: ${response.statusCode}');
+          debugPrint('❌ レスポンス本文: ${response.body}');
         }
       }
-    } catch (e) {
+    } on TimeoutException catch (e) {
       if (kDebugMode) {
-        debugPrint('📝 投稿作成例外: $e');
+        debugPrint('❌ 投稿作成タイムアウト例外: $e');
+        debugPrint('❌ タイプ: $type');
+        if (fileBase64 != null) {
+          debugPrint('❌ Base64データサイズ: ${fileBase64.length} 文字');
+        }
+      }
+    } on http.ClientException catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 投稿作成ネットワークエラー: $e');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ 投稿作成例外: $e');
+        debugPrint('❌ スタックトレース: $stackTrace');
       }
     }
 
