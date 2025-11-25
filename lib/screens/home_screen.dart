@@ -3244,8 +3244,13 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _initializeVideoController(int postIndex) async {
     final post = _posts[postIndex];
 
-    // 動画投稿でない場合は何もしない
-    if (post.postType != PostType.video || post.mediaUrl == null) {
+    // 動画投稿でない場合、またはmediaUrlが空の場合は何もしない
+    if (post.postType != PostType.video || 
+        post.mediaUrl == null || 
+        post.mediaUrl!.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 動画初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
+      }
       return;
     }
 
@@ -3356,6 +3361,14 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 新しいページが動画投稿の場合
     if (newPost.postType == PostType.video) {
+      // mediaUrlが空の場合は再生をスキップ
+      if (newPost.mediaUrl == null || newPost.mediaUrl!.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画URLが空です。再生をスキップします。');
+        }
+        return;
+      }
+      
       _currentPlayingVideo = newIndex;
 
       // シークバー更新タイマーを開始
@@ -3389,6 +3402,14 @@ class _HomeScreenState extends State<HomeScreen>
       }
     } else if (newPost.postType == PostType.audio) {
       // 新しいページが音声投稿の場合
+      // mediaUrlが空の場合は再生をスキップ
+      if (newPost.mediaUrl == null || newPost.mediaUrl!.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 音声URLが空です。再生をスキップします。');
+        }
+        return;
+      }
+      
       _currentPlayingAudio = newIndex;
 
       // 音声プレイヤーが初期化されていない場合は初期化
@@ -3532,8 +3553,13 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _initializeAudioPlayer(int postIndex) async {
     final post = _posts[postIndex];
 
-    // 音声投稿でない場合は何もしない
-    if (post.postType != PostType.audio || post.mediaUrl == null) {
+    // 音声投稿でない場合、またはmediaUrlが空の場合は何もしない
+    if (post.postType != PostType.audio || 
+        post.mediaUrl == null || 
+        post.mediaUrl!.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 音声初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
+      }
       return;
     }
 

@@ -169,11 +169,12 @@ class Post {
     // typeフィールドがない場合、contentpathから推測
     String postType = json['type'] as String? ?? '';
     if (postType.isEmpty && contentPath.isNotEmpty) {
-      if (contentPath.contains('video') || contentPath.endsWith('.mp4') || contentPath.endsWith('.mov')) {
+      // CloudFront URLのパスから推測（/movie/, /picture/, /audio/）
+      if (contentPath.contains('/movie/') || contentPath.contains('video') || contentPath.endsWith('.mp4') || contentPath.endsWith('.mov')) {
         postType = 'video';
-      } else if (contentPath.contains('image') || contentPath.endsWith('.jpg') || contentPath.endsWith('.png')) {
+      } else if (contentPath.contains('/picture/') || contentPath.contains('image') || contentPath.endsWith('.jpg') || contentPath.endsWith('.png') || contentPath.endsWith('.jpeg')) {
         postType = 'image';
-      } else if (contentPath.contains('audio') || contentPath.endsWith('.mp3') || contentPath.endsWith('.wav')) {
+      } else if (contentPath.contains('/audio/') || contentPath.contains('audio') || contentPath.endsWith('.mp3') || contentPath.endsWith('.wav') || contentPath.endsWith('.m4a')) {
         postType = 'audio';
       }
     }
