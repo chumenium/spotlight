@@ -26,6 +26,7 @@ import '../services/post_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../services/playlist_service.dart';
+import '../auth/social_login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -1503,6 +1504,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     if (kDebugMode) {
                       debugPrint('✅ ログアウト完了: ログイン画面へ遷移');
+                    }
+
+                    // ログイン画面に遷移
+                    if (context.mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => const SocialLoginScreen(),
+                        ),
+                        (route) => false, // すべての前のルートを削除
+                      );
                     }
                   }
                 },

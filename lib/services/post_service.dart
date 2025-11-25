@@ -108,13 +108,17 @@ class PostService {
         debugPrint('📝 投稿取得開始: startId=$startId, limit=$limit');
       }
 
-      // startIdから昇順で取得
-      for (int i = 0; i < limit; i++) {
-        final contentId = startId + i;
+      // startIdから昇順で取得（存在する投稿をlimit件取得するまで続ける）
+      int currentId = startId;
+      int attemptCount = 0;
+      final int maxAttempts = limit * 10; // 最大試行回数（limitの10倍まで）
+
+      while (posts.length < limit && attemptCount < maxAttempts) {
+        final contentId = currentId;
         final url = '${AppConfig.apiBaseUrl}/content/detail';
 
         if (kDebugMode) {
-          debugPrint('📝 投稿詳細取得[$i]: contentID=$contentId, URL=$url');
+          debugPrint('📝 投稿詳細取得[試行${attemptCount + 1}]: contentID=$contentId, URL=$url, 現在の取得数=${posts.length}/$limit');
         }
 
         final response = await http.post(
@@ -126,11 +130,13 @@ class PostService {
           body: jsonEncode({'contentID': contentId}),
         );
 
+        attemptCount++;
+
         if (response.statusCode == 200) {
           final responseData = jsonDecode(response.body);
 
           if (kDebugMode) {
-            debugPrint('📝 投稿詳細レスポンス[$i]: ${responseData.toString()}');
+            debugPrint('📝 投稿詳細レスポンス[試行$attemptCount]: ${responseData.toString()}');
           }
 
           if (responseData['status'] == 'success' &&
@@ -138,7 +144,7 @@ class PostService {
             final data = responseData['data'] as Map<String, dynamic>;
 
             if (kDebugMode) {
-              debugPrint('📝 投稿データ[$i] (ID=$contentId):');
+              debugPrint('📝 投稿データ[試行$attemptCount] (ID=$contentId):');
               debugPrint('  contentpath: ${data['contentpath']}');
               debugPrint('  thumbnailpath: ${data['thumbnailpath']}');
               debugPrint('  title: ${data['title']}');
@@ -154,7 +160,7 @@ class PostService {
             posts.add(post);
 
             if (kDebugMode) {
-              debugPrint('📝 投稿変換完了[$i] (ID=$contentId):');
+              debugPrint('📝 投稿変換完了[試行$attemptCount] (ID=$contentId):');
               debugPrint('  mediaUrl: ${post.mediaUrl}');
               debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
               debugPrint('  userIconUrl: ${post.userIconUrl}');
@@ -165,14 +171,21 @@ class PostService {
             if (kDebugMode) {
               debugPrint('📝 投稿ID=$contentId は存在しないか取得失敗、スキップ');
             }
-            // 次のIDを試す（終了しない）
           }
         } else {
           if (kDebugMode) {
             debugPrint(
                 '📝 投稿ID=$contentId HTTPエラー: ${response.statusCode}、スキップ');
           }
-          // 次のIDを試す（終了しない）
+        }
+
+        // 次のIDを試す
+        currentId++;
+      }
+
+      if (kDebugMode) {
+        if (posts.length < limit && attemptCount >= maxAttempts) {
+          debugPrint('⚠️ 投稿取得: 最大試行回数に達しました（${posts.length}/$limit件取得）');
         }
       }
 
