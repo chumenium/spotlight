@@ -13,6 +13,20 @@ import 'dart:io' as dart_io show File;
 import 'dart:html' if (dart.library.io) 'html_stub.dart' as html
     show FileReader;
 
+/// キャッシュされたユーザー情報
+class _CachedUserInfo {
+  final Map<String, dynamic> data;
+  final DateTime timestamp;
+
+  _CachedUserInfo(this.data, this.timestamp);
+
+  bool get isExpired {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+    return difference.inHours >= 1; // 1時間以上経過したら期限切れ
+  }
+}
+
 /// ユーザーAPIサービス
 class UserService {
   /// アイコン画像を変更（アップロード）
@@ -150,6 +164,10 @@ class UserService {
             debugPrint('✅ アイコンパス取得: $iconPath');
           }
 
+          // アイコン変更後はキャッシュをクリア（次回取得時に最新情報を取得するため）
+          // 注意: firebaseUidは取得できないため、すべてのキャッシュをクリア
+          clearAllUserInfoCache();
+
           return iconPath;
         }
       } else {
@@ -218,7 +236,14 @@ class UserService {
           debugPrint('📥 アイコン削除レスポンス: ${responseData.toString()}');
         }
 
-        return responseData['status'] == 'success';
+        final success = responseData['status'] == 'success';
+
+        // アイコン削除後はキャッシュをクリア（次回取得時に最新情報を取得するため）
+        if (success) {
+          clearAllUserInfoCache();
+        }
+
+        return success;
       } else {
         if (kDebugMode) {
           debugPrint('❌ アイコン削除エラー: ${response.statusCode}');
@@ -234,18 +259,42 @@ class UserService {
     return false;
   }
 
+  // ユーザー情報のキャッシュ（firebaseUid -> {data, timestamp}）
+  static final Map<String, _CachedUserInfo> _userInfoCache = {};
+
   /// ユーザー情報を再取得
   ///
   /// アイコン更新後にユーザー情報を再取得してAuthProviderを更新するために使用
+  /// キャッシュ機能付き: 1時間以内の取得はキャッシュから返す
   ///
   /// パラメータ:
   /// - firebaseUid: Firebase UID（ユーザー識別用）
+  /// - forceRefresh: trueの場合、キャッシュを無視して強制的に再取得
   ///
   /// 戻り値:
   /// - Map<String, dynamic>?: ユーザー情報（username, iconimgpath）、失敗時はnull
-  static Future<Map<String, dynamic>?> refreshUserInfo(
-      String firebaseUid) async {
+  static Future<Map<String, dynamic>?> refreshUserInfo(String firebaseUid,
+      {bool forceRefresh = false}) async {
     try {
+      // キャッシュをチェック（強制更新でない場合）
+      if (!forceRefresh && _userInfoCache.containsKey(firebaseUid)) {
+        final cached = _userInfoCache[firebaseUid]!;
+        if (!cached.isExpired) {
+          if (kDebugMode) {
+            debugPrint('📥 ユーザー情報をキャッシュから取得: $firebaseUid');
+            debugPrint('   - キャッシュ時刻: ${cached.timestamp}');
+            debugPrint(
+                '   - 経過時間: ${DateTime.now().difference(cached.timestamp).inMinutes}分');
+          }
+          return cached.data;
+        } else {
+          if (kDebugMode) {
+            debugPrint('📥 ユーザー情報のキャッシュが期限切れ: $firebaseUid');
+          }
+          _userInfoCache.remove(firebaseUid);
+        }
+      }
+
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
@@ -253,6 +302,10 @@ class UserService {
           debugPrint('❌ JWTトークンが取得できません');
         }
         return null;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📥 ユーザー情報をAPIから取得: $firebaseUid');
       }
 
       final response = await http.post(
@@ -275,7 +328,19 @@ class UserService {
 
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
-          return responseData['data'] as Map<String, dynamic>;
+          final userInfo = responseData['data'] as Map<String, dynamic>;
+
+          // キャッシュに保存
+          _userInfoCache[firebaseUid] = _CachedUserInfo(
+            userInfo,
+            DateTime.now(),
+          );
+
+          if (kDebugMode) {
+            debugPrint('📥 ユーザー情報をキャッシュに保存: $firebaseUid');
+          }
+
+          return userInfo;
         }
       }
     } catch (e) {
@@ -285,5 +350,23 @@ class UserService {
     }
 
     return null;
+  }
+
+  /// ユーザー情報のキャッシュをクリア
+  ///
+  /// アイコン変更後など、キャッシュを無効化する必要がある場合に呼び出す
+  static void clearUserInfoCache(String firebaseUid) {
+    _userInfoCache.remove(firebaseUid);
+    if (kDebugMode) {
+      debugPrint('🗑️ ユーザー情報のキャッシュをクリア: $firebaseUid');
+    }
+  }
+
+  /// すべてのユーザー情報キャッシュをクリア
+  static void clearAllUserInfoCache() {
+    _userInfoCache.clear();
+    if (kDebugMode) {
+      debugPrint('🗑️ すべてのユーザー情報キャッシュをクリア');
+    }
   }
 }

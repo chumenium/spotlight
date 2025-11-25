@@ -755,7 +755,16 @@ class PostService {
                   // /api/content/detailから取得したデータで不足している情報を補完
                   mergedData['username'] = post.username;
                   mergedData['iconimgpath'] = post.userIconPath;
-                  mergedData['contentpath'] = post.contentPath;
+                  // contentpathがない場合はlinkを使用（バックエンドが返すlinkは相対パスまたはCloudFront URL）
+                  if (mergedData['contentpath'] == null ||
+                      (mergedData['contentpath'] as String).isEmpty) {
+                    final link = historyData['link'] as String?;
+                    if (link != null && link.isNotEmpty) {
+                      mergedData['contentpath'] = link;
+                    } else {
+                      mergedData['contentpath'] = post.contentPath;
+                    }
+                  }
                   mergedData['textflag'] = post.isText;
                   mergedData['spotlightflag'] = post.isSpotlighted;
 

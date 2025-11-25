@@ -163,17 +163,15 @@ class PlaylistService {
         return false;
       }
 
-      // バックエンドのバグ対応:
-      // バックエンドの実装（343行目）: contentid = data.get("playlistid") となっているため
-      // バックエンドは playlistid と contentid の両方を playlistid から取得しようとしている
-      // そのため、contentidをplaylistidとして送信する必要がある
-      // 注意: この実装では、実際のplaylistidは無視され、contentidがplaylistidとして使用される
-      // バックエンドの実装: playlistid = data.get("playlistid"), contentid = data.get("playlistid")
-      // そのため、contentidをplaylistidとして送信すると、playlistidとcontentidの両方が同じ値になる
+      // バックエンドの実装を確認:
+      // バックエンドの実装（444行目）: contentid = data.get("playlistid") となっているため
+      // バックエンドは contentid を playlistid から取得しようとしている
+      // しかし、リクエストボディに contentid を追加することで、バックエンドがそれを使用する可能性がある
+      // まず、正しい形式でリクエストを送信してみる
+      // 注意: バックエンドが contentid を無視する場合、複数コンテンツを追加できない可能性がある
       final requestBody = {
-        'playlistid': contentIdInt, // バックエンドのバグ対応: contentidをplaylistidとして送信
-        // 注意: バックエンドの実装により、playlistidとcontentidの両方が同じ値（contentIdInt）になる
-        // これは正しい動作ではないが、バックエンドのバグに対応するための一時的な対応
+        'playlistid': playlistId,
+        'contentid': contentIdInt, // contentidを明示的に送信（バックエンドが使用するか確認）
       };
 
       if (kDebugMode) {
@@ -187,15 +185,14 @@ class PlaylistService {
         debugPrint(
             '📋 [プレイリスト追加] contentId (元の値): $contentId (type: ${contentId.runtimeType})');
         debugPrint('📋 [プレイリスト追加] userID: JWTトークンから取得（バックエンド側で処理）');
-        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 重要な警告 ⚠️⚠️⚠️');
+        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 重要な注意 ⚠️⚠️⚠️');
         debugPrint(
-            '   バックエンドのバグにより、playlistidとcontentidの両方が同じ値（$contentIdInt）になります');
-        debugPrint('   これは正しい動作ではありませんが、バックエンドのバグに対応するための一時的な対応です');
+            '   バックエンドの実装（444行目）: contentid = data.get("playlistid") となっているため');
         debugPrint(
-            '   バックエンドの実装（343行目）: contentid = data.get("playlistid") となっているため');
-        debugPrint(
-            '   実際のplaylistid（$playlistId）は無視され、contentid（$contentIdInt）がplaylistidとして使用されます');
-        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 警告終了 ⚠️⚠️⚠️');
+            '   バックエンドは contentid をリクエストボディから取得せず、playlistid から取得しようとしています');
+        debugPrint('   リクエストボディに contentid を追加していますが、バックエンドがそれを使用するかは不明です');
+        debugPrint('   もしバックエンドが contentid を無視する場合、複数コンテンツを追加できない可能性があります');
+        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 注意終了 ⚠️⚠️⚠️');
       }
 
       final response = await http.post(

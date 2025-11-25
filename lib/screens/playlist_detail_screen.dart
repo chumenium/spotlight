@@ -77,15 +77,27 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         return;
       }
 
-      // API仕様書のレスポンスから直接Postオブジェクトを作成
-      // レスポンスには既に必要な情報が含まれているため、追加のAPI呼び出しは不要
+      // API仕様書のレスポンスからPostオブジェクトを作成
+      // Post.fromJsonを使用してS3（CloudFront）のURLを正しく処理
+      // バックエンドが返すlinkとthumbnailpathは相対パス（/content/movie/filename.mp4など）の可能性がある
       final List<Post> posts = [];
       for (final item in contentsJson) {
         try {
-          final post = _createPostFromApiResponse(item);
-          if (post != null) {
-            posts.add(post);
+          // linkをcontentpathとして使用
+          // バックエンドが返すlinkはCloudFront URLまたは相対パス（/content/movie/filename.mp4など）
+          final link = item['link']?.toString();
+
+          // Post.fromJsonで使用するために、linkをcontentpathとして設定
+          final postData = Map<String, dynamic>.from(item);
+          if (link != null && link.isNotEmpty) {
+            postData['contentpath'] = link;
           }
+
+          // Post.fromJsonを使用（S3（CloudFront）のURLを正しく処理）
+          // Post.fromJson内の_normalizeContentUrlが/content/movie/filename.mp4形式をCloudFront URLに変換
+          final post =
+              Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
+          posts.add(post);
         } catch (e) {
           if (kDebugMode) {
             debugPrint('❌ [プレイリスト詳細] Post作成エラー: $e');
@@ -125,184 +137,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         });
       }
     }
-  }
-
-  /// APIレスポンスからPostオブジェクトを作成
-  /// API仕様書のレスポンス形式に基づく:
-  /// {
-  ///   "contentID": 1,
-  ///   "title": "タイトル",
-  ///   "spotlightnum": 3,
-  ///   "posttimestamp": "2025-01-01 12:00:00",
-  ///   "playnum": 100,
-  ///   "link": "https://...",
-  ///   "thumbnailpath": "content/thumbnail/xxx.jpg"
-  /// }
-  Post? _createPostFromApiResponse(Map<String, dynamic> item) {
-    try {
-      // contentIDを取得（複数のキー名に対応）
-      final contentIdValue = item['contentID'] ??
-          item['contentid'] ??
-          item['contentId'] ??
-          item['content_id'] ??
-          item['ContentID'] ??
-          item['ContentId'];
-
-      if (contentIdValue == null) {
-        if (kDebugMode) {
-          debugPrint('⚠️ [プレイリスト詳細] contentIDが見つかりません: $item');
-        }
-        return null;
-      }
-
-      final contentId = contentIdValue.toString();
-
-      // titleを取得
-      final title = item['title']?.toString() ?? 'タイトルなし';
-
-      // spotlightnumを取得
-      final spotlightnum = _parseInt(item['spotlightnum']) ?? 0;
-
-      // posttimestampを取得してDateTimeに変換
-      DateTime createdAt;
-      try {
-        final timestampStr = item['posttimestamp']?.toString();
-        if (timestampStr != null && timestampStr.isNotEmpty) {
-          // ISO 8601形式または "YYYY-MM-DD HH:MM:SS" 形式をパース
-          createdAt = DateTime.tryParse(timestampStr) ??
-              _parseDateTime(timestampStr) ??
-              DateTime.now();
-        } else {
-          createdAt = DateTime.now();
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ [プレイリスト詳細] 日時パースエラー: $e');
-        }
-        createdAt = DateTime.now();
-      }
-
-      // playnumを取得
-      final playnum = _parseInt(item['playnum']) ?? 0;
-
-      // linkを取得
-      final link = item['link']?.toString();
-
-      // thumbnailpathを取得して完全なURLに変換
-      final thumbnailpath = item['thumbnailpath']?.toString();
-      String? thumbnailUrl;
-      if (thumbnailpath != null && thumbnailpath.isNotEmpty) {
-        thumbnailUrl = _buildFullUrl(AppConfig.backendUrl, thumbnailpath);
-      }
-
-      // PostTypeを決定（linkまたはthumbnailpathから推測）
-      PostType postType = PostType.video; // デフォルト
-      if (link != null && link.isNotEmpty) {
-        final lowerLink = link.toLowerCase();
-        if (lowerLink.contains('.mp4') ||
-            lowerLink.contains('.mov') ||
-            lowerLink.contains('.avi')) {
-          postType = PostType.video;
-        } else if (lowerLink.contains('.jpg') ||
-            lowerLink.contains('.jpeg') ||
-            lowerLink.contains('.png')) {
-          postType = PostType.image;
-        } else if (lowerLink.contains('.mp3') ||
-            lowerLink.contains('.wav') ||
-            lowerLink.contains('.m4a')) {
-          postType = PostType.audio;
-        }
-      }
-
-      // Postオブジェクトを作成
-      // API仕様書には含まれていない情報はデフォルト値を使用
-      return Post(
-        id: contentId,
-        userId: '', // API仕様書に含まれていない
-        username: '', // API仕様書に含まれていない
-        userIconPath: '', // API仕様書に含まれていない
-        title: title,
-        content: null, // API仕様書に含まれていない
-        contentPath: link ?? '', // linkをcontentPathとして使用
-        type: postType.name,
-        mediaUrl:
-            link != null ? _buildFullUrl(AppConfig.backendUrl, link) : null,
-        thumbnailUrl: thumbnailUrl,
-        likes: spotlightnum,
-        playNum: playnum,
-        link: link,
-        comments: 0, // API仕様書に含まれていない
-        shares: 0, // API仕様書に含まれていない
-        isSpotlighted: spotlightnum > 0,
-        isText: postType == PostType.text,
-        nextContentId: null, // API仕様書に含まれていない
-        createdAt: createdAt,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [プレイリスト詳細] Post作成エラー: $e');
-        debugPrint('   - 項目: $item');
-      }
-      return null;
-    }
-  }
-
-  /// 数値を安全にパース
-  int? _parseInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is String) {
-      return int.tryParse(value);
-    }
-    return null;
-  }
-
-  /// 日時文字列をパース（"YYYY-MM-DD HH:MM:SS"形式）
-  DateTime? _parseDateTime(String dateTimeStr) {
-    try {
-      // "2025-01-01 12:00:00" 形式をパース
-      final parts = dateTimeStr.split(' ');
-      if (parts.length == 2) {
-        final dateParts = parts[0].split('-');
-        final timeParts = parts[1].split(':');
-        if (dateParts.length == 3 && timeParts.length >= 2) {
-          final year = int.tryParse(dateParts[0]) ?? 0;
-          final month = int.tryParse(dateParts[1]) ?? 1;
-          final day = int.tryParse(dateParts[2]) ?? 1;
-          final hour = int.tryParse(timeParts[0]) ?? 0;
-          final minute = int.tryParse(timeParts[1]) ?? 0;
-          final second =
-              timeParts.length >= 3 ? (int.tryParse(timeParts[2]) ?? 0) : 0;
-          return DateTime(year, month, day, hour, minute, second);
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [プレイリスト詳細] 日時パースエラー: $e, dateTimeStr=$dateTimeStr');
-      }
-    }
-    return null;
-  }
-
-  /// URLを構築
-  String? _buildFullUrl(String? backendUrl, String? path) {
-    if (path == null || path.isEmpty) return null;
-    if (backendUrl == null || backendUrl.isEmpty) return path;
-
-    // 既に完全なURLの場合はそのまま返す
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-
-    // 絶対パスの場合
-    if (path.startsWith('/')) {
-      final baseUri = Uri.parse(backendUrl);
-      return baseUri.replace(path: path).toString();
-    }
-
-    // 相対パスの場合
-    final baseUri = Uri.parse(backendUrl);
-    return baseUri.resolve(path).toString();
   }
 
   /// 日付を相対時間に変換

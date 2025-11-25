@@ -1673,8 +1673,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // サーバー側で画像処理が完了するまで少し待機
         await Future.delayed(const Duration(milliseconds: 500));
 
-        // バックエンドから最新のユーザー情報を再取得して反映
-        final refreshed = await authProvider.refreshUserInfoFromBackend();
+        // バックエンドから最新のユーザー情報を再取得して反映（アイコン変更後は強制更新）
+        final refreshed =
+            await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
 
         if (kDebugMode) {
           debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
