@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:typed_data';
@@ -143,8 +144,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else if (type == 'video') {
         final bytes = await File(_selectedMedia!.path).readAsBytes();
         fileBase64 = base64Encode(bytes);
-        thumbBase64 = base64Encode(
-            _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+        // 動画の最初の1コマ目をサムネイルとして取得
+        try {
+          final thumbnailBytes = await _generateVideoThumbnail(_selectedMedia!.path);
+          if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
+            thumbBase64 = base64Encode(thumbnailBytes);
+            if (kDebugMode) {
+              debugPrint('✅ 動画サムネイル生成成功: ${thumbnailBytes.length} bytes');
+            }
+          } else {
+            // サムネイル生成に失敗した場合はプレースホルダーを使用
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画サムネイル生成失敗、プレースホルダーを使用');
+            }
+            thumbBase64 = base64Encode(
+                _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+          }
+        } catch (e) {
+          // エラーが発生した場合はプレースホルダーを使用
+          if (kDebugMode) {
+            debugPrint('❌ 動画サムネイル生成エラー: $e');
+          }
+          thumbBase64 = base64Encode(
+              _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+        }
       } else if (type == 'audio') {
         final bytes = await File(_selectedAudio!.path!).readAsBytes();
         fileBase64 = base64Encode(bytes);
@@ -225,6 +248,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       interpolation: img.Interpolation.linear,
     );
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+  }
+
+  // 動画の最初の1コマ目をサムネイルとして取得
+  Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('🎬 動画サムネイル生成開始: $videoPath');
+      }
+
+      // video_thumbnailパッケージを使用して動画の最初のフレームを取得
+      // timeMs: 0 で最初のフレームを取得
+      // quality: 75 で品質を設定（0-100）
+      // maxWidth: 320 で最大幅を設定
+      // maxHeight: 320 で最大高さを設定
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: (await Directory.systemTemp).path,
+        imageFormat: ImageFormat.JPEG,
+        timeMs: 0, // 最初のフレーム（0ミリ秒）
+        quality: 75,
+        maxWidth: 320,
+        maxHeight: 320,
+      );
+
+      if (thumbnailPath == null || !File(thumbnailPath).existsSync()) {
+        if (kDebugMode) {
+          debugPrint('⚠️ サムネイルファイルが生成されませんでした');
+        }
+        return null;
+      }
+
+      // 生成されたサムネイルファイルを読み込む
+      final thumbnailFile = File(thumbnailPath);
+      final thumbnailBytes = await thumbnailFile.readAsBytes();
+
+      // 一時ファイルを削除
+      try {
+        await thumbnailFile.delete();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 一時ファイル削除エラー: $e');
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('✅ 動画サムネイル生成完了: ${thumbnailBytes.length} bytes');
+      }
+
+      return thumbnailBytes;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 動画サムネイル生成エラー: $e');
+      }
+      return null;
+    }
   }
 
   // 動画/音声の簡易サムネイル（プレースホルダ）
