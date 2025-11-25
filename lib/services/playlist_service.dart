@@ -101,7 +101,7 @@ class PlaylistService {
               .toList();
 
           if (kDebugMode) {
-            debugPrint('📋 [プレイリスト取得] 変換完了: ${playlists.length}件');
+            debugPrint('📋 [プレイリスト取得] 変換完了: ${playlists.length}件（重複排除前）');
             for (int i = 0; i < playlists.length; i++) {
               final p = playlists[i];
               debugPrint(
@@ -109,7 +109,36 @@ class PlaylistService {
             }
           }
 
-          return playlists;
+          // 同一playlistidで重複を排除（最新のものを残す）
+          final Map<int, Playlist> uniquePlaylists = {};
+          for (final playlist in playlists) {
+            if (playlist.playlistid > 0) {
+              // 既に存在する場合は、thumbnailpathが存在する方を優先
+              if (!uniquePlaylists.containsKey(playlist.playlistid) ||
+                  (playlist.thumbnailpath != null &&
+                      playlist.thumbnailpath!.isNotEmpty &&
+                      (uniquePlaylists[playlist.playlistid]?.thumbnailpath ==
+                          null ||
+                          uniquePlaylists[playlist.playlistid]!
+                              .thumbnailpath!
+                              .isEmpty))) {
+                uniquePlaylists[playlist.playlistid] = playlist;
+              }
+            }
+          }
+
+          final uniquePlaylistsList = uniquePlaylists.values.toList();
+
+          if (kDebugMode) {
+            debugPrint('📋 [プレイリスト取得] 重複排除完了: ${uniquePlaylistsList.length}件（重複排除後）');
+            for (int i = 0; i < uniquePlaylistsList.length; i++) {
+              final p = uniquePlaylistsList[i];
+              debugPrint(
+                  '   [$i] playlistid=${p.playlistid}, title=${p.title}');
+            }
+          }
+
+          return uniquePlaylistsList;
         }
       } else {
         if (kDebugMode) {
@@ -164,14 +193,13 @@ class PlaylistService {
       }
 
       // バックエンドの実装を確認:
-      // バックエンドの実装（444行目）: contentid = data.get("playlistid") となっているため
-      // バックエンドは contentid を playlistid から取得しようとしている
-      // しかし、リクエストボディに contentid を追加することで、バックエンドがそれを使用する可能性がある
-      // まず、正しい形式でリクエストを送信してみる
-      // 注意: バックエンドが contentid を無視する場合、複数コンテンツを追加できない可能性がある
+      // バックエンドの実装（520-521行目）:
+      //   playlistid = data.get("playlistID")
+      //   contentid = data.get("contentID")
+      // バックエンドは "playlistID" と "contentID"（大文字）を期待している
       final requestBody = {
-        'playlistid': playlistId,
-        'contentid': contentIdInt, // contentidを明示的に送信（バックエンドが使用するか確認）
+        'playlistID': playlistId, // バックエンドは "playlistID"（大文字）を期待
+        'contentID': contentIdInt, // バックエンドは "contentID"（大文字）を期待
       };
 
       if (kDebugMode) {
@@ -185,14 +213,7 @@ class PlaylistService {
         debugPrint(
             '📋 [プレイリスト追加] contentId (元の値): $contentId (type: ${contentId.runtimeType})');
         debugPrint('📋 [プレイリスト追加] userID: JWTトークンから取得（バックエンド側で処理）');
-        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 重要な注意 ⚠️⚠️⚠️');
-        debugPrint(
-            '   バックエンドの実装（444行目）: contentid = data.get("playlistid") となっているため');
-        debugPrint(
-            '   バックエンドは contentid をリクエストボディから取得せず、playlistid から取得しようとしています');
-        debugPrint('   リクエストボディに contentid を追加していますが、バックエンドがそれを使用するかは不明です');
-        debugPrint('   もしバックエンドが contentid を無視する場合、複数コンテンツを追加できない可能性があります');
-        debugPrint('⚠️ [プレイリスト追加] ⚠️⚠️⚠️ 注意終了 ⚠️⚠️⚠️');
+        debugPrint('📋 [プレイリスト追加] バックエンドは "playlistID" と "contentID"（大文字）を期待');
       }
 
       final response = await http.post(
