@@ -39,6 +39,8 @@ dependencies:
   # 動画からサムネイルを抽出
   video_thumbnail: ^0.5.3
   
+  # 動画圧縮
+  
   # 画像・動画選択
   image_picker: ^1.0.5
   
@@ -59,6 +61,7 @@ dependencies:
   
   # アニメーション
   lottie: ^3.1.0
+  video_compress: ^3.1.4
 
 dev_dependencies:
   flutter_test:

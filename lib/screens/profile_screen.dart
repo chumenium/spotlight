@@ -13,6 +13,8 @@ import 'help_screen.dart';
 import 'feedback_screen.dart';
 import 'about_screen.dart';
 import 'jwt_test_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_of_service_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
@@ -1402,6 +1404,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const JwtTestScreen(),
+                ),
+              );
+            },
+          ),
+          _buildMenuTile(
+            icon: Icons.description_outlined,
+            title: '利用規約',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TermsOfServiceScreen(),
+                ),
+              );
+            },
+          ),
+          _buildMenuTile(
+            icon: Icons.privacy_tip_outlined,
+            title: 'プライバシーポリシー',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
                 ),
               );
             },

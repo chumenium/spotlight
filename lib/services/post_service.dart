@@ -118,7 +118,8 @@ class PostService {
         final url = '${AppConfig.apiBaseUrl}/content/detail';
 
         if (kDebugMode) {
-          debugPrint('📝 投稿詳細取得[試行${attemptCount + 1}]: contentID=$contentId, URL=$url, 現在の取得数=${posts.length}/$limit');
+          debugPrint(
+              '📝 投稿詳細取得[試行${attemptCount + 1}]: contentID=$contentId, URL=$url, 現在の取得数=${posts.length}/$limit');
         }
 
         final response = await http.post(
@@ -136,7 +137,8 @@ class PostService {
           final responseData = jsonDecode(response.body);
 
           if (kDebugMode) {
-            debugPrint('📝 投稿詳細レスポンス[試行$attemptCount]: ${responseData.toString()}');
+            debugPrint(
+                '📝 投稿詳細レスポンス[試行$attemptCount]: ${responseData.toString()}');
           }
 
           if (responseData['status'] == 'success' &&
@@ -972,6 +974,8 @@ class PostService {
   }
 
   /// 投稿を作成
+  /// 戻り値: 成功時はMap<String, dynamic>、失敗時はnull
+  /// エラー情報は例外としてスローされる
   static Future<Map<String, dynamic>?> createPost({
     required String type, // video, image, audio, text
     required String title,
@@ -987,7 +991,7 @@ class PostService {
         if (kDebugMode) {
           debugPrint('📝 JWTトークンが取得できません');
         }
-        return null;
+        throw Exception('JWTトークンが取得できません');
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/add';
@@ -1014,7 +1018,7 @@ class PostService {
           if (kDebugMode) {
             debugPrint('📝 テキスト投稿にはtextが必要です');
           }
-          return null;
+          throw Exception('テキスト投稿にはtextが必要です');
         }
       } else {
         // 非テキスト投稿の場合
@@ -1025,8 +1029,28 @@ class PostService {
           if (kDebugMode) {
             debugPrint('📝 非テキスト投稿にはfileとthumbnailが必要です');
           }
-          return null;
+          throw Exception('非テキスト投稿にはfileとthumbnailが必要です');
         }
+      }
+
+      // リクエストボディをJSONエンコード
+      final jsonBody = jsonEncode(body);
+      final requestBodySize = jsonBody.length;
+
+      if (kDebugMode) {
+        debugPrint('📝 リクエストボディサイズ:');
+        debugPrint(
+            '   - JSON文字列サイズ: ${(requestBodySize / 1024 / 1024).toStringAsFixed(2)} MB');
+        if (fileBase64 != null) {
+          debugPrint(
+              '   - file(base64)サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+        if (thumbnailBase64 != null) {
+          debugPrint(
+              '   - thumbnail(base64)サイズ: ${(thumbnailBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+        debugPrint(
+            '   - その他（type, title, link等）: ${((requestBodySize - (fileBase64?.length ?? 0) - (thumbnailBase64?.length ?? 0)) / 1024).toStringAsFixed(2)} KB');
       }
 
       final response = await http.post(
@@ -1035,7 +1059,7 @@ class PostService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
-        body: jsonEncode(body),
+        body: jsonBody,
       );
 
       if (response.statusCode == 200) {
@@ -1047,18 +1071,44 @@ class PostService {
 
         if (responseData['status'] == 'success') {
           return responseData['data'];
+        } else {
+          // サーバーからエラーメッセージが返された場合
+          final errorMessage =
+              responseData['message'] ?? responseData['error'] ?? '投稿に失敗しました';
+          throw Exception(errorMessage);
         }
       } else {
+        // HTTPエラーステータスコードの場合
+        String errorMessage;
+        if (response.statusCode == 413) {
+          errorMessage = 'ファイルサイズが大きすぎます（HTTP 413: Request Entity Too Large）';
+        } else if (response.statusCode == 400) {
+          errorMessage = 'リクエストが不正です（HTTP 400: Bad Request）';
+        } else if (response.statusCode == 401) {
+          errorMessage = '認証に失敗しました（HTTP 401: Unauthorized）';
+        } else if (response.statusCode == 500) {
+          errorMessage = 'サーバーエラーが発生しました（HTTP 500: Internal Server Error）';
+        } else {
+          errorMessage = '投稿に失敗しました（HTTP ${response.statusCode}）';
+        }
+
         if (kDebugMode) {
           debugPrint('📝 投稿作成エラー: ${response.statusCode}');
+          debugPrint('📝 エラーメッセージ: $errorMessage');
+          debugPrint('📝 レスポンスボディ: ${response.body}');
         }
+
+        throw Exception(errorMessage);
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('📝 投稿作成例外: $e');
       }
+      // 既にExceptionの場合はそのまま再スロー、それ以外はExceptionにラップ
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('投稿作成中にエラーが発生しました: $e');
     }
-
-    return null;
   }
 }
