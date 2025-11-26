@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:video_compress/video_compress.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:typed_data';
@@ -67,6 +68,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // 動画プレイヤー
   VideoPlayerController? _videoPlayerController;
   bool _isVideoPlaying = false;
+  VoidCallback? _videoPlayerListener;
 
   // 画像+テキスト合成用
   final GlobalKey _compositeKey = GlobalKey();
@@ -90,7 +92,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
     _textOverlays.clear();
     _audioPlayer?.dispose();
+    // 動画プレイヤーのリスナーを削除してからdispose
+    if (_videoPlayerController != null && _videoPlayerListener != null) {
+      _videoPlayerController!.removeListener(_videoPlayerListener!);
+      _videoPlayerListener = null;
+    }
     _videoPlayerController?.dispose();
+    _videoPlayerController = null;
     super.dispose();
   }
 
@@ -142,12 +150,162 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         fileBase64 = base64Encode(imageBytes);
         thumbBase64 = base64Encode(await _generateImageThumbnail(imageBytes));
       } else if (type == 'video') {
-        final bytes = await File(_selectedMedia!.path).readAsBytes();
+        // 動画ファイルの処理
+        String videoPath = _selectedMedia!.path;
+        final videoFile = File(videoPath);
+        final originalVideoFileSize = await videoFile.length();
+
+        if (kDebugMode) {
+          debugPrint(
+              '📹 動画ファイルサイズ（圧縮前）: ${(originalVideoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
+        // nginxの制限を考慮したリクエストサイズ制限
+        // JSONリクエスト全体（file + thumbnail + その他）がnginxの制限を超えないようにする
+        // 一般的なnginxのデフォルト制限は1MBだが、より安全のため0.9MBを目標とする
+        // リクエスト全体 = file(base64) + thumbnail(base64) + その他（約10KB）
+        const maxRequestSize = 0.9 * 1024 * 1024; // 0.9MB（リクエスト全体）
+        const otherDataSize = 10 * 1024; // その他のデータ（約10KB）
+        const maxFileAndThumbnailSize =
+            maxRequestSize - otherDataSize; // file + thumbnail用のサイズ
+
+        // base64エンコード後の推定サイズを計算
+        final estimatedBase64Size = originalVideoFileSize * 4 / 3;
+        // サムネイルの推定サイズ（約10KB base64後）
+        const estimatedThumbnailSize = 10 * 1024;
+        // リクエスト全体の推定サイズ
+        final estimatedTotalRequestSize =
+            estimatedBase64Size + estimatedThumbnailSize + otherDataSize;
+
+        if (kDebugMode) {
+          debugPrint(
+              '📹 動画base64サイズ（推定）: ${(estimatedBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
+          debugPrint(
+              '📹 リクエスト全体サイズ（推定）: ${(estimatedTotalRequestSize / 1024 / 1024).toStringAsFixed(2)} MB');
+          debugPrint(
+              '📹 リクエストサイズ制限: ${(maxRequestSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
+        // リクエスト全体が制限を超える場合、または150MB（base64後）を超える場合に圧縮
+        // 150MB（base64後）を超える場合のみ圧縮（S3アップロード用）
+        const maxBase64Size = 150 * 1024 * 1024; // 150MB（base64エンコード後）
+        final maxOriginalSize =
+            (maxBase64Size * 3 / 4).round(); // 約112.5MB（元のファイル）
+
+        // 圧縮が必要かどうかを判定
+        // 1. リクエスト全体がnginx制限を超える場合
+        // 2. 150MB（base64後）を超える場合
+        bool needsCompression = estimatedTotalRequestSize > maxRequestSize ||
+            estimatedBase64Size > maxBase64Size;
+
+        if (needsCompression) {
+          // 圧縮目標サイズを決定
+          int compressionTargetSize;
+          if (estimatedTotalRequestSize > maxRequestSize) {
+            // nginx制限を考慮した目標サイズ
+            if (kDebugMode) {
+              debugPrint('⚠️ リクエストサイズがnginx制限を超えています。圧縮を実行します。');
+            }
+            final targetFileAndThumbnailSize =
+                maxFileAndThumbnailSize - estimatedThumbnailSize;
+            final targetOriginalSize =
+                (targetFileAndThumbnailSize * 3 / 4).round();
+            // より小さい方の目標サイズを使用
+            compressionTargetSize = targetOriginalSize < maxOriginalSize
+                ? targetOriginalSize
+                : maxOriginalSize;
+          } else {
+            // 150MB制限を考慮した目標サイズ
+            compressionTargetSize = maxOriginalSize;
+          }
+
+          if (kDebugMode) {
+            debugPrint(
+                '📹 圧縮目標サイズ: ${(compressionTargetSize / 1024 / 1024).toStringAsFixed(2)} MB（元のファイル）');
+          }
+
+          if (mounted) {
+            // 圧縮中のメッセージを表示
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('動画を圧縮中です。しばらくお待ちください...'),
+                duration: Duration(seconds: 180),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+
+          String? compressedPath;
+          try {
+            // 目標サイズで圧縮を実行
+            compressedPath =
+                await _compressVideo(videoPath, compressionTargetSize);
+            if (compressedPath != null && await File(compressedPath).exists()) {
+              final compressedFile = File(compressedPath);
+              final compressedSize = await compressedFile.length();
+              final compressedBase64Size = compressedSize * 4 / 3;
+
+              if (kDebugMode) {
+                debugPrint(
+                    '✅ 動画圧縮成功: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
+                debugPrint(
+                    '   base64後サイズ: ${(compressedBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
+                debugPrint(
+                    '   圧縮率: ${((1 - compressedSize / originalVideoFileSize) * 100).toStringAsFixed(1)}%');
+              }
+
+              videoPath = compressedPath;
+
+              if (mounted) {
+                final compressedSizeMB =
+                    (compressedSize / 1024 / 1024).toStringAsFixed(2);
+                final compressedBase64SizeMB =
+                    (compressedBase64Size / 1024 / 1024).toStringAsFixed(2);
+                _showSnackBar(
+                  '動画を圧縮しました（${compressedSizeMB}MB、base64後: ${compressedBase64SizeMB}MB）',
+                  Colors.green,
+                );
+              }
+            } else {
+              if (kDebugMode) {
+                debugPrint('⚠️ 動画圧縮に失敗しましたが、元のファイルを使用します');
+              }
+              if (mounted) {
+                _showSnackBar(
+                  '動画の圧縮に失敗しましたが、元のファイルで投稿を試みます',
+                  Colors.orange,
+                );
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('❌ 動画圧縮エラー: $e');
+              debugPrint('   元のファイルを使用します');
+            }
+            if (mounted) {
+              _showSnackBar(
+                '動画の圧縮中にエラーが発生しましたが、元のファイルで投稿を試みます',
+                Colors.orange,
+              );
+            }
+          }
+        }
+
+        // 圧縮後のファイルを使用（圧縮に失敗した場合は元のファイル）
+        final bytes = await File(videoPath).readAsBytes();
         fileBase64 = base64Encode(bytes);
+
+        if (kDebugMode) {
+          final finalBase64Size = fileBase64.length;
+          debugPrint(
+              '📹 最終ファイルサイズ: ${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
+          debugPrint(
+              '📹 最終base64サイズ: ${(finalBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
         // 動画から最初のフレームをサムネイルとして抽出
         try {
-          final thumbnailBytes =
-              await _generateVideoThumbnail(_selectedMedia!.path);
+          final thumbnailBytes = await _generateVideoThumbnail(videoPath);
           if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
             thumbBase64 = base64Encode(thumbnailBytes);
             if (kDebugMode) {
@@ -171,8 +329,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
         }
       } else if (type == 'audio') {
-        final bytes = await File(_selectedAudio!.path!).readAsBytes();
+        // 音声ファイルの処理（容量制限なし）
+        final audioFile = File(_selectedAudio!.path!);
+        final audioFileSize = await audioFile.length();
+
+        if (kDebugMode) {
+          debugPrint(
+              '🎵 音声ファイルサイズ: ${(audioFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
+        final bytes = await audioFile.readAsBytes();
         fileBase64 = base64Encode(bytes);
+
+        if (kDebugMode) {
+          debugPrint(
+              '🎵 base64エンコード後サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
         thumbBase64 = base64Encode(
             _generatePlaceholderThumbnail(320, 320, label: 'AUDIO'));
       } else {
@@ -187,44 +360,71 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         link = _selectedAudio!.path;
       }
 
-      final result = await PostService.createPost(
-        type: type,
-        title: _titleController.text.trim(),
-        fileBase64: fileBase64,
-        thumbnailBase64: thumbBase64,
-        link: link,
-      );
+      try {
+        final result = await PostService.createPost(
+          type: type,
+          title: _titleController.text.trim(),
+          fileBase64: fileBase64,
+          thumbnailBase64: thumbBase64,
+          link: link,
+        );
 
-      if (mounted) {
-        if (result == null) {
-          _showSnackBar('投稿に失敗しました（無効な応答）', Colors.red);
-          return;
-        }
-        _showSnackBar('投稿が完了しました！', Colors.green);
-        _titleController.clear();
-        setState(() {
-          _selectedMedia = null;
-          _videoPlayerController?.dispose();
-          _videoPlayerController = null;
-          _isVideoPlaying = false;
-          _audioPlayer?.stop();
-          _audioPlayer?.dispose();
-          _audioPlayer = null;
-          _selectedAudio = null;
-          _isAudioPlaying = false;
-          for (var overlay in _textOverlays) {
-            overlay.dispose();
+        if (mounted) {
+          if (result == null) {
+            // これは通常発生しないはず（例外がスローされるため）
+            _showSnackBar('投稿に失敗しました', Colors.red);
+            return;
           }
-          _textOverlays.clear();
-        });
-        // モーダルを閉じる
-        Navigator.of(context).pop();
+          _showSnackBar('投稿が完了しました！', Colors.green);
+          _titleController.clear();
+          setState(() {
+            _selectedMedia = null;
+            // 動画プレイヤーのリスナーを削除
+            if (_videoPlayerController != null &&
+                _videoPlayerListener != null) {
+              _videoPlayerController!.removeListener(_videoPlayerListener!);
+              _videoPlayerListener = null;
+            }
+            _videoPlayerController?.dispose();
+            _videoPlayerController = null;
+            _isVideoPlaying = false;
+            _audioPlayer?.stop();
+            _audioPlayer?.dispose();
+            _audioPlayer = null;
+            _selectedAudio = null;
+            _isAudioPlaying = false;
+            for (var overlay in _textOverlays) {
+              overlay.dispose();
+            }
+            _textOverlays.clear();
+          });
+          // モーダルを閉じる
+          Navigator.of(context).pop();
+        }
+      } on Exception catch (e) {
+        // PostServiceからスローされた例外をキャッチ
+        if (mounted) {
+          final errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _showSnackBar(errorMessage, Colors.red);
+        }
+      } catch (e) {
+        // その他の予期しないエラー
+        if (mounted) {
+          if (kDebugMode) {
+            debugPrint('❌ 予期しないエラー: $e');
+          }
+          final errorMessage = _getPostCreationErrorMessage(type);
+          _showSnackBar(errorMessage, Colors.red);
+        }
       }
     } catch (e) {
       if (mounted) {
+        if (kDebugMode) {
+          debugPrint('❌ 投稿処理中のエラー: $e');
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('投稿に失敗しました: $e'),
+            content: Text('投稿処理中にエラーが発生しました: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -252,6 +452,169 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
   }
 
+  // 動画を圧縮（目標サイズを指定）
+  Future<String?> _compressVideo(String videoPath, int targetSizeBytes) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('🎬 動画圧縮開始: $videoPath');
+        debugPrint(
+            '   目標サイズ: ${(targetSizeBytes / 1024 / 1024).toStringAsFixed(2)} MB');
+      }
+
+      // 動画情報を取得
+      MediaInfo? mediaInfo;
+      try {
+        mediaInfo = await VideoCompress.getMediaInfo(videoPath);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画情報取得失敗: $e');
+        }
+        // 情報取得に失敗しても圧縮は続行
+      }
+
+      final originalSize = mediaInfo?.filesize ?? 0;
+      final width = mediaInfo?.width ?? 1920;
+      final height = mediaInfo?.height ?? 1080;
+
+      if (kDebugMode) {
+        debugPrint('📹 動画情報:');
+        debugPrint(
+            '   - サイズ: ${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        debugPrint('   - 解像度: ${width}x$height');
+      }
+
+      // 品質を決定（ファイルサイズに基づいて）
+      VideoQuality quality;
+      if (originalSize > targetSizeBytes * 4) {
+        quality = VideoQuality.LowQuality;
+      } else if (originalSize > targetSizeBytes * 2) {
+        quality = VideoQuality.MediumQuality;
+      } else {
+        quality = VideoQuality.DefaultQuality;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📹 圧縮品質: $quality');
+      }
+
+      // 圧縮実行（タイムアウトを設定）
+      final compressedMediaInfo = await VideoCompress.compressVideo(
+        videoPath,
+        quality: quality,
+        deleteOrigin: false,
+        includeAudio: true,
+        frameRate: 30,
+      ).timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('⏱️ 動画圧縮タイムアウト');
+          }
+          return null;
+        },
+      );
+
+      if (compressedMediaInfo == null ||
+          compressedMediaInfo.path == null ||
+          !await File(compressedMediaInfo.path!).exists()) {
+        if (kDebugMode) {
+          debugPrint('❌ 動画圧縮失敗: 圧縮後のファイルが存在しません');
+        }
+        return null;
+      }
+
+      final compressedPath = compressedMediaInfo.path!;
+      var compressedSize = await File(compressedPath).length();
+
+      if (kDebugMode) {
+        debugPrint('✅ 1回目の圧縮完了:');
+        debugPrint(
+            '   - 圧縮後サイズ: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        if (originalSize > 0) {
+          debugPrint(
+              '   - 圧縮率: ${((1 - compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
+        }
+      }
+
+      // 圧縮後もまだ大きい場合、さらに圧縮を試みる（最大2回まで）
+      int compressionAttempts = 1;
+      const maxCompressionAttempts = 2;
+      String currentPath = compressedPath;
+
+      while (compressedSize > targetSizeBytes &&
+          compressionAttempts < maxCompressionAttempts) {
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ 圧縮後も目標サイズを超えています（${(compressedSize / 1024 / 1024).toStringAsFixed(2)}MB）。さらに圧縮を試みます...（試行 ${compressionAttempts + 1}/$maxCompressionAttempts）');
+        }
+
+        try {
+          // より低い品質で再圧縮
+          final furtherCompressedMediaInfo = await VideoCompress.compressVideo(
+            currentPath,
+            quality: VideoQuality.LowQuality,
+            deleteOrigin: false,
+            includeAudio: true,
+            frameRate: 24,
+          ).timeout(
+            const Duration(minutes: 5),
+            onTimeout: () {
+              if (kDebugMode) {
+                debugPrint('⏱️ 再圧縮タイムアウト');
+              }
+              return null;
+            },
+          );
+
+          if (furtherCompressedMediaInfo == null ||
+              furtherCompressedMediaInfo.path == null ||
+              !await File(furtherCompressedMediaInfo.path!).exists()) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 再圧縮に失敗しました。現在のファイルを使用します。');
+            }
+            break;
+          }
+
+          // 前の圧縮ファイルを削除
+          try {
+            if (currentPath != videoPath) {
+              await File(currentPath).delete();
+            }
+          } catch (e) {
+            // 削除エラーは無視
+          }
+
+          currentPath = furtherCompressedMediaInfo.path!;
+          compressedSize = await File(currentPath).length();
+          compressionAttempts++;
+
+          if (kDebugMode) {
+            debugPrint(
+                '✅ ${compressionAttempts}回目の圧縮完了: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ 再圧縮エラー: $e');
+          }
+          break;
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+            '📹 最終圧縮サイズ: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB（${compressionAttempts}回の圧縮を実行）');
+      }
+
+      return currentPath;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ 動画圧縮例外: $e');
+        debugPrint('   スタックトレース: $stackTrace');
+      }
+      return null;
+    }
+  }
+
   // 動画から最初のフレームをサムネイルとして抽出
   Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
     try {
@@ -260,15 +623,32 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
 
       // 動画から最初のフレーム（timeMs: 0）を抽出
-      final thumbnailPath = await VideoThumbnail.thumbnailFile(
-        video: videoPath,
-        thumbnailPath: (await Directory.systemTemp).path,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 320, // 最大幅320px
-        maxHeight: 320, // 最大高さ320px
-        quality: 80, // JPEG品質
-        timeMs: 0, // 最初のフレーム（0ミリ秒）
-      );
+      // タイムアウトを設定してバッファエラーを防ぐ
+      String? thumbnailPath;
+      try {
+        thumbnailPath = await VideoThumbnail.thumbnailFile(
+          video: videoPath,
+          thumbnailPath: (await Directory.systemTemp).path,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 320, // 最大幅320px
+          maxHeight: 320, // 最大高さ320px
+          quality: 75, // JPEG品質（80から75に下げてファイルサイズ削減）
+          timeMs: 0, // 最初のフレーム（0ミリ秒）
+        ).timeout(
+          const Duration(seconds: 10), // 10秒でタイムアウト
+          onTimeout: () {
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画サムネイル抽出タイムアウト');
+            }
+            return null;
+          },
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画サムネイル抽出中にエラーが発生: $e');
+        }
+        thumbnailPath = null;
+      }
 
       if (thumbnailPath == null || thumbnailPath.isEmpty) {
         if (kDebugMode) {
@@ -815,12 +1195,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       left: (() {
         final maxLeft = (MediaQuery.of(context).size.width - overlay.width);
         final safeMaxLeft = maxLeft.isFinite && maxLeft > 0 ? maxLeft : 0.0;
-        return overlay.position.dx.clamp(0.0, safeMaxLeft) as double;
+        return overlay.position.dx.clamp(0.0, safeMaxLeft);
       })(),
       top: (() {
         final maxTop = (MediaQuery.of(context).size.height - 200);
         final safeMaxTop = maxTop.isFinite && maxTop > 0 ? maxTop : 0.0;
-        return overlay.position.dy.clamp(0.0, safeMaxTop) as double;
+        return overlay.position.dy.clamp(0.0, safeMaxTop);
       })(),
       child: GestureDetector(
         onTap: () {
@@ -835,12 +1215,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             final maxLeft = (MediaQuery.of(context).size.width - overlay.width);
             final safeMaxLeft = maxLeft.isFinite && maxLeft > 0 ? maxLeft : 0.0;
             final nextLeft = (overlay.position.dx + details.delta.dx)
-                .clamp(0.0, safeMaxLeft) as double;
+                .clamp(0.0, safeMaxLeft);
 
             final maxTop = (MediaQuery.of(context).size.height - 200);
             final safeMaxTop = maxTop.isFinite && maxTop > 0 ? maxTop : 0.0;
-            final nextTop = (overlay.position.dy + details.delta.dy)
-                .clamp(0.0, safeMaxTop) as double;
+            final nextTop =
+                (overlay.position.dy + details.delta.dy).clamp(0.0, safeMaxTop);
 
             overlay.position = Offset(nextLeft, nextTop);
           });
@@ -927,7 +1307,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     onPanUpdate: (details) {
                       setState(() {
                         final newWidth = (overlay.width + details.delta.dx)
-                            .clamp(120.0, 360.0) as double;
+                            .clamp(120.0, 360.0);
                         overlay.width = newWidth;
                       });
                     },
@@ -1062,6 +1442,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (pickedFile != null) {
         // 既存の動画プレイヤーをクリア
+        if (_videoPlayerController != null && _videoPlayerListener != null) {
+          _videoPlayerController!.removeListener(_videoPlayerListener!);
+          _videoPlayerListener = null;
+        }
         _videoPlayerController?.dispose();
         _videoPlayerController = null;
         _isVideoPlaying = false;
@@ -1080,18 +1464,42 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         // 動画の場合はプレイヤーを初期化
         if (isVideo) {
-          _videoPlayerController =
-              VideoPlayerController.file(File(pickedFile.path));
-          await _videoPlayerController!.initialize();
-          // 動画プレイヤーの状態変更を監視
-          _videoPlayerController!.addListener(() {
-            if (mounted) {
-              setState(() {
-                _isVideoPlaying = _videoPlayerController!.value.isPlaying;
-              });
+          // 既存のプレイヤーとリスナーをクリーンアップ
+          if (_videoPlayerController != null && _videoPlayerListener != null) {
+            _videoPlayerController!.removeListener(_videoPlayerListener!);
+            _videoPlayerListener = null;
+          }
+          _videoPlayerController?.dispose();
+          _videoPlayerController = null;
+
+          try {
+            _videoPlayerController =
+                VideoPlayerController.file(File(pickedFile.path));
+            await _videoPlayerController!.initialize();
+
+            // 動画プレイヤーの状態変更を監視（リスナーを保存）
+            _videoPlayerListener = () {
+              if (mounted && _videoPlayerController != null) {
+                setState(() {
+                  _isVideoPlaying = _videoPlayerController!.value.isPlaying;
+                });
+              }
+            };
+            _videoPlayerController!.addListener(_videoPlayerListener!);
+
+            setState(() {});
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('❌ 動画プレイヤー初期化エラー: $e');
             }
-          });
-          setState(() {});
+            // エラー時はプレイヤーをクリーンアップ
+            _videoPlayerController?.dispose();
+            _videoPlayerController = null;
+            _videoPlayerListener = null;
+            if (mounted) {
+              _showSnackBar('動画の読み込みに失敗しました: $e', Colors.red);
+            }
+          }
         }
       }
     } catch (e) {
@@ -1119,6 +1527,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         return;
       }
       // メディアをクリア
+      if (_videoPlayerController != null && _videoPlayerListener != null) {
+        _videoPlayerController!.removeListener(_videoPlayerListener!);
+        _videoPlayerListener = null;
+      }
       _videoPlayerController?.dispose();
       _videoPlayerController = null;
       _isVideoPlaying = false;
@@ -1613,6 +2025,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ],
       ),
     );
+  }
+
+  // 投稿作成エラーメッセージ取得
+  String _getPostCreationErrorMessage(String type) {
+    if (type == 'video') {
+      return '動画ファイルが大きすぎるか、サーバーへの送信に失敗しました。より小さな動画（100MB以下）を選択してください。';
+    } else if (type == 'audio') {
+      return '音声ファイルが大きすぎるか、サーバーへの送信に失敗しました。より小さな音声ファイルを選択してください。';
+    } else if (type == 'image') {
+      return '画像ファイルが大きすぎるか、サーバーへの送信に失敗しました。';
+    } else {
+      return '投稿に失敗しました。しばらく時間をおいて再度お試しください。';
+    }
   }
 
   // スナックバー表示ヘルパー
