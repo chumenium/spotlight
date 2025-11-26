@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
+import '../providers/navigation_provider.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -11,8 +13,11 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> 
     with SingleTickerProviderStateMixin {
-  late List<NotificationItem> notifications=[];
+  List<NotificationItem> notifications = [];
   late TabController _tabController;
+  bool _isLoading = false;
+  String? _errorMessage;
+  int? _lastNavigationIndex;
   
   // タブの定義
   final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'トレンド', 'システム'];
@@ -20,21 +25,51 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   @override
   void initState() {
     super.initState();
-    // notifications = NotificationItem.getSampleNotifications();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _loadNotifications();
-    print(notifications);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // NavigationProviderの変更をリッスンして、通知画面が表示されたときに再取得
+    final navigationProvider = Provider.of<NavigationProvider>(context);
+    final currentIndex = navigationProvider.currentIndex;
+    
+    // 通知画面（index: 3）が表示されたとき、かつ前回と異なる場合に再取得
+    if (currentIndex == 3 && _lastNavigationIndex != 3) {
+      _lastNavigationIndex = 3;
+      _loadNotifications();
+    } else if (currentIndex != 3) {
+      _lastNavigationIndex = currentIndex;
+    }
   }
 
   Future<void> _loadNotifications() async {
+    if (_isLoading) return; // 既に読み込み中の場合はスキップ
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final fetched = await NotificationService.fetchNotifications();
 
-      setState(() {
-        notifications = fetched;
-      });
+      if (mounted) {
+        setState(() {
+          notifications = fetched;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      print("通知取得エラー: $e");
+      if (mounted) {
+        setState(() {
+          _errorMessage = "通知の取得に失敗しました: $e";
+          _isLoading = false;
+        });
+      }
+      debugPrint("通知取得エラー: $e");
     }
   }
 
@@ -115,18 +150,64 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Widget _buildTabContent(String tabName) {
+    // ローディング中の場合
+    if (_isLoading && notifications.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: SpotLightColors.primaryOrange,
+        ),
+      );
+    }
+
+    // エラーが発生した場合
+    if (_errorMessage != null && notifications.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadNotifications,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SpotLightColors.primaryOrange,
+              ),
+              child: const Text('再試行'),
+            ),
+          ],
+        ),
+      );
+    }
+
     List<NotificationItem> filteredNotifications = _getFilteredNotifications(tabName);
     
     if (filteredNotifications.isEmpty) {
       return _buildEmptyState(tabName);
     }
     
-    return ListView.builder(
-      itemCount: filteredNotifications.length,
-      itemBuilder: (context, index) {
-        final notification = filteredNotifications[index];
-        return _buildNotificationItem(notification);
-      },
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      color: SpotLightColors.primaryOrange,
+      child: ListView.builder(
+        itemCount: filteredNotifications.length,
+        itemBuilder: (context, index) {
+          final notification = filteredNotifications[index];
+          return _buildNotificationItem(notification);
+        },
+      ),
     );
   }
 
