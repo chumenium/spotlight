@@ -82,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen>
   // 遅延読み込み関連
   bool _isLoadingMore = false;
   bool _hasMorePosts = true;
+  bool _isCheckingNewContent = false; // 最新コンテンツチェック中フラグ
+  bool _noMoreContent = false; // これ以上コンテンツがないフラグ
   static const int _initialLoadCount = 3; // 初回読み込み件数
   static const int _preloadAheadCount = 3; // 現在のページから先読み込みする件数
 
@@ -786,6 +788,106 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// 最新のコンテンツをチェックして先頭に追加
+  Future<void> _checkForNewContent() async {
+    // 既にチェック中の場合はスキップ
+    if (_isCheckingNewContent || _noMoreContent) {
+      return;
+    }
+
+    _isCheckingNewContent = true;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🔄 最新コンテンツをチェック中...');
+      }
+
+      // 最新のコンテンツを取得（ID=1から3件）
+      final newPosts = await PostService.fetchPosts(
+        limit: _initialLoadCount,
+        startId: 1,
+      );
+
+      if (!_isDisposed && mounted) {
+        if (newPosts.isEmpty) {
+          // 最新のコンテンツがない場合
+          if (kDebugMode) {
+            debugPrint('⚠️ 最新のコンテンツがありません');
+          }
+          setState(() {
+            _noMoreContent = true;
+            _hasMorePosts = false;
+          });
+        } else {
+          // 最新のコンテンツがある場合、既存の投稿と比較
+          final existingIds = _posts.map((p) => p.id.toString()).toSet();
+          final newContentIds = newPosts.map((p) => p.id.toString()).toSet();
+
+          // 新しいコンテンツがあるかチェック
+          final hasNewContent =
+              newContentIds.any((id) => !existingIds.contains(id));
+
+          if (hasNewContent) {
+            // 新しいコンテンツがある場合は先頭に追加
+            final newPostsToAdd = newPosts
+                .where((p) => !existingIds.contains(p.id.toString()))
+                .toList();
+
+            if (kDebugMode) {
+              debugPrint('✅ 新しいコンテンツが見つかりました: ${newPostsToAdd.length}件');
+            }
+
+            setState(() {
+              // 新しいコンテンツを先頭に追加
+              _posts.insertAll(0, newPostsToAdd);
+              _noMoreContent = false;
+              _hasMorePosts = true;
+
+              // 取得済みコンテンツIDを更新
+              for (final post in newPostsToAdd) {
+                _fetchedContentIds.add(post.id);
+              }
+            });
+
+            // 新しいコンテンツの最初のページに自動的にスクロール
+            if (newPostsToAdd.isNotEmpty && _pageController.hasClients) {
+              await _pageController.animateToPage(
+                0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+            }
+          } else {
+            // 新しいコンテンツがない場合
+            if (kDebugMode) {
+              debugPrint('⚠️ 新しいコンテンツはありません');
+            }
+            setState(() {
+              _noMoreContent = true;
+              _hasMorePosts = false;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 最新コンテンツチェックエラー: $e');
+      }
+      // エラーが発生した場合は、次回再試行できるようにフラグをリセット
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isCheckingNewContent = false;
+        });
+      }
+    } finally {
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isCheckingNewContent = false;
+        });
+      }
+    }
+  }
+
   /// 現在のページから3つ先までを事前読み込み
   Future<void> _preloadNextPosts(int currentIndex) async {
     if (_isLoadingMore || !_hasMorePosts || _posts.isEmpty) return;
@@ -1318,23 +1420,59 @@ class _HomeScreenState extends State<HomeScreen>
                                         _handleMediaPageChange(index);
                                       });
 
+                                      // 最後のページに到達した場合は最新コンテンツをチェック
+                                      if (index >= _posts.length - 1 &&
+                                          !_noMoreContent) {
+                                        _checkForNewContent();
+                                      }
+
                                       // 現在のページから3つ先までを事前読み込み
                                       _preloadNextPosts(index);
                                     },
-                                    itemCount: _hasMorePosts
+                                    itemCount: _hasMorePosts && !_noMoreContent
                                         ? _posts.length + 1
-                                        : _posts.length,
+                                        : _posts.length +
+                                            (_noMoreContent ? 1 : 0),
                                     itemBuilder: (context, index) {
-                                      // 最後の項目はローディングインジケーター
+                                      // 最後の項目
                                       if (index >= _posts.length) {
-                                        return Container(
-                                          color: Colors.black,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6B35),
+                                        if (_noMoreContent) {
+                                          // これ以上コンテンツがない場合はメッセージを表示
+                                          return Container(
+                                            color: Colors.black,
+                                            child: const Center(
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.inbox_outlined,
+                                                    color: Colors.white38,
+                                                    size: 64,
+                                                  ),
+                                                  SizedBox(height: 16),
+                                                  Text(
+                                                    '表示できるコンテンツはありません',
+                                                    style: TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                        );
+                                          );
+                                        } else {
+                                          // ローディングインジケーター
+                                          return Container(
+                                            color: Colors.black,
+                                            child: const Center(
+                                              child: CircularProgressIndicator(
+                                                color: Color(0xFFFF6B35),
+                                              ),
+                                            ),
+                                          );
+                                        }
                                       }
                                       return _buildPostContent(_posts[index]);
                                     },
@@ -1371,20 +1509,25 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
 
                           // 下部の投稿者情報とコントロール
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: _buildBottomControls(_posts[_currentIndex]),
-                          ),
+                          if (_posts.isNotEmpty &&
+                              _currentIndex < _posts.length)
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              child:
+                                  _buildBottomControls(_posts[_currentIndex]),
+                            ),
 
                           // 右下のコントロールボタン
-                          Positioned(
-                            bottom: 120,
-                            right: 20,
-                            child: _buildRightBottomControls(
-                                _posts[_currentIndex]),
-                          ),
+                          if (_posts.isNotEmpty &&
+                              _currentIndex < _posts.length)
+                            Positioned(
+                              bottom: 120,
+                              right: 20,
+                              child: _buildRightBottomControls(
+                                  _posts[_currentIndex]),
+                            ),
                         ],
                       ),
                     ),
