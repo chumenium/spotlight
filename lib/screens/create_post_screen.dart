@@ -4,8 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:video_compress/video_compress.dart';
 import 'dart:io';
+import 'dart:async';
 import 'dart:ui';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -92,14 +92,60 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
     _textOverlays.clear();
     _audioPlayer?.dispose();
-    // 動画プレイヤーのリスナーを削除してからdispose
-    if (_videoPlayerController != null && _videoPlayerListener != null) {
-      _videoPlayerController!.removeListener(_videoPlayerListener!);
-      _videoPlayerListener = null;
-    }
-    _videoPlayerController?.dispose();
-    _videoPlayerController = null;
+    // 動画プレイヤーのクリーンアップ
+    _cleanupVideoPlayer();
     super.dispose();
+  }
+
+  // 動画プレイヤーのクリーンアップ（再利用可能）
+  void _cleanupVideoPlayer() {
+    if (_videoPlayerController != null) {
+      final controller = _videoPlayerController;
+      _videoPlayerController = null; // 先にnullにして、他の処理が参照しないようにする
+      _isVideoPlaying = false;
+
+      try {
+        if (controller != null) {
+          // リスナーを削除（先に削除してから他の操作を行う）
+          if (_videoPlayerListener != null) {
+            try {
+              if (controller.value.isInitialized) {
+                controller.removeListener(_videoPlayerListener!);
+              }
+            } catch (e) {
+              // エラーは無視
+            }
+            _videoPlayerListener = null;
+          }
+
+          // 再生中の場合、停止
+          try {
+            if (controller.value.isInitialized) {
+              if (controller.value.isPlaying) {
+                controller.pause();
+              }
+              // seekTo(0)でフレームバッファをリセット
+              controller.seekTo(Duration.zero);
+            }
+          } catch (e) {
+            // エラーは無視（既にdisposeされている可能性がある）
+          }
+
+          // dispose（同期的に実行）
+          try {
+            controller.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画プレイヤーdisposeエラー: $e');
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画プレイヤークリーンアップエラー: $e');
+        }
+      }
+    }
   }
 
   Future<void> _postContent() async {
@@ -151,161 +197,46 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         thumbBase64 = base64Encode(await _generateImageThumbnail(imageBytes));
       } else if (type == 'video') {
         // 動画ファイルの処理
-        String videoPath = _selectedMedia!.path;
-        final videoFile = File(videoPath);
-        final originalVideoFileSize = await videoFile.length();
+        final videoFile = File(_selectedMedia!.path);
+        final videoFileSize = await videoFile.length();
 
         if (kDebugMode) {
           debugPrint(
-              '📹 動画ファイルサイズ（圧縮前）: ${(originalVideoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+              '📹 動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
         }
 
-        // nginxの制限を考慮したリクエストサイズ制限
-        // JSONリクエスト全体（file + thumbnail + その他）がnginxの制限を超えないようにする
-        // 一般的なnginxのデフォルト制限は1MBだが、より安全のため0.9MBを目標とする
-        // リクエスト全体 = file(base64) + thumbnail(base64) + その他（約10KB）
-        const maxRequestSize = 0.9 * 1024 * 1024; // 0.9MB（リクエスト全体）
-        const otherDataSize = 10 * 1024; // その他のデータ（約10KB）
-        const maxFileAndThumbnailSize =
-            maxRequestSize - otherDataSize; // file + thumbnail用のサイズ
+        // 120MB以上の動画をブロック
+        const maxVideoSize = 120 * 1024 * 1024; // 120MB
 
-        // base64エンコード後の推定サイズを計算
-        final estimatedBase64Size = originalVideoFileSize * 4 / 3;
-        // サムネイルの推定サイズ（約10KB base64後）
-        const estimatedThumbnailSize = 10 * 1024;
-        // リクエスト全体の推定サイズ
-        final estimatedTotalRequestSize =
-            estimatedBase64Size + estimatedThumbnailSize + otherDataSize;
-
-        if (kDebugMode) {
-          debugPrint(
-              '📹 動画base64サイズ（推定）: ${(estimatedBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
-          debugPrint(
-              '📹 リクエスト全体サイズ（推定）: ${(estimatedTotalRequestSize / 1024 / 1024).toStringAsFixed(2)} MB');
-          debugPrint(
-              '📹 リクエストサイズ制限: ${(maxRequestSize / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
-
-        // リクエスト全体が制限を超える場合、または150MB（base64後）を超える場合に圧縮
-        // 150MB（base64後）を超える場合のみ圧縮（S3アップロード用）
-        const maxBase64Size = 150 * 1024 * 1024; // 150MB（base64エンコード後）
-        final maxOriginalSize =
-            (maxBase64Size * 3 / 4).round(); // 約112.5MB（元のファイル）
-
-        // 圧縮が必要かどうかを判定
-        // 1. リクエスト全体がnginx制限を超える場合
-        // 2. 150MB（base64後）を超える場合
-        bool needsCompression = estimatedTotalRequestSize > maxRequestSize ||
-            estimatedBase64Size > maxBase64Size;
-
-        if (needsCompression) {
-          // 圧縮目標サイズを決定
-          int compressionTargetSize;
-          if (estimatedTotalRequestSize > maxRequestSize) {
-            // nginx制限を考慮した目標サイズ
-            if (kDebugMode) {
-              debugPrint('⚠️ リクエストサイズがnginx制限を超えています。圧縮を実行します。');
-            }
-            final targetFileAndThumbnailSize =
-                maxFileAndThumbnailSize - estimatedThumbnailSize;
-            final targetOriginalSize =
-                (targetFileAndThumbnailSize * 3 / 4).round();
-            // より小さい方の目標サイズを使用
-            compressionTargetSize = targetOriginalSize < maxOriginalSize
-                ? targetOriginalSize
-                : maxOriginalSize;
-          } else {
-            // 150MB制限を考慮した目標サイズ
-            compressionTargetSize = maxOriginalSize;
-          }
-
-          if (kDebugMode) {
-            debugPrint(
-                '📹 圧縮目標サイズ: ${(compressionTargetSize / 1024 / 1024).toStringAsFixed(2)} MB（元のファイル）');
-          }
-
+        if (videoFileSize > maxVideoSize) {
           if (mounted) {
-            // 圧縮中のメッセージを表示
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('動画を圧縮中です。しばらくお待ちください...'),
-                duration: Duration(seconds: 180),
-                backgroundColor: Colors.orange,
-              ),
+            final fileSizeMB = (videoFileSize / 1024 / 1024).toStringAsFixed(2);
+            _showSnackBar(
+              '動画ファイルが大きすぎます（${fileSizeMB}MB）。120MB以下の動画を選択してください。',
+              Colors.red,
             );
           }
-
-          String? compressedPath;
-          try {
-            // 目標サイズで圧縮を実行
-            compressedPath =
-                await _compressVideo(videoPath, compressionTargetSize);
-            if (compressedPath != null && await File(compressedPath).exists()) {
-              final compressedFile = File(compressedPath);
-              final compressedSize = await compressedFile.length();
-              final compressedBase64Size = compressedSize * 4 / 3;
-
-              if (kDebugMode) {
-                debugPrint(
-                    '✅ 動画圧縮成功: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
-                debugPrint(
-                    '   base64後サイズ: ${(compressedBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
-                debugPrint(
-                    '   圧縮率: ${((1 - compressedSize / originalVideoFileSize) * 100).toStringAsFixed(1)}%');
-              }
-
-              videoPath = compressedPath;
-
-              if (mounted) {
-                final compressedSizeMB =
-                    (compressedSize / 1024 / 1024).toStringAsFixed(2);
-                final compressedBase64SizeMB =
-                    (compressedBase64Size / 1024 / 1024).toStringAsFixed(2);
-                _showSnackBar(
-                  '動画を圧縮しました（${compressedSizeMB}MB、base64後: ${compressedBase64SizeMB}MB）',
-                  Colors.green,
-                );
-              }
-            } else {
-              if (kDebugMode) {
-                debugPrint('⚠️ 動画圧縮に失敗しましたが、元のファイルを使用します');
-              }
-              if (mounted) {
-                _showSnackBar(
-                  '動画の圧縮に失敗しましたが、元のファイルで投稿を試みます',
-                  Colors.orange,
-                );
-              }
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('❌ 動画圧縮エラー: $e');
-              debugPrint('   元のファイルを使用します');
-            }
-            if (mounted) {
-              _showSnackBar(
-                '動画の圧縮中にエラーが発生しましたが、元のファイルで投稿を試みます',
-                Colors.orange,
-              );
-            }
-          }
+          setState(() {
+            _isPosting = false;
+          });
+          return;
         }
 
-        // 圧縮後のファイルを使用（圧縮に失敗した場合は元のファイル）
-        final bytes = await File(videoPath).readAsBytes();
+        // ファイルを読み込んでbase64エンコード
+        final bytes = await videoFile.readAsBytes();
         fileBase64 = base64Encode(bytes);
 
         if (kDebugMode) {
-          final finalBase64Size = fileBase64.length;
           debugPrint(
               '📹 最終ファイルサイズ: ${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
           debugPrint(
-              '📹 最終base64サイズ: ${(finalBase64Size / 1024 / 1024).toStringAsFixed(2)} MB');
+              '📹 最終base64サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
         }
 
         // 動画から最初のフレームをサムネイルとして抽出
         try {
-          final thumbnailBytes = await _generateVideoThumbnail(videoPath);
+          final thumbnailBytes =
+              await _generateVideoThumbnail(_selectedMedia!.path);
           if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
             thumbBase64 = base64Encode(thumbnailBytes);
             if (kDebugMode) {
@@ -379,15 +310,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           _titleController.clear();
           setState(() {
             _selectedMedia = null;
-            // 動画プレイヤーのリスナーを削除
-            if (_videoPlayerController != null &&
-                _videoPlayerListener != null) {
-              _videoPlayerController!.removeListener(_videoPlayerListener!);
-              _videoPlayerListener = null;
-            }
-            _videoPlayerController?.dispose();
-            _videoPlayerController = null;
-            _isVideoPlaying = false;
+            // 動画プレイヤーをクリーンアップ
+            _cleanupVideoPlayer();
             _audioPlayer?.stop();
             _audioPlayer?.dispose();
             _audioPlayer = null;
@@ -452,169 +376,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
   }
 
-  // 動画を圧縮（目標サイズを指定）
-  Future<String?> _compressVideo(String videoPath, int targetSizeBytes) async {
-    try {
-      if (kDebugMode) {
-        debugPrint('🎬 動画圧縮開始: $videoPath');
-        debugPrint(
-            '   目標サイズ: ${(targetSizeBytes / 1024 / 1024).toStringAsFixed(2)} MB');
-      }
-
-      // 動画情報を取得
-      MediaInfo? mediaInfo;
-      try {
-        mediaInfo = await VideoCompress.getMediaInfo(videoPath);
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 動画情報取得失敗: $e');
-        }
-        // 情報取得に失敗しても圧縮は続行
-      }
-
-      final originalSize = mediaInfo?.filesize ?? 0;
-      final width = mediaInfo?.width ?? 1920;
-      final height = mediaInfo?.height ?? 1080;
-
-      if (kDebugMode) {
-        debugPrint('📹 動画情報:');
-        debugPrint(
-            '   - サイズ: ${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB');
-        debugPrint('   - 解像度: ${width}x$height');
-      }
-
-      // 品質を決定（ファイルサイズに基づいて）
-      VideoQuality quality;
-      if (originalSize > targetSizeBytes * 4) {
-        quality = VideoQuality.LowQuality;
-      } else if (originalSize > targetSizeBytes * 2) {
-        quality = VideoQuality.MediumQuality;
-      } else {
-        quality = VideoQuality.DefaultQuality;
-      }
-
-      if (kDebugMode) {
-        debugPrint('📹 圧縮品質: $quality');
-      }
-
-      // 圧縮実行（タイムアウトを設定）
-      final compressedMediaInfo = await VideoCompress.compressVideo(
-        videoPath,
-        quality: quality,
-        deleteOrigin: false,
-        includeAudio: true,
-        frameRate: 30,
-      ).timeout(
-        const Duration(minutes: 5),
-        onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('⏱️ 動画圧縮タイムアウト');
-          }
-          return null;
-        },
-      );
-
-      if (compressedMediaInfo == null ||
-          compressedMediaInfo.path == null ||
-          !await File(compressedMediaInfo.path!).exists()) {
-        if (kDebugMode) {
-          debugPrint('❌ 動画圧縮失敗: 圧縮後のファイルが存在しません');
-        }
-        return null;
-      }
-
-      final compressedPath = compressedMediaInfo.path!;
-      var compressedSize = await File(compressedPath).length();
-
-      if (kDebugMode) {
-        debugPrint('✅ 1回目の圧縮完了:');
-        debugPrint(
-            '   - 圧縮後サイズ: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
-        if (originalSize > 0) {
-          debugPrint(
-              '   - 圧縮率: ${((1 - compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
-        }
-      }
-
-      // 圧縮後もまだ大きい場合、さらに圧縮を試みる（最大2回まで）
-      int compressionAttempts = 1;
-      const maxCompressionAttempts = 2;
-      String currentPath = compressedPath;
-
-      while (compressedSize > targetSizeBytes &&
-          compressionAttempts < maxCompressionAttempts) {
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ 圧縮後も目標サイズを超えています（${(compressedSize / 1024 / 1024).toStringAsFixed(2)}MB）。さらに圧縮を試みます...（試行 ${compressionAttempts + 1}/$maxCompressionAttempts）');
-        }
-
-        try {
-          // より低い品質で再圧縮
-          final furtherCompressedMediaInfo = await VideoCompress.compressVideo(
-            currentPath,
-            quality: VideoQuality.LowQuality,
-            deleteOrigin: false,
-            includeAudio: true,
-            frameRate: 24,
-          ).timeout(
-            const Duration(minutes: 5),
-            onTimeout: () {
-              if (kDebugMode) {
-                debugPrint('⏱️ 再圧縮タイムアウト');
-              }
-              return null;
-            },
-          );
-
-          if (furtherCompressedMediaInfo == null ||
-              furtherCompressedMediaInfo.path == null ||
-              !await File(furtherCompressedMediaInfo.path!).exists()) {
-            if (kDebugMode) {
-              debugPrint('⚠️ 再圧縮に失敗しました。現在のファイルを使用します。');
-            }
-            break;
-          }
-
-          // 前の圧縮ファイルを削除
-          try {
-            if (currentPath != videoPath) {
-              await File(currentPath).delete();
-            }
-          } catch (e) {
-            // 削除エラーは無視
-          }
-
-          currentPath = furtherCompressedMediaInfo.path!;
-          compressedSize = await File(currentPath).length();
-          compressionAttempts++;
-
-          if (kDebugMode) {
-            debugPrint(
-                '✅ ${compressionAttempts}回目の圧縮完了: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ 再圧縮エラー: $e');
-          }
-          break;
-        }
-      }
-
-      if (kDebugMode) {
-        debugPrint(
-            '📹 最終圧縮サイズ: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB（${compressionAttempts}回の圧縮を実行）');
-      }
-
-      return currentPath;
-    } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ 動画圧縮例外: $e');
-        debugPrint('   スタックトレース: $stackTrace');
-      }
-      return null;
-    }
-  }
-
   // 動画から最初のフレームをサムネイルとして抽出
   Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
     try {
@@ -624,18 +385,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       // 動画から最初のフレーム（timeMs: 0）を抽出
       // タイムアウトを設定してバッファエラーを防ぐ
+      // より小さい解像度と品質でバッファ使用量を削減
       String? thumbnailPath;
       try {
         thumbnailPath = await VideoThumbnail.thumbnailFile(
           video: videoPath,
           thumbnailPath: (await Directory.systemTemp).path,
           imageFormat: ImageFormat.JPEG,
-          maxWidth: 320, // 最大幅320px
-          maxHeight: 320, // 最大高さ320px
-          quality: 75, // JPEG品質（80から75に下げてファイルサイズ削減）
+          maxWidth: 240, // 最大幅を240pxに削減（バッファ使用量削減）
+          maxHeight: 240, // 最大高さを240pxに削減
+          quality: 70, // JPEG品質を70に削減（バッファ使用量削減）
           timeMs: 0, // 最初のフレーム（0ミリ秒）
         ).timeout(
-          const Duration(seconds: 10), // 10秒でタイムアウト
+          const Duration(seconds: 8), // 8秒でタイムアウト（短縮）
           onTimeout: () {
             if (kDebugMode) {
               debugPrint('⚠️ 動画サムネイル抽出タイムアウト');
@@ -1442,13 +1204,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (pickedFile != null) {
         // 既存の動画プレイヤーをクリア
-        if (_videoPlayerController != null && _videoPlayerListener != null) {
-          _videoPlayerController!.removeListener(_videoPlayerListener!);
-          _videoPlayerListener = null;
-        }
-        _videoPlayerController?.dispose();
-        _videoPlayerController = null;
-        _isVideoPlaying = false;
+        _cleanupVideoPlayer();
 
         setState(() {
           _selectedMedia = pickedFile;
@@ -1465,39 +1221,133 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // 動画の場合はプレイヤーを初期化
         if (isVideo) {
           // 既存のプレイヤーとリスナーをクリーンアップ
-          if (_videoPlayerController != null && _videoPlayerListener != null) {
-            _videoPlayerController!.removeListener(_videoPlayerListener!);
-            _videoPlayerListener = null;
-          }
-          _videoPlayerController?.dispose();
-          _videoPlayerController = null;
+          _cleanupVideoPlayer();
 
-          try {
-            _videoPlayerController =
-                VideoPlayerController.file(File(pickedFile.path));
-            await _videoPlayerController!.initialize();
-
-            // 動画プレイヤーの状態変更を監視（リスナーを保存）
-            _videoPlayerListener = () {
-              if (mounted && _videoPlayerController != null) {
-                setState(() {
-                  _isVideoPlaying = _videoPlayerController!.value.isPlaying;
-                });
-              }
-            };
-            _videoPlayerController!.addListener(_videoPlayerListener!);
-
-            setState(() {});
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('❌ 動画プレイヤー初期化エラー: $e');
-            }
-            // エラー時はプレイヤーをクリーンアップ
-            _videoPlayerController?.dispose();
-            _videoPlayerController = null;
-            _videoPlayerListener = null;
+          // 動画ファイルの存在確認
+          final videoFile = File(pickedFile.path);
+          if (!await videoFile.exists()) {
             if (mounted) {
-              _showSnackBar('動画の読み込みに失敗しました: $e', Colors.red);
+              _showSnackBar('動画ファイルが見つかりません', Colors.red);
+            }
+            return;
+          }
+
+          // ファイルサイズを確認（0バイトの場合はエラー）
+          final fileSize = await videoFile.length();
+          if (fileSize == 0) {
+            if (mounted) {
+              _showSnackBar('動画ファイルが空です', Colors.red);
+            }
+            return;
+          }
+
+          if (kDebugMode) {
+            debugPrint('📹 動画ファイル確認:');
+            debugPrint('   - パス: ${pickedFile.path}');
+            debugPrint(
+                '   - サイズ: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+          }
+
+          // 少し待ってから新しいプレイヤーを初期化（バッファ解放の時間を確保）
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // リトライ機能付きで動画プレイヤーを初期化
+          bool initialized = false;
+          int retryCount = 0;
+          const maxRetries = 2;
+
+          while (!initialized && retryCount < maxRetries) {
+            try {
+              if (kDebugMode) {
+                debugPrint('📹 動画プレイヤー初期化試行 ${retryCount + 1}/$maxRetries');
+              }
+
+              // 以前のプレイヤーが残っている場合はクリーンアップ
+              if (_videoPlayerController != null) {
+                _cleanupVideoPlayer();
+                await Future.delayed(const Duration(milliseconds: 200));
+              }
+
+              _videoPlayerController = VideoPlayerController.file(videoFile);
+
+              // タイムアウトを設定して初期化
+              await _videoPlayerController!.initialize().timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  throw TimeoutException(
+                    '動画プレイヤーの初期化がタイムアウトしました',
+                    const Duration(seconds: 10),
+                  );
+                },
+              );
+
+              // 初期化成功
+              initialized = true;
+
+              if (kDebugMode) {
+                debugPrint('✅ 動画プレイヤー初期化成功');
+                debugPrint(
+                    '   - 解像度: ${_videoPlayerController!.value.size.width}x${_videoPlayerController!.value.size.height}');
+                debugPrint(
+                    '   - 長さ: ${_videoPlayerController!.value.duration.inSeconds}秒');
+              }
+
+              // 動画プレイヤーの状態変更を監視（リスナーを保存）
+              _videoPlayerListener = () {
+                if (mounted && _videoPlayerController != null) {
+                  try {
+                    setState(() {
+                      _isVideoPlaying = _videoPlayerController!.value.isPlaying;
+                    });
+                  } catch (e) {
+                    // setStateエラーは無視（既にdisposeされている可能性がある）
+                  }
+                }
+              };
+              _videoPlayerController!.addListener(_videoPlayerListener!);
+
+              // 初期状態では停止
+              if (_videoPlayerController!.value.isPlaying) {
+                _videoPlayerController!.pause();
+              }
+
+              setState(() {});
+            } catch (e) {
+              retryCount++;
+              if (kDebugMode) {
+                debugPrint('❌ 動画プレイヤー初期化エラー（試行 $retryCount/$maxRetries）: $e');
+              }
+
+              // エラー時はプレイヤーをクリーンアップ
+              _cleanupVideoPlayer();
+
+              if (retryCount < maxRetries) {
+                // リトライ前に待機
+                if (kDebugMode) {
+                  debugPrint('⏳ リトライ前に待機中...');
+                }
+                await Future.delayed(Duration(milliseconds: 500 * retryCount));
+              } else {
+                // すべてのリトライが失敗した場合
+                if (kDebugMode) {
+                  debugPrint('❌ 動画プレイヤー初期化に失敗しました（全試行失敗）');
+                }
+                if (mounted) {
+                  // エラーメッセージを簡潔に表示
+                  final errorMessage = e.toString();
+                  String userMessage;
+                  if (errorMessage.contains('ExoPlaybackException') ||
+                      errorMessage.contains('MediaCodec')) {
+                    userMessage = '動画の読み込みに失敗しました。この動画は投稿できますが、プレビューは表示されません。';
+                  } else if (errorMessage.contains('TimeoutException')) {
+                    userMessage =
+                        '動画の読み込みに時間がかかりすぎました。この動画は投稿できますが、プレビューは表示されません。';
+                  } else {
+                    userMessage = '動画の読み込みに失敗しました。この動画は投稿できますが、プレビューは表示されません。';
+                  }
+                  _showSnackBar(userMessage, Colors.orange);
+                }
+              }
             }
           }
         }
@@ -1527,13 +1377,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         return;
       }
       // メディアをクリア
-      if (_videoPlayerController != null && _videoPlayerListener != null) {
-        _videoPlayerController!.removeListener(_videoPlayerListener!);
-        _videoPlayerListener = null;
-      }
-      _videoPlayerController?.dispose();
-      _videoPlayerController = null;
-      _isVideoPlaying = false;
+      _cleanupVideoPlayer();
       for (var overlay in _textOverlays) {
         overlay.dispose();
       }
@@ -1942,36 +1786,41 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       );
     }
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _videoPlayerController!.value.size.width,
-              height: _videoPlayerController!.value.size.height,
-              child: VideoPlayer(_videoPlayerController!),
+    // Visibilityウィジェットで画面から外れたときに自動的に停止
+    return Visibility(
+      visible: true,
+      maintainState: false, // 画面から外れたときに状態を保持しない
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _videoPlayerController!.value.size.width,
+                height: _videoPlayerController!.value.size.height,
+                child: VideoPlayer(_videoPlayerController!),
+              ),
             ),
           ),
-        ),
-        // 再生/一時停止ボタン
-        GestureDetector(
-          onTap: _toggleVideoPlayback,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _isVideoPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-              size: 48,
+          // 再生/一時停止ボタン
+          GestureDetector(
+            onTap: _toggleVideoPlayback,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isVideoPlaying ? Icons.pause : Icons.play_arrow,
+                color: Colors.white,
+                size: 48,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1982,12 +1831,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return;
     }
 
-    if (_videoPlayerController!.value.isPlaying) {
-      _videoPlayerController!.pause();
-    } else {
-      _videoPlayerController!.play();
+    try {
+      if (_videoPlayerController!.value.isPlaying) {
+        _videoPlayerController!.pause();
+      } else {
+        _videoPlayerController!.play();
+      }
+      // 状態はリスナーで自動更新される
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 動画再生切り替えエラー: $e');
+      }
+      // エラー時はプレイヤーをクリーンアップ
+      _cleanupVideoPlayer();
     }
-    // 状態はリスナーで自動更新される
   }
 
   // コンテンツコンフリクトダイアログ
