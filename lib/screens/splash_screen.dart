@@ -108,7 +108,12 @@ class MainScreen extends StatelessWidget {
                 // 現在のインデックスを変更しない
                 return;
               }
-              navigationProvider.setCurrentIndex(index);
+              // 通知ボタンの場合はnavigateToNotifications()を呼ぶ
+              if (index == 3) {
+                navigationProvider.navigateToNotifications();
+              } else {
+                navigationProvider.setCurrentIndex(index);
+              }
             },
           ),
         );

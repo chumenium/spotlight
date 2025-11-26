@@ -29,6 +29,7 @@ class _SearchScreenState extends State<SearchScreen> {
   
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
+  int? _lastNavigationIndex; // 最後に処理したナビゲーションインデックス
 
   @override
   void initState() {
@@ -158,7 +159,26 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // NavigationProviderの変更をリッスンして、検索画面が表示されたときに再取得
+    return Consumer<NavigationProvider>(
+      builder: (context, navigationProvider, _) {
+        final currentIndex = navigationProvider.currentIndex;
+        
+        // 検索画面が表示されている場合、かつ前回と異なる場合に再取得
+        if (currentIndex == 1 && _lastNavigationIndex != 1) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isDisposed) {
+              setState(() {
+                _lastNavigationIndex = 1;
+              });
+              _fetchSearchHistory();
+            }
+          });
+        } else if (currentIndex != 1) {
+          _lastNavigationIndex = currentIndex;
+        }
+        
+        return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: SafeArea(
         child: Column(
@@ -175,6 +195,8 @@ class _SearchScreenState extends State<SearchScreen> {
           ],
         ),
       ),
+        );
+      },
     );
   }
 

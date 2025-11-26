@@ -17,7 +17,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   late TabController _tabController;
   bool _isLoading = false;
   String? _errorMessage;
-  int? _lastNavigationIndex;
+  int _lastRefreshTrigger = -1; // 最後に処理したリフレッシュトリガーの値
   
   // タブの定義
   final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'トレンド', 'システム'];
@@ -27,22 +27,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _loadNotifications();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // NavigationProviderの変更をリッスンして、通知画面が表示されたときに再取得
-    final navigationProvider = Provider.of<NavigationProvider>(context);
-    final currentIndex = navigationProvider.currentIndex;
-    
-    // 通知画面（index: 3）が表示されたとき、かつ前回と異なる場合に再取得
-    if (currentIndex == 3 && _lastNavigationIndex != 3) {
-      _lastNavigationIndex = 3;
-      _loadNotifications();
-    } else if (currentIndex != 3) {
-      _lastNavigationIndex = currentIndex;
-    }
   }
 
   Future<void> _loadNotifications() async {
@@ -81,7 +65,25 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // NavigationProviderの変更をリッスンして、通知画面が表示されたときに再取得
+    return Consumer<NavigationProvider>(
+      builder: (context, navigationProvider, _) {
+        final refreshTrigger = navigationProvider.notificationRefreshTrigger;
+        final currentIndex = navigationProvider.currentIndex;
+        
+        // 通知画面が表示されている場合、かつトリガーが更新された場合に再取得
+        if (currentIndex == 3 && refreshTrigger != _lastRefreshTrigger) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _lastRefreshTrigger = refreshTrigger;
+              });
+              _loadNotifications();
+            }
+          });
+        }
+        
+        return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: const Text(
@@ -146,6 +148,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           return _buildTabContent(tab);
         }).toList(),
       ),
+        );
+      },
     );
   }
 
