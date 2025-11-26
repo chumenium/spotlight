@@ -1053,52 +1053,72 @@ class PostService {
             '   - その他（type, title, link等）: ${((requestBodySize - (fileBase64?.length ?? 0) - (thumbnailBase64?.length ?? 0)) / 1024).toStringAsFixed(2)} KB');
       }
 
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $jwtToken',
-        },
-        body: jsonBody,
-      );
+      // 大きなファイルを送信するためのHTTPクライアント設定
+      final client = http.Client();
+      try {
+        final response = await client
+            .post(
+          Uri.parse(url),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonBody,
+        )
+            .timeout(
+          const Duration(minutes: 30), // 大きなファイル用にタイムアウトを30分に延長
+          onTimeout: () {
+            throw TimeoutException(
+              'リクエストがタイムアウトしました（30分）',
+              const Duration(minutes: 30),
+            );
+          },
+        );
 
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
+        if (response.statusCode == 200) {
+          final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📝 投稿作成レスポンス: ${responseData.toString()}');
-        }
+          if (kDebugMode) {
+            debugPrint('📝 投稿作成レスポンス: ${responseData.toString()}');
+          }
 
-        if (responseData['status'] == 'success') {
-          return responseData['data'];
+          if (responseData['status'] == 'success') {
+            return responseData['data'];
+          } else {
+            // サーバーからエラーメッセージが返された場合
+            final errorMessage =
+                responseData['message'] ?? responseData['error'] ?? '投稿に失敗しました';
+            throw Exception(errorMessage);
+          }
         } else {
-          // サーバーからエラーメッセージが返された場合
-          final errorMessage =
-              responseData['message'] ?? responseData['error'] ?? '投稿に失敗しました';
+          // HTTPエラーステータスコードの場合
+          String errorMessage;
+          if (response.statusCode == 413) {
+            // より詳細なエラーメッセージ
+            errorMessage =
+                'ファイルサイズが大きすぎます（HTTP 413: Request Entity Too Large）。リクエストサイズ: ${(requestBodySize / 1024 / 1024).toStringAsFixed(2)}MB';
+          } else if (response.statusCode == 400) {
+            errorMessage = 'リクエストが不正です（HTTP 400: Bad Request）';
+          } else if (response.statusCode == 401) {
+            errorMessage = '認証に失敗しました（HTTP 401: Unauthorized）';
+          } else if (response.statusCode == 500) {
+            errorMessage = 'サーバーエラーが発生しました（HTTP 500: Internal Server Error）';
+          } else {
+            errorMessage = '投稿に失敗しました（HTTP ${response.statusCode}）';
+          }
+
+          if (kDebugMode) {
+            debugPrint('📝 投稿作成エラー: ${response.statusCode}');
+            debugPrint('📝 エラーメッセージ: $errorMessage');
+            debugPrint(
+                '📝 リクエストボディサイズ: ${(requestBodySize / 1024 / 1024).toStringAsFixed(2)} MB');
+            debugPrint('📝 レスポンスボディ: ${response.body}');
+          }
+
           throw Exception(errorMessage);
         }
-      } else {
-        // HTTPエラーステータスコードの場合
-        String errorMessage;
-        if (response.statusCode == 413) {
-          errorMessage = 'ファイルサイズが大きすぎます（HTTP 413: Request Entity Too Large）';
-        } else if (response.statusCode == 400) {
-          errorMessage = 'リクエストが不正です（HTTP 400: Bad Request）';
-        } else if (response.statusCode == 401) {
-          errorMessage = '認証に失敗しました（HTTP 401: Unauthorized）';
-        } else if (response.statusCode == 500) {
-          errorMessage = 'サーバーエラーが発生しました（HTTP 500: Internal Server Error）';
-        } else {
-          errorMessage = '投稿に失敗しました（HTTP ${response.statusCode}）';
-        }
-
-        if (kDebugMode) {
-          debugPrint('📝 投稿作成エラー: ${response.statusCode}');
-          debugPrint('📝 エラーメッセージ: $errorMessage');
-          debugPrint('📝 レスポンスボディ: ${response.body}');
-        }
-
-        throw Exception(errorMessage);
+      } finally {
+        client.close();
       }
     } catch (e) {
       if (kDebugMode) {
