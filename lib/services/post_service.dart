@@ -983,6 +983,7 @@ class PostService {
     String? fileBase64, // 非テキスト投稿の場合のみ（base64）
     String? thumbnailBase64, // 非テキスト投稿の場合のみ（base64）
     String? link,
+    String? tag,
   }) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
@@ -1008,6 +1009,9 @@ class PostService {
 
       if (link != null && link.isNotEmpty) {
         body['link'] = link;
+      }
+      if (tag != null && tag.isNotEmpty) {
+        body['tag'] = tag;
       }
 
       if (type == 'text') {

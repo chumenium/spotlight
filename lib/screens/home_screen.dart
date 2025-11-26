@@ -2736,8 +2736,37 @@ class _HomeScreenState extends State<HomeScreen>
     _executeSpotlight();
   }
 
+  int _countAllComments(List<Comment> commentList) {
+    var total = 0;
+    for (final comment in commentList) {
+      total++;
+      if (comment.replies.isNotEmpty) {
+        total += _countAllComments(comment.replies);
+      }
+    }
+    return total;
+  }
+
   void _handleCommentButton(Post post) {
     final commentController = TextEditingController();
+    bool isLoading = true;
+    bool hasRequestedComments = false;
+    bool isSheetOpen = true;
+    List<Comment> comments = [];
+
+    Future<void> refreshComments(StateSetter setModalState) async {
+      setModalState(() {
+        isLoading = true;
+      });
+      final fetchedComments = await CommentService.getComments(post.id);
+      if (!mounted || !isSheetOpen) {
+        return;
+      }
+      setModalState(() {
+        comments = fetchedComments;
+        isLoading = false;
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2746,20 +2775,9 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            bool isLoading = false;
-            List<Comment> comments = [];
-
-            // コメント一覧を取得
-            if (comments.isEmpty && !isLoading) {
-              isLoading = true;
-              CommentService.getComments(post.id).then((fetchedComments) {
-                if (mounted) {
-                  setModalState(() {
-                    comments = fetchedComments;
-                    isLoading = false;
-                  });
-                }
-              });
+            if (!hasRequestedComments) {
+              hasRequestedComments = true;
+              refreshComments(setModalState);
             }
 
             return DraggableScrollableSheet(
@@ -2872,6 +2890,10 @@ class _HomeScreenState extends State<HomeScreen>
                                       commentController.text.trim();
                                   if (commentText.isEmpty) return;
 
+                                  setModalState(() {
+                                    isLoading = true;
+                                  });
+
                                   // コメント送信
                                   final success =
                                       await CommentService.addComment(
@@ -2882,12 +2904,9 @@ class _HomeScreenState extends State<HomeScreen>
                                   if (success && mounted) {
                                     commentController.clear();
                                     // コメント一覧を再取得
-                                    final fetchedComments =
-                                        await CommentService.getComments(
-                                            post.id);
-                                    setModalState(() {
-                                      comments = fetchedComments;
-                                    });
+                                    await refreshComments(setModalState);
+                                    final updatedTotal =
+                                        _countAllComments(comments);
 
                                     // 投稿のコメント数を更新
                                     setState(() {
@@ -2912,8 +2931,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         likes: _posts[_currentIndex].likes,
                                         playNum: _posts[_currentIndex].playNum,
                                         link: _posts[_currentIndex].link,
-                                        comments:
-                                            _posts[_currentIndex].comments + 1,
+                                        comments: updatedTotal,
                                         shares: _posts[_currentIndex].shares,
                                         isSpotlighted:
                                             _posts[_currentIndex].isSpotlighted,
@@ -2923,6 +2941,10 @@ class _HomeScreenState extends State<HomeScreen>
                                         createdAt:
                                             _posts[_currentIndex].createdAt,
                                       );
+                                    });
+                                  } else {
+                                    setModalState(() {
+                                      isLoading = false;
                                     });
                                   }
                                 },
@@ -2941,7 +2963,10 @@ class _HomeScreenState extends State<HomeScreen>
           },
         );
       },
-    );
+    ).whenComplete(() {
+      isSheetOpen = false;
+      commentController.dispose();
+    });
   }
 
   Widget _buildCommentItem(Comment comment) {

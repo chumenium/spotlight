@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
@@ -49,7 +50,9 @@ class CreatePostScreen extends StatefulWidget {
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
+  static const int _titleMaxLength = 100;
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _tagController = TextEditingController();
   bool _isPosting = false;
 
   // 背景メディア選択用（写真または動画）
@@ -82,11 +85,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     _titleController.addListener(() {
       setState(() {});
     });
+    _tagController.addListener(() {
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _tagController.dispose();
     for (var overlay in _textOverlays) {
       overlay.dispose();
     }
@@ -149,8 +156,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _postContent() async {
+    final titleText = _titleController.text.trim();
+    final tagText = _tagController.text.trim();
+
     // タイトルチェック
-    if (_titleController.text.trim().isEmpty) {
+    if (titleText.isEmpty) {
       _showSnackBar('タイトルを入力してください', Colors.red);
       return;
     }
@@ -294,10 +304,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       try {
         final result = await PostService.createPost(
           type: type,
-          title: _titleController.text.trim(),
+          title: titleText,
           fileBase64: fileBase64,
           thumbnailBase64: thumbBase64,
           link: link,
+          tag: tagText.isEmpty ? null : tagText,
         );
 
         if (mounted) {
@@ -308,6 +319,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           }
           _showSnackBar('投稿が完了しました！', Colors.green);
           _titleController.clear();
+          _tagController.clear();
           setState(() {
             _selectedMedia = null;
             // 動画プレイヤーをクリーンアップ
@@ -552,6 +564,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           color: Colors.white,
                           fontSize: 16,
                         ),
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(_titleMaxLength),
+                        ],
                         decoration: InputDecoration(
                           hintText: '投稿のタイトルを入力',
                           hintStyle: TextStyle(
@@ -575,9 +590,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            '${_titleController.text.length}/100',
+                            '${_titleController.text.length}/$_titleMaxLength',
                             style: TextStyle(
-                              color: _titleController.text.length > 100
+                              color: _titleController.text.length > _titleMaxLength
+                                  ? Colors.red
+                                  : Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'タグ',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _tagController,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(_titleMaxLength),
+                        ],
+                        decoration: InputDecoration(
+                          hintText: 'タグを入力（例: #music）',
+                          hintStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF2A2A2A),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${_tagController.text.length}/$_titleMaxLength',
+                            style: TextStyle(
+                              color: _tagController.text.length > _titleMaxLength
                                   ? Colors.red
                                   : Colors.grey,
                               fontSize: 12,

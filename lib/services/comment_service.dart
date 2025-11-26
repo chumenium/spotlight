@@ -61,7 +61,8 @@ class CommentService {
   }
 
   /// コメントを追加
-  static Future<bool> addComment(String contentId, String commentText, {int? parentCommentId}) async {
+  static Future<bool> addComment(String contentId, String commentText,
+      {int? parentCommentId}) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
@@ -77,7 +78,10 @@ class CommentService {
         debugPrint('💬 コメント追加URL: $url, contentID: $contentId');
       }
 
+      final parsedContentId = int.tryParse(contentId);
+
       final requestBody = <String, dynamic>{
+        'contentID': parsedContentId ?? contentId,
         'commenttext': commentText,
       };
       
