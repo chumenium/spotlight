@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_of_service_screen.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -174,11 +176,10 @@ class AboutScreen extends StatelessWidget {
             icon: Icons.description,
             title: '利用規約',
             onTap: () {
-              // TODO: 利用規約画面への遷移を実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('利用規約ページは準備中です'),
-                  backgroundColor: Color(0xFF1E1E1E),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TermsOfServiceScreen(),
                 ),
               );
             },
@@ -187,11 +188,10 @@ class AboutScreen extends StatelessWidget {
             icon: Icons.privacy_tip,
             title: 'プライバシーポリシー',
             onTap: () {
-              // TODO: プライバシーポリシー画面への遷移を実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('プライバシーポリシーページは準備中です'),
-                  backgroundColor: Color(0xFF1E1E1E),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
                 ),
               );
             },
