@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../services/jwt_service.dart';
 import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show  debugPrint;
 
 // ================================
 // 通知の種類
@@ -95,23 +96,35 @@ class NotificationService {
   static Future<List<NotificationItem>> fetchNotifications() async {
     final url = '${AppConfig.apiBaseUrl}/users/notification';
     final jwtToken = await JwtService.getJwtToken();
+    debugPrint('アクセス先URL：$url');
     final response = await http.post(
       Uri.parse(url),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $jwtToken",
       },
+      body: jsonEncode({}),
     );
 
     if (response.statusCode != 200) {
       throw Exception("Failed to load notifications: ${response.body}");
     }
+  // まず JSON 全体を decode
+    final Map<String, dynamic> body = jsonDecode(response.body);
 
-    final List<dynamic> jsonList = jsonDecode(response.body);
+    // ステータスを確認（任意）
+    if (body["status"] != "success") {
+      throw Exception("API error: ${body["message"]}");
+    }
 
+    // data の中の配列だけを取得
+    final List<dynamic> jsonList = body["data"];
+
+    // model へ変換
     return jsonList
         .map((json) => NotificationItem.fromJson(json))
         .toList();
+  
 
 
     //========================== T E S T ==========================
