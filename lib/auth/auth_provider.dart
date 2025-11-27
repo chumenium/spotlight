@@ -230,7 +230,10 @@ class AuthProvider extends ChangeNotifier {
 
       // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
       // ログイン時は強制更新（キャッシュを無視）
-      _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true);
+      _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true).then((_) {
+        // ログイン成功後、FCMトークンをサーバーに送信
+        _updateFcmTokenAfterLogin();
+      });
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -238,6 +241,31 @@ class AuthProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// ログイン後にFCMトークンをサーバーに送信
+  Future<void> _updateFcmTokenAfterLogin() async {
+    try {
+      // JWTトークンを取得（ログイン後なので取得できるはず）
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+          debugPrint('🔔 ログイン後: JWTトークンが取得できません。FCMトークン更新をスキップします。');
+        }
+        return;
+      }
+
+      // 少し待ってからFCMトークンを送信（JWTトークンの取得を確実にするため）
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // FCMトークンをサーバーに送信
+      await FcmService.updateFcmTokenToServer(jwtToken);
+    } catch (e) {
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('❌ ログイン後のFCMトークン更新エラー: $e');
+      }
+    }
   }
 
   /// Firebase Userからユーザー名を抽出
