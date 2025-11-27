@@ -401,9 +401,40 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // 削除処理
+
+              // ローディング表示
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('削除中...'),
+                    duration: Duration(seconds: 1),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+
+              final success =
+                  await PlaylistService.deletePlaylist(playlist.playlistid);
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('プレイリストを削除しました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                // プレイリスト一覧を再取得
+                _fetchPlaylists();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('プレイリストの削除に失敗しました。エンドポイントが実装されていない可能性があります。'),
+                    duration: Duration(seconds: 4),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text(
               '削除',

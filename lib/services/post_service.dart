@@ -1101,8 +1101,8 @@ class PostService {
   ///
   /// データベースから指定された視聴履歴を削除
   /// - contentID: 削除する視聴履歴のコンテンツID
-  /// 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていないため、
-  /// contentIDで削除できると仮定しています。バックエンド側で対応が必要な場合があります。
+  /// 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていない可能性があります。
+  /// バックエンド側でcontentIDからplayIDを取得する実装が必要な場合があります。
   static Future<bool> deletePlayHistory(String contentId) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
