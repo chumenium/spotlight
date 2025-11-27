@@ -51,6 +51,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoadingPlaylists = false;
   // 前回のナビゲーションインデックス（リロード制御用）
   int? _lastNavigationIndex;
+  // 画像のアスペクト比をキャッシュ（URL -> アスペクト比）
+  final Map<String, double> _imageAspectRatios = {};
+  // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
+  final Map<int, String?> _playlistFirstContentThumbnails = {};
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -602,42 +606,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _myPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _myPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _myPosts[index];
-                              return _buildPostThumbnail(context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_myPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_myPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPostThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _myPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _myPosts[index];
+                        return _buildPostThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -686,12 +664,275 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// タイトルを20文字で切り詰めて「...」を追加
+  String _getTruncatedTitle(String title) {
+    if (title.length <= 20) {
+      return title;
+    }
+    return '${title.substring(0, 20)}...';
+  }
+
+  /// 再生リストの最初のコンテンツのサムネイルURLを取得
+  Future<String?> _getFirstContentThumbnail(int playlistId) async {
+    // キャッシュを確認
+    if (_playlistFirstContentThumbnails.containsKey(playlistId)) {
+      return _playlistFirstContentThumbnails[playlistId];
+    }
+
+    try {
+      // 再生リストのコンテンツを取得
+      final contentsJson = await PlaylistService.getPlaylistDetail(playlistId);
+
+      if (contentsJson.isEmpty) {
+        // コンテンツがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // 最初のコンテンツのサムネイルURLを取得
+      final firstContent = contentsJson[0];
+      final thumbnailpath = firstContent['thumbnailpath']?.toString();
+
+      if (thumbnailpath == null || thumbnailpath.isEmpty) {
+        // サムネイルがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // サムネイルURLを構築
+      String thumbnailUrl;
+      if (thumbnailpath.startsWith('http://') ||
+          thumbnailpath.startsWith('https://')) {
+        // 既に完全なURLの場合はそのまま使用
+        thumbnailUrl = thumbnailpath;
+      } else {
+        // 相対パスの場合は、backendUrlと結合
+        final normalizedPath =
+            thumbnailpath.startsWith('/') ? thumbnailpath : '/$thumbnailpath';
+        thumbnailUrl = '${AppConfig.backendUrl}$normalizedPath';
+      }
+
+      // キャッシュに保存
+      _playlistFirstContentThumbnails[playlistId] = thumbnailUrl;
+      return thumbnailUrl;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 再生リストの最初のコンテンツ取得エラー: $e');
+      }
+      // エラーの場合はnullをキャッシュ
+      _playlistFirstContentThumbnails[playlistId] = null;
+      return null;
+    }
+  }
+
+  /// 固定サイズのサムネイルを構築（すべて同じサイズで表示）
+  Widget _buildThumbnailWithAspectRatio(
+      String thumbnailUrl, double itemWidth, Post post, int index) {
+    // 固定サイズ（高さ120px）
+    const thumbnailHeight = 120.0;
+
+    // URLの検証
+    if (thumbnailUrl.isEmpty) {
+      return Container(
+        width: itemWidth,
+        height: thumbnailHeight,
+        color: Colors.grey[800],
+        child: Center(
+          child: Icon(
+            post.postType == PostType.video
+                ? Icons.play_circle_outline
+                : post.postType == PostType.image
+                    ? Icons.image_outlined
+                    : post.postType == PostType.audio
+                        ? Icons.audiotrack_outlined
+                        : Icons.text_fields_outlined,
+            color: Colors.white,
+            size: 32,
+          ),
+        ),
+      );
+    }
+
+    // すべて同じサイズで表示（BoxFit.coverで中央を表示）
+    return SizedBox(
+      width: itemWidth,
+      height: thumbnailHeight,
+      child: Stack(
+        children: [
+          CachedNetworkImage(
+            imageUrl: thumbnailUrl,
+            width: itemWidth,
+            height: thumbnailHeight,
+            fit: BoxFit.cover,
+            memCacheWidth: 320,
+            memCacheHeight: 180,
+            httpHeaders: const {
+              'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+              'User-Agent': 'Flutter-Spotlight/1.0',
+            },
+            fadeInDuration: const Duration(milliseconds: 200),
+            placeholder: (context, url) => Container(
+              width: itemWidth,
+              height: thumbnailHeight,
+              color: Colors.grey[800],
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFFFF6B35),
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: itemWidth,
+              height: thumbnailHeight,
+              color: Colors.grey[800],
+              child: Center(
+                child: Icon(
+                  post.postType == PostType.video
+                      ? Icons.play_circle_outline
+                      : post.postType == PostType.image
+                          ? Icons.image_outlined
+                          : post.postType == PostType.audio
+                              ? Icons.audiotrack_outlined
+                              : Icons.text_fields_outlined,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+          // スポットライトアイコン
+          if (post.isSpotlighted)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: SpotLightColors.getSpotlightColor(index),
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SpotLightColors.getSpotlightColor(index)
+                          .withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.star,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 画像のアスペクト比を読み込む
+  void _loadImageAspectRatio(String url) {
+    // URLの検証
+    if (url.isEmpty) {
+      return;
+    }
+
+    // 既にアスペクト比が取得されている場合はスキップ
+    if (_imageAspectRatios.containsKey(url)) {
+      return;
+    }
+
+    // 読み込み中フラグを設定（重複読み込みを防ぐ）
+    if (!mounted) {
+      return;
+    }
+
+    try {
+      // NetworkImageを使用して画像のサイズを取得
+      final imageProvider = NetworkImage(url);
+      final imageStream = imageProvider.resolve(
+        const ImageConfiguration(),
+      );
+
+      late ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (ImageInfo imageInfo, bool synchronousCall) {
+          if (synchronousCall || !mounted) {
+            try {
+              imageStream.removeListener(listener);
+            } catch (e) {
+              // リスナーが既に削除されている場合は無視
+            }
+            return;
+          }
+
+          try {
+            final image = imageInfo.image;
+            final width = image.width.toDouble();
+            final height = image.height.toDouble();
+
+            if (width > 0 && height > 0) {
+              final aspectRatio = width / height;
+
+              if (mounted) {
+                final currentAspectRatio = _imageAspectRatios[url];
+                if (currentAspectRatio == null ||
+                    (currentAspectRatio - aspectRatio).abs() > 0.01) {
+                  setState(() {
+                    _imageAspectRatios[url] = aspectRatio;
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ アスペクト比計算エラー: $e');
+            }
+          } finally {
+            // リスナーを削除してメモリリークを防ぐ
+            if (mounted) {
+              try {
+                imageStream.removeListener(listener);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ リスナー削除エラー: $e');
+                }
+              }
+            }
+          }
+        },
+        onError: (exception, stackTrace) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 画像読み込みエラー: $exception');
+          }
+          if (mounted) {
+            try {
+              imageStream.removeListener(listener);
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ リスナー削除エラー: $e');
+              }
+            }
+          }
+        },
+      );
+
+      imageStream.addListener(listener);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ アスペクト比取得エラー: $e');
+      }
+    }
+  }
+
   /// 投稿のサムネイルを表示
   Widget _buildPostThumbnail(BuildContext context, Post post, int index) {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -722,6 +963,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Container(
         width: itemWidth,
+        height: 148, // サムネイル120px + マージン8px + タイトル20px = 148px
         margin: EdgeInsets.only(
             right: index < _myPosts.length - 1 ? itemMargin : 0),
         child: Column(
@@ -729,23 +971,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 120,
-                color: Colors.grey[800],
-                child: _hasValidThumbnail(post.thumbnailUrl)
-                    ? RobustNetworkImage(
-                        imageUrl: post.thumbnailUrl ?? '',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+              child: _hasValidThumbnail(post.thumbnailUrl)
+                  ? _buildThumbnailWithAspectRatio(
+                      post.thumbnailUrl ?? '',
+                      itemWidth,
+                      post,
+                      index,
+                    )
+                  : Container(
+                      width: itemWidth,
+                      height: 120,
+                      color: Colors.grey[800],
+                      child: Stack(
                         children: [
                           Center(
                             child: Icon(
@@ -790,18 +1027,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                         ],
                       ),
-              ),
+                    ),
             ),
             const SizedBox(height: 8),
-            Text(
-              _getSafeTitle(post.title),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            SizedBox(
+              height: 20, // タイトル部分の高さを固定
+              child: Text(
+                _getTruncatedTitle(_getSafeTitle(post.title)),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -882,43 +1122,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _historyPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _historyPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _historyPosts[index];
-                              return _buildHistoryThumbnail(
-                                  context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_historyPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_historyPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildHistoryThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _historyPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _historyPosts[index];
+                        return _buildHistoryThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -929,7 +1142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -960,6 +1173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Container(
         width: itemWidth,
+        height: 148, // サムネイル120px + マージン8px + タイトル20px = 148px
         margin: EdgeInsets.only(
             right: index < _historyPosts.length - 1 ? itemMargin : 0),
         child: Column(
@@ -967,23 +1181,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 120,
-                color: Colors.grey[800],
-                child: _hasValidThumbnail(post.thumbnailUrl)
-                    ? RobustNetworkImage(
-                        imageUrl: post.thumbnailUrl ?? '',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+              child: _hasValidThumbnail(post.thumbnailUrl)
+                  ? _buildThumbnailWithAspectRatio(
+                      post.thumbnailUrl ?? '',
+                      itemWidth,
+                      post,
+                      index,
+                    )
+                  : Container(
+                      width: itemWidth,
+                      height: 120,
+                      color: Colors.grey[800],
+                      child: Stack(
                         children: [
                           Center(
                             child: Icon(
@@ -1028,18 +1237,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                         ],
                       ),
-              ),
+                    ),
             ),
             const SizedBox(height: 8),
-            Text(
-              _getSafeTitle(post.title),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            SizedBox(
+              height: 20, // タイトル部分の高さを固定
+              child: Text(
+                _getTruncatedTitle(_getSafeTitle(post.title)),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -1053,7 +1265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -1094,32 +1306,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 height: 120,
                 color: Colors.grey[800],
-                child: playlist.thumbnailpath != null &&
-                        playlist.thumbnailpath!.isNotEmpty
-                    ? RobustNetworkImage(
-                        imageUrl:
-                            '${AppConfig.backendUrl}${playlist.thumbnailpath}',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+                child: FutureBuilder<String?>(
+                  future: _getFirstContentThumbnail(playlist.playlistid),
+                  builder: (context, snapshot) {
+                    // 最初のコンテンツのサムネイルURLを取得
+                    final thumbnailUrl = snapshot.data;
+
+                    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+                      return Stack(
                         children: [
+                          // サムネイル画像（中央に配置）
+                          Positioned.fill(
+                            child: RobustNetworkImage(
+                              imageUrl: thumbnailUrl,
+                              fit: BoxFit.cover,
+                              maxWidth: 320,
+                              maxHeight: 180,
+                              placeholder: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFFFF6B35),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // 中央に再生リストアイコンを重ねて表示
                           const Center(
                             child: Icon(
                               Icons.playlist_play,
                               color: Colors.white,
-                              size: 32,
+                              size: 40,
                             ),
                           ),
                         ],
-                      ),
+                      );
+                    } else {
+                      // サムネイルがない場合はデフォルトアイコンを表示
+                      return const Center(
+                        child: Icon(
+                          Icons.playlist_play,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1212,43 +1444,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _playlists.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _playlists.length,
-                            itemBuilder: (context, index) {
-                              final playlist = _playlists[index];
-                              return _buildPlaylistThumbnail(
-                                  context, playlist, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_playlists.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_playlists, 5);
-                              final pagePlaylists = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Playlist>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePlaylists.length,
-                                    (index) {
-                                      final playlist = pagePlaylists[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPlaylistThumbnail(
-                                          context, playlist, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, index) {
+                        final playlist = _playlists[index];
+                        return _buildPlaylistThumbnail(
+                            context, playlist, index);
+                      },
+                    ),
                   ),
       ],
     );
