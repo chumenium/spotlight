@@ -788,6 +788,137 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// 再読み込みボタンから呼び出される処理
+  Future<void> _reloadMoreContent() async {
+    if (_isLoadingMore) return;
+
+    _isLoadingMore = true;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🔄 再読み込み開始: 最後の投稿IDから次のコンテンツを取得');
+      }
+
+      // 最後の投稿のIDから次のIDを計算
+      final lastPost = _posts.last;
+      final lastId = int.tryParse(lastPost.id) ?? 0;
+      final nextStartId = lastId + 1;
+
+      // 次のコンテンツを取得（3件）
+      final morePosts = await PostService.fetchPosts(
+        limit: _preloadAheadCount,
+        startId: nextStartId,
+      );
+
+      if (!_isDisposed && mounted) {
+        if (morePosts.isEmpty) {
+          // 追加のコンテンツがない場合
+          if (kDebugMode) {
+            debugPrint('⚠️ 追加のコンテンツがありません');
+          }
+          _showAllContentViewedDialog();
+        } else {
+          // 重複を防ぐために、既に取得済みの投稿を除外
+          final newPosts = morePosts
+              .where((post) => !_fetchedContentIds.contains(post.id))
+              .toList();
+
+          if (newPosts.isEmpty) {
+            // 全て重複していた場合
+            if (kDebugMode) {
+              debugPrint('⚠️ 全て重複していたため、次のIDから再試行');
+            }
+            // 次のIDから再試行
+            final nextNextStartId = nextStartId + _preloadAheadCount;
+            final retryPosts = await PostService.fetchPosts(
+              limit: _preloadAheadCount,
+              startId: nextNextStartId,
+            );
+
+            if (retryPosts.isEmpty) {
+              _showAllContentViewedDialog();
+            } else {
+              final retryNewPosts = retryPosts
+                  .where((post) => !_fetchedContentIds.contains(post.id))
+                  .toList();
+
+              if (retryNewPosts.isEmpty) {
+                _showAllContentViewedDialog();
+              } else {
+                setState(() {
+                  _posts.addAll(retryNewPosts);
+                  _noMoreContent = false;
+                  _hasMorePosts = retryNewPosts.length >= _preloadAheadCount;
+
+                  // 取得済みコンテンツIDを記録
+                  for (final post in retryNewPosts) {
+                    _fetchedContentIds.add(post.id);
+                  }
+                });
+
+                if (kDebugMode) {
+                  debugPrint('✅ 再読み込み完了: ${retryNewPosts.length}件追加');
+                }
+              }
+            }
+          } else {
+            // 新しいコンテンツがある場合
+            setState(() {
+              _posts.addAll(newPosts);
+              _noMoreContent = false;
+              _hasMorePosts = newPosts.length >= _preloadAheadCount;
+
+              // 取得済みコンテンツIDを記録
+              for (final post in newPosts) {
+                _fetchedContentIds.add(post.id);
+              }
+            });
+
+            if (kDebugMode) {
+              debugPrint('✅ 再読み込み完了: ${newPosts.length}件追加');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 再読み込みエラー: $e');
+      }
+      if (!_isDisposed && mounted) {
+        _showAllContentViewedDialog();
+      }
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  /// すべてのコンテンツを視聴済みのダイアログを表示
+  void _showAllContentViewedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'すべてのコンテンツを視聴済み',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'これ以上表示できるコンテンツはありません。',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 最新のコンテンツをチェックして先頭に追加
   Future<void> _checkForNewContent() async {
     // 既にチェック中の場合はスキップ
@@ -1379,8 +1510,15 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     )
                   : GestureDetector(
-                      onPanUpdate: _handlePanUpdate,
-                      onPanEnd: _handlePanEnd,
+                      // 「表示できるコンテンツはありません」画面では右スワイプを無効化
+                      onPanUpdate:
+                          (_currentIndex >= _posts.length && _noMoreContent)
+                              ? null
+                              : _handlePanUpdate,
+                      onPanEnd:
+                          (_currentIndex >= _posts.length && _noMoreContent)
+                              ? null
+                              : _handlePanEnd,
                       child: Stack(
                         children: [
                           // メイン投稿表示（不透明な背景で完全に覆う）
@@ -1440,22 +1578,58 @@ class _HomeScreenState extends State<HomeScreen>
                                           // これ以上コンテンツがない場合はメッセージを表示
                                           return Container(
                                             color: Colors.black,
-                                            child: const Center(
+                                            child: Center(
                                               child: Column(
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.center,
                                                 children: [
-                                                  Icon(
+                                                  const Icon(
                                                     Icons.inbox_outlined,
                                                     color: Colors.white38,
                                                     size: 64,
                                                   ),
-                                                  SizedBox(height: 16),
-                                                  Text(
+                                                  const SizedBox(height: 16),
+                                                  const Text(
                                                     '表示できるコンテンツはありません',
                                                     style: TextStyle(
                                                       color: Colors.white70,
                                                       fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 32),
+                                                  ElevatedButton.icon(
+                                                    onPressed: () =>
+                                                        _reloadMoreContent(),
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          const Color(
+                                                              0xFFFF6B35),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 24,
+                                                        vertical: 12,
+                                                      ),
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                      ),
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.refresh,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    ),
+                                                    label: const Text(
+                                                      '再読み込み',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
                                                     ),
                                                   ),
                                                 ],

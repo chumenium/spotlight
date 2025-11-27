@@ -497,6 +497,114 @@ class PostService {
     return null;
   }
 
+  /// 投稿を削除
+  ///
+  /// データベースから指定された投稿を完全に削除
+  /// - contentID: 削除する投稿のID
+  static Future<bool> deletePost(String contentId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿削除] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/delete';
+      final contentIdInt = int.tryParse(contentId);
+
+      if (contentIdInt == null || contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] contentIDの解析に失敗しました');
+          debugPrint('   - contentId (元の値): $contentId');
+        }
+        return false;
+      }
+
+      final requestBody = {
+        'contentID': contentIdInt,
+      };
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿削除] ========== API呼び出し ==========');
+        debugPrint('📝 [投稿削除] URL: $url');
+        debugPrint('📝 [投稿削除] リクエストボディ: ${jsonEncode(requestBody)}');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿削除] HTTPステータスコード: ${response.statusCode}');
+        debugPrint('📝 [投稿削除] レスポンスボディ: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📝 [投稿削除] レスポンス（パース後）: ${responseData.toString()}');
+          }
+
+          if (responseData['status'] == 'success') {
+            if (kDebugMode) {
+              debugPrint('✅ [投稿削除] 成功: データベースから削除されました');
+            }
+            return true;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [投稿削除] APIレスポンスエラー');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
+            }
+            return false;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [投稿削除] レスポンスのパースエラー: $e');
+          }
+          return false;
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] エンドポイントが見つかりません (404)');
+          debugPrint('   - URL: $url');
+          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] HTTPエラー: ${response.statusCode}');
+          debugPrint('📝 [投稿削除] レスポンス: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [投稿削除] 例外: $e');
+        debugPrint('📝 [投稿削除] スタックトレース: $stackTrace');
+
+        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
+        if (e.toString().contains('ClientException') ||
+            e.toString().contains('Failed to fetch')) {
+          debugPrint('⚠️ [投稿削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
+          debugPrint(
+              '   - バックエンドに /api/content/delete エンドポイントが実装されているか確認してください');
+        }
+      }
+    }
+
+    return false;
+  }
+
   /// 視聴履歴を取得
   ///
   /// テーブル構造（postgreDBSQL.txt参照）:
