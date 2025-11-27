@@ -350,7 +350,24 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               title: '再生',
               onTap: () {
                 Navigator.pop(context);
-                // TODO: 投稿を再生（HomeScreenに遷移）
+                // 投稿を再生（HomeScreenに遷移）
+                try {
+                  final postId = post.id.toString();
+                  if (postId.isNotEmpty) {
+                    final navigationProvider =
+                        Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.navigateToHome(postId: postId);
+
+                    if (kDebugMode) {
+                      debugPrint(
+                          '📱 [自分の投稿] 再生メニューから: ID=$postId, タイトル=${post.title}');
+                    }
+                  }
+                } catch (e) {
+                  if (kDebugMode) {
+                    debugPrint('⚠️ [自分の投稿] 再生メニューエラー: $e');
+                  }
+                }
               },
             ),
             if (post.isSpotlighted)

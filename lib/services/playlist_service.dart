@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -673,7 +674,9 @@ class PlaylistService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/content/removecontentplaylist';
+      // API仕様書（API_ENDPOINTS.md 441-451行目）に基づく
+      // POST /api/delete/playlistdetail
+      final url = '${AppConfig.apiBaseUrl}/delete/playlistdetail';
       final contentIdInt = int.tryParse(contentId);
 
       if (contentIdInt == null || contentIdInt == 0) {
@@ -691,24 +694,40 @@ class PlaylistService {
         return false;
       }
 
+      // バックエンドの実装（routes/delete.py 53-54行目）を確認:
+      // playlistid = data.get("playlistID")
+      // contentid = data.get("contentID")
+      // バックエンドは "playlistID" と "contentID"（大文字）を期待している
       final requestBody = {
-        'playlistID': playlistId,
-        'contentID': contentIdInt,
+        'playlistID': playlistId, // バックエンドは "playlistID"（大文字）を期待
+        'contentID': contentIdInt, // バックエンドは "contentID"（大文字）を期待
       };
 
       if (kDebugMode) {
         debugPrint('📋 [プレイリスト削除] ========== API呼び出し ==========');
         debugPrint('📋 [プレイリスト削除] URL: $url');
         debugPrint('📋 [プレイリスト削除] リクエストボディ: ${jsonEncode(requestBody)}');
+        debugPrint('📋 [プレイリスト削除] バックエンドは "playlistID" と "contentID"（大文字）を期待');
       }
 
-      final response = await http.post(
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
         Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
         body: jsonEncode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [プレイリスト削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
+          }
+          throw TimeoutException('プレイリスト削除のリクエストがタイムアウトしました');
+        },
       );
 
       if (kDebugMode) {
@@ -767,7 +786,9 @@ class PlaylistService {
             e.toString().contains('Failed to fetch')) {
           debugPrint('⚠️ [プレイリスト削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
           debugPrint(
-              '   - バックエンドに /api/content/removecontentplaylist エンドポイントが実装されているか確認してください');
+              '   - バックエンドに /api/delete/playlistdetail エンドポイントが実装されているか確認してください');
+          debugPrint('   - CORS設定が正しく行われているか確認してください');
+          debugPrint('   - ネットワーク接続を確認してください');
         }
       }
     }

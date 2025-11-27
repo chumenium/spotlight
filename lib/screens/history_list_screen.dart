@@ -430,10 +430,77 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
               title: '履歴から削除',
               onTap: () {
                 Navigator.pop(context);
+                _showDeleteHistoryDialog(context, post, index);
               },
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteHistoryDialog(BuildContext context, Post post, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '履歴から削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'この視聴履歴を削除しますか？',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // ローディング表示
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('削除中...'),
+                    duration: Duration(seconds: 1),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+
+              final success =
+                  await PostService.deletePlayHistory(post.id.toString());
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('視聴履歴を削除しました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _fetchHistory();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('視聴履歴の削除に失敗しました。エンドポイントが実装されていない可能性があります。'),
+                    duration: Duration(seconds: 4),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
       ),
     );
   }
