@@ -308,7 +308,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _formatRelativeTime(post.createdAt),
+                    _formatRelativeTime(post.createdAt.toLocal()),
                     style: TextStyle(
                       color: Colors.grey[400],
                       fontSize: 12,

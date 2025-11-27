@@ -372,7 +372,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _formatRelativeTime(post.createdAt),
+                        _formatRelativeTime(post.createdAt.toLocal()),
                         style: TextStyle(
                           color: Colors.grey[400],
                           fontSize: 12,
