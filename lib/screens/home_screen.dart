@@ -2749,23 +2749,26 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _handleCommentButton(Post post) {
     final commentController = TextEditingController();
+    final replyController = TextEditingController();
     bool isLoading = true;
     bool hasRequestedComments = false;
     bool isSheetOpen = true;
     List<Comment> comments = [];
+    int? replyingToCommentId; // 返信対象のコメントID
 
-    Future<void> refreshComments(StateSetter setModalState) async {
+    Future<List<Comment>> refreshComments(StateSetter setModalState) async {
       setModalState(() {
         isLoading = true;
       });
       final fetchedComments = await CommentService.getComments(post.id);
       if (!mounted || !isSheetOpen) {
-        return;
+        return comments;
       }
       setModalState(() {
         comments = fetchedComments;
         isLoading = false;
       });
+      return fetchedComments;
     }
 
     showModalBottomSheet(
@@ -2845,11 +2848,125 @@ class _HomeScreenState extends State<HomeScreen>
                                       itemCount: comments.length,
                                       itemBuilder: (context, index) {
                                         return _buildCommentItem(
-                                            comments[index]);
+                                            comments[index],
+                                            replyingToCommentId: replyingToCommentId,
+                                            onReplyPressed: (commentId) {
+                                              setModalState(() {
+                                                if (replyingToCommentId == commentId) {
+                                                  replyingToCommentId = null;
+                                                  replyController.clear();
+                                                } else {
+                                                  replyingToCommentId = commentId;
+                                                  replyController.clear();
+                                                }
+                                              });
+                                            },
+                                          );
                                       },
                                     ),
                         ),
 
+                        // 返信入力フィールド（返信対象がある場合のみ表示）
+                        if (replyingToCommentId != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: replyController,
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      hintText: '返信を入力...',
+                                      hintStyle: TextStyle(color: Colors.grey[400]),
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () {
+                                    setModalState(() {
+                                      replyingToCommentId = null;
+                                      replyController.clear();
+                                    });
+                                  },
+                                  icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                IconButton(
+                                  onPressed: () async {
+                                    final replyText = replyController.text.trim();
+                                    if (replyText.isEmpty) return;
+
+                                    setModalState(() {
+                                      isLoading = true;
+                                    });
+
+                                    // 返信送信
+                                    final success = await CommentService.addComment(
+                                      post.id,
+                                      replyText,
+                                      parentCommentId: replyingToCommentId,
+                                    );
+
+                                    if (success && mounted) {
+                                      replyController.clear();
+                                      setModalState(() {
+                                        replyingToCommentId = null;
+                                      });
+                                      // コメント一覧を再取得
+                                      final updatedComments = await refreshComments(setModalState);
+                                      final updatedTotal = _countAllComments(updatedComments);
+
+                                      // 投稿のコメント数を更新
+                                      setState(() {
+                                        _posts[_currentIndex] = Post(
+                                          id: _posts[_currentIndex].id,
+                                          userId: _posts[_currentIndex].userId,
+                                          username: _posts[_currentIndex].username,
+                                          userIconPath: _posts[_currentIndex].userIconPath,
+                                          userIconUrl: _posts[_currentIndex].userIconUrl,
+                                          title: _posts[_currentIndex].title,
+                                          content: _posts[_currentIndex].content,
+                                          contentPath: _posts[_currentIndex].contentPath,
+                                          type: _posts[_currentIndex].type,
+                                          mediaUrl: _posts[_currentIndex].mediaUrl,
+                                          thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
+                                          likes: _posts[_currentIndex].likes,
+                                          playNum: _posts[_currentIndex].playNum,
+                                          link: _posts[_currentIndex].link,
+                                          comments: updatedTotal,
+                                          shares: _posts[_currentIndex].shares,
+                                          isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                                          isText: _posts[_currentIndex].isText,
+                                          nextContentId: _posts[_currentIndex].nextContentId,
+                                          createdAt: _posts[_currentIndex].createdAt,
+                                        );
+                                      });
+                                    } else {
+                                      setModalState(() {
+                                        isLoading = false;
+                                      });
+                                    }
+                                  },
+                                  icon: const Icon(Icons.send, color: Color(0xFFFF6B35), size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
                         // コメント入力
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -2904,9 +3021,9 @@ class _HomeScreenState extends State<HomeScreen>
                                   if (success && mounted) {
                                     commentController.clear();
                                     // コメント一覧を再取得
-                                    await refreshComments(setModalState);
+                                    final updatedComments = await refreshComments(setModalState);
                                     final updatedTotal =
-                                        _countAllComments(comments);
+                                        _countAllComments(updatedComments);
 
                                     // 投稿のコメント数を更新
                                     setState(() {
@@ -2966,10 +3083,15 @@ class _HomeScreenState extends State<HomeScreen>
     ).whenComplete(() {
       isSheetOpen = false;
       commentController.dispose();
+      replyController.dispose();
     });
   }
 
-  Widget _buildCommentItem(Comment comment) {
+  Widget _buildCommentItem(
+    Comment comment, {
+    int? replyingToCommentId,
+    required Function(int) onReplyPressed,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -3026,19 +3148,18 @@ class _HomeScreenState extends State<HomeScreen>
                     Row(
                       children: [
                         IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.thumb_up_outlined,
-                              color: Colors.grey, size: 16),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 16),
-                        IconButton(
                           onPressed: () {
-                            // 返信機能（将来実装）
+                            onReplyPressed(comment.commentID);
                           },
-                          icon: const Icon(Icons.reply,
-                              color: Colors.grey, size: 16),
+                          icon: Icon(
+                            replyingToCommentId == comment.commentID
+                                ? Icons.close
+                                : Icons.reply,
+                            color: replyingToCommentId == comment.commentID
+                                ? Colors.orange
+                                : Colors.grey,
+                            size: 16,
+                          ),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -3056,7 +3177,11 @@ class _HomeScreenState extends State<HomeScreen>
               padding: const EdgeInsets.only(left: 42),
               child: Column(
                 children: comment.replies
-                    .map((reply) => _buildCommentItem(reply))
+                    .map((reply) => _buildCommentItem(
+                          reply,
+                          replyingToCommentId: replyingToCommentId,
+                          onReplyPressed: onReplyPressed,
+                        ))
                     .toList(),
               ),
             ),
