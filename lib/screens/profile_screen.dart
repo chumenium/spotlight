@@ -53,6 +53,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int? _lastNavigationIndex;
   // 画像のアスペクト比をキャッシュ（URL -> アスペクト比）
   final Map<String, double> _imageAspectRatios = {};
+  // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
+  final Map<int, String?> _playlistFirstContentThumbnails = {};
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -604,42 +606,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _myPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _myPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _myPosts[index];
-                              return _buildPostThumbnail(context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_myPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_myPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPostThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _myPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _myPosts[index];
+                        return _buildPostThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -694,6 +670,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return title;
     }
     return '${title.substring(0, 20)}...';
+  }
+
+  /// 再生リストの最初のコンテンツのサムネイルURLを取得
+  Future<String?> _getFirstContentThumbnail(int playlistId) async {
+    // キャッシュを確認
+    if (_playlistFirstContentThumbnails.containsKey(playlistId)) {
+      return _playlistFirstContentThumbnails[playlistId];
+    }
+
+    try {
+      // 再生リストのコンテンツを取得
+      final contentsJson = await PlaylistService.getPlaylistDetail(playlistId);
+
+      if (contentsJson.isEmpty) {
+        // コンテンツがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // 最初のコンテンツのサムネイルURLを取得
+      final firstContent = contentsJson[0];
+      final thumbnailpath = firstContent['thumbnailpath']?.toString();
+
+      if (thumbnailpath == null || thumbnailpath.isEmpty) {
+        // サムネイルがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // サムネイルURLを構築
+      String thumbnailUrl;
+      if (thumbnailpath.startsWith('http://') ||
+          thumbnailpath.startsWith('https://')) {
+        // 既に完全なURLの場合はそのまま使用
+        thumbnailUrl = thumbnailpath;
+      } else {
+        // 相対パスの場合は、backendUrlと結合
+        final normalizedPath =
+            thumbnailpath.startsWith('/') ? thumbnailpath : '/$thumbnailpath';
+        thumbnailUrl = '${AppConfig.backendUrl}$normalizedPath';
+      }
+
+      // キャッシュに保存
+      _playlistFirstContentThumbnails[playlistId] = thumbnailUrl;
+      return thumbnailUrl;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 再生リストの最初のコンテンツ取得エラー: $e');
+      }
+      // エラーの場合はnullをキャッシュ
+      _playlistFirstContentThumbnails[playlistId] = null;
+      return null;
+    }
   }
 
   /// 固定サイズのサムネイルを構築（すべて同じサイズで表示）
@@ -1093,43 +1122,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _historyPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _historyPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _historyPosts[index];
-                              return _buildHistoryThumbnail(
-                                  context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_historyPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_historyPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildHistoryThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _historyPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _historyPosts[index];
+                        return _buildHistoryThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -1304,32 +1306,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 height: 120,
                 color: Colors.grey[800],
-                child: playlist.thumbnailpath != null &&
-                        playlist.thumbnailpath!.isNotEmpty
-                    ? RobustNetworkImage(
-                        imageUrl:
-                            '${AppConfig.backendUrl}${playlist.thumbnailpath}',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+                child: FutureBuilder<String?>(
+                  future: _getFirstContentThumbnail(playlist.playlistid),
+                  builder: (context, snapshot) {
+                    // 最初のコンテンツのサムネイルURLを取得
+                    final thumbnailUrl = snapshot.data;
+
+                    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+                      return Stack(
                         children: [
+                          // サムネイル画像（中央に配置）
+                          Positioned.fill(
+                            child: RobustNetworkImage(
+                              imageUrl: thumbnailUrl,
+                              fit: BoxFit.cover,
+                              maxWidth: 320,
+                              maxHeight: 180,
+                              placeholder: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFFFF6B35),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // 中央に再生リストアイコンを重ねて表示
                           const Center(
                             child: Icon(
                               Icons.playlist_play,
                               color: Colors.white,
-                              size: 32,
+                              size: 40,
                             ),
                           ),
                         ],
-                      ),
+                      );
+                    } else {
+                      // サムネイルがない場合はデフォルトアイコンを表示
+                      return const Center(
+                        child: Icon(
+                          Icons.playlist_play,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1422,43 +1444,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _playlists.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _playlists.length,
-                            itemBuilder: (context, index) {
-                              final playlist = _playlists[index];
-                              return _buildPlaylistThumbnail(
-                                  context, playlist, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_playlists.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_playlists, 5);
-                              final pagePlaylists = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Playlist>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePlaylists.length,
-                                    (index) {
-                                      final playlist = pagePlaylists[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPlaylistThumbnail(
-                                          context, playlist, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, index) {
+                        final playlist = _playlists[index];
+                        return _buildPlaylistThumbnail(
+                            context, playlist, index);
+                      },
+                    ),
                   ),
       ],
     );
