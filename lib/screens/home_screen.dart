@@ -2495,7 +2495,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                     Text(
-                      '${_getTimeAgo(post.createdAt)}前',
+                      '${_getTimeAgo(post.createdAt.toLocal())}前',
                       style: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 12,
@@ -2848,20 +2848,22 @@ class _HomeScreenState extends State<HomeScreen>
                                       itemCount: comments.length,
                                       itemBuilder: (context, index) {
                                         return _buildCommentItem(
-                                            comments[index],
-                                            replyingToCommentId: replyingToCommentId,
-                                            onReplyPressed: (commentId) {
-                                              setModalState(() {
-                                                if (replyingToCommentId == commentId) {
-                                                  replyingToCommentId = null;
-                                                  replyController.clear();
-                                                } else {
-                                                  replyingToCommentId = commentId;
-                                                  replyController.clear();
-                                                }
-                                              });
-                                            },
-                                          );
+                                          comments[index],
+                                          replyingToCommentId:
+                                              replyingToCommentId,
+                                          onReplyPressed: (commentId) {
+                                            setModalState(() {
+                                              if (replyingToCommentId ==
+                                                  commentId) {
+                                                replyingToCommentId = null;
+                                                replyController.clear();
+                                              } else {
+                                                replyingToCommentId = commentId;
+                                                replyController.clear();
+                                              }
+                                            });
+                                          },
+                                        );
                                       },
                                     ),
                         ),
@@ -2869,7 +2871,8 @@ class _HomeScreenState extends State<HomeScreen>
                         // 返信入力フィールド（返信対象がある場合のみ表示）
                         if (replyingToCommentId != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 10),
                             margin: const EdgeInsets.only(bottom: 10),
                             decoration: BoxDecoration(
                               color: Colors.grey[800],
@@ -2883,9 +2886,11 @@ class _HomeScreenState extends State<HomeScreen>
                                     style: const TextStyle(color: Colors.white),
                                     decoration: InputDecoration(
                                       hintText: '返信を入力...',
-                                      hintStyle: TextStyle(color: Colors.grey[400]),
+                                      hintStyle:
+                                          TextStyle(color: Colors.grey[400]),
                                       border: InputBorder.none,
-                                      contentPadding: const EdgeInsets.symmetric(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
                                         horizontal: 12,
                                         vertical: 8,
                                       ),
@@ -2900,13 +2905,15 @@ class _HomeScreenState extends State<HomeScreen>
                                       replyController.clear();
                                     });
                                   },
-                                  icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                                  icon: const Icon(Icons.close,
+                                      color: Colors.grey, size: 20),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
                                 IconButton(
                                   onPressed: () async {
-                                    final replyText = replyController.text.trim();
+                                    final replyText =
+                                        replyController.text.trim();
                                     if (replyText.isEmpty) return;
 
                                     setModalState(() {
@@ -2914,7 +2921,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     });
 
                                     // 返信送信
-                                    final success = await CommentService.addComment(
+                                    final success =
+                                        await CommentService.addComment(
                                       post.id,
                                       replyText,
                                       parentCommentId: replyingToCommentId,
@@ -2926,32 +2934,45 @@ class _HomeScreenState extends State<HomeScreen>
                                         replyingToCommentId = null;
                                       });
                                       // コメント一覧を再取得
-                                      final updatedComments = await refreshComments(setModalState);
-                                      final updatedTotal = _countAllComments(updatedComments);
+                                      final updatedComments =
+                                          await refreshComments(setModalState);
+                                      final updatedTotal =
+                                          _countAllComments(updatedComments);
 
                                       // 投稿のコメント数を更新
                                       setState(() {
                                         _posts[_currentIndex] = Post(
                                           id: _posts[_currentIndex].id,
                                           userId: _posts[_currentIndex].userId,
-                                          username: _posts[_currentIndex].username,
-                                          userIconPath: _posts[_currentIndex].userIconPath,
-                                          userIconUrl: _posts[_currentIndex].userIconUrl,
+                                          username:
+                                              _posts[_currentIndex].username,
+                                          userIconPath: _posts[_currentIndex]
+                                              .userIconPath,
+                                          userIconUrl:
+                                              _posts[_currentIndex].userIconUrl,
                                           title: _posts[_currentIndex].title,
-                                          content: _posts[_currentIndex].content,
-                                          contentPath: _posts[_currentIndex].contentPath,
+                                          content:
+                                              _posts[_currentIndex].content,
+                                          contentPath:
+                                              _posts[_currentIndex].contentPath,
                                           type: _posts[_currentIndex].type,
-                                          mediaUrl: _posts[_currentIndex].mediaUrl,
-                                          thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
+                                          mediaUrl:
+                                              _posts[_currentIndex].mediaUrl,
+                                          thumbnailUrl: _posts[_currentIndex]
+                                              .thumbnailUrl,
                                           likes: _posts[_currentIndex].likes,
-                                          playNum: _posts[_currentIndex].playNum,
+                                          playNum:
+                                              _posts[_currentIndex].playNum,
                                           link: _posts[_currentIndex].link,
                                           comments: updatedTotal,
                                           shares: _posts[_currentIndex].shares,
-                                          isSpotlighted: _posts[_currentIndex].isSpotlighted,
+                                          isSpotlighted: _posts[_currentIndex]
+                                              .isSpotlighted,
                                           isText: _posts[_currentIndex].isText,
-                                          nextContentId: _posts[_currentIndex].nextContentId,
-                                          createdAt: _posts[_currentIndex].createdAt,
+                                          nextContentId: _posts[_currentIndex]
+                                              .nextContentId,
+                                          createdAt:
+                                              _posts[_currentIndex].createdAt,
                                         );
                                       });
                                     } else {
@@ -2960,7 +2981,8 @@ class _HomeScreenState extends State<HomeScreen>
                                       });
                                     }
                                   },
-                                  icon: const Icon(Icons.send, color: Color(0xFFFF6B35), size: 20),
+                                  icon: const Icon(Icons.send,
+                                      color: Color(0xFFFF6B35), size: 20),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
@@ -3021,7 +3043,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   if (success && mounted) {
                                     commentController.clear();
                                     // コメント一覧を再取得
-                                    final updatedComments = await refreshComments(setModalState);
+                                    final updatedComments =
+                                        await refreshComments(setModalState);
                                     final updatedTotal =
                                         _countAllComments(updatedComments);
 
@@ -3193,7 +3216,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   String _formatCommentTime(String timestamp) {
     try {
-      final dateTime = DateTime.parse(timestamp);
+      final dateTime = DateTime.parse(timestamp).toLocal();
       final now = DateTime.now();
       final difference = now.difference(dateTime);
 
