@@ -228,12 +228,12 @@ class FcmService {
       if (kDebugMode) {
         debugPrint('🔔 FCMトークン更新開始:');
         debugPrint('   - トークン: ${token.substring(0, 50)}...');
-        debugPrint('   - エンドポイント: ${AppConfig.backendUrl}/auth/update_token');
+        debugPrint('   - エンドポイント: ${AppConfig.backendUrl}/api/auth/update_token');
       }
 
       // バックエンドサーバーにFCMトークンを送信
       final response = await http.post(
-        Uri.parse('${AppConfig.backendUrl}/auth/update_token'),
+        Uri.parse('${AppConfig.backendUrl}/api/auth/update_token'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwt',
