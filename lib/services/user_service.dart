@@ -155,9 +155,21 @@ class UserService {
             iconPath = responseData['iconimgpath'] as String?;
           }
 
-          // パスからファイル名のみを抽出（/icon/WoodyZone_icon.png -> WoodyZone_icon.png）
-          if (iconPath != null && iconPath.startsWith('/icon/')) {
-            iconPath = iconPath.substring('/icon/'.length);
+          // パスの形式を確認して処理
+          if (iconPath != null) {
+            // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+            if (iconPath.startsWith('http://') ||
+                iconPath.startsWith('https://')) {
+              if (kDebugMode) {
+                debugPrint('✅ アイコンパス取得（完全なURL）: $iconPath');
+              }
+              // 完全なURLの場合はそのまま返す（CloudFront URLなど）
+              return iconPath;
+            }
+            // 相対パス（/icon/で始まる）の場合はファイル名のみを抽出
+            else if (iconPath.startsWith('/icon/')) {
+              iconPath = iconPath.substring('/icon/'.length);
+            }
           }
 
           if (kDebugMode) {

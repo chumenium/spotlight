@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import 'dart:async';
@@ -1165,24 +1166,36 @@ class _HomeScreenState extends State<HomeScreen>
     if (userIconUrl != null && userIconUrl.isNotEmpty) {
       iconUrl = userIconUrl;
     } else if (userIconPath.isNotEmpty) {
-      iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
+      // userIconPathの形式を確認
+      // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+      if (userIconPath.startsWith('http://') ||
+          userIconPath.startsWith('https://')) {
+        iconUrl = userIconPath;
+      }
+      // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+      else if (userIconPath.startsWith('/icon/')) {
+        iconUrl = '${AppConfig.backendUrl}$userIconPath';
+      }
+      // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+      else if (userIconPath.startsWith('/')) {
+        iconUrl = '${AppConfig.backendUrl}$userIconPath';
+      }
+      // ファイル名のみの場合は/icon/を追加
+      else {
+        iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
+      }
     } else {
       iconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
     }
 
-    // 既にキャッシュキーが含まれている場合はそのまま返す
-    if (iconUrl.contains('?cache=')) {
-      return iconUrl;
-    }
-
-    // 1時間ごとに更新されるキャッシュキーを生成（同じ時間帯は同じキー）
+    // 1時間ごとのキャッシュキーを追加（YYYYMMDDHH形式）
     final now = DateTime.now();
     final cacheKey =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
 
     // URLにキャッシュキーを追加
     final separator = iconUrl.contains('?') ? '&' : '?';
-    return '$iconUrl${separator}cache=$cacheKey';
+    return '$iconUrl$separator cache=$cacheKey';
   }
 
   /// アイコン更新イベントを受信したときの処理
@@ -1195,66 +1208,198 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // 古いアイコンURLをキャッシュから削除
+    final oldUrls = <String>[];
     for (int i = 0; i < _posts.length; i++) {
       if (_posts[i].username == event.username &&
           _posts[i].userIconUrl != null) {
-        try {
-          final oldUrl = _posts[i].userIconUrl!;
-          // cached_network_imageのキャッシュをクリア
-          await CachedNetworkImage.evictFromCache(oldUrl);
-
-          if (kDebugMode) {
-            debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ キャッシュ削除エラー: $e');
-          }
+        final oldUrl = _posts[i].userIconUrl!;
+        if (!oldUrls.contains(oldUrl)) {
+          oldUrls.add(oldUrl);
         }
       }
     }
 
-    // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
-    setState(() {
-      _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;
+    // すべての古いアイコンURLのキャッシュをクリア
+    for (final oldUrl in oldUrls) {
+      try {
+        // キャッシュキー付きURLも含めてクリア
+        await CachedNetworkImage.evictFromCache(oldUrl);
 
-      // 投稿リスト内のアイコンURLを更新
-      for (int i = 0; i < _posts.length; i++) {
-        if (_posts[i].username == event.username) {
-          // アイコンが削除された場合はdefault_icon.jpgに変更
-          final newIconPath = event.iconPath ?? 'default_icon.jpg';
-          final baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
-          final newIconUrl = _getCachedIconUrl(baseIconUrl, newIconPath);
+        // キャッシュキーを除いたベースURLもクリア
+        final baseUrl = oldUrl.split('?').first.split('&').first;
+        await CachedNetworkImage.evictFromCache(baseUrl);
 
-          if (kDebugMode) {
-            debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
+        // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+        // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+        // ここでは古いURLのパターンをクリアするため、baseUrlとoldUrlをクリア
+        final urlPatterns = [
+          baseUrl,
+          oldUrl,
+          '$baseUrl?cache=${event.iconPath ?? ""}',
+          '$baseUrl&cache=${event.iconPath ?? ""}',
+        ];
+        for (final pattern in urlPatterns) {
+          try {
+            await CachedNetworkImage.evictFromCache(pattern);
+            final cacheManager = DefaultCacheManager();
+            await cacheManager.removeFile(pattern);
+          } catch (e) {
+            // エラーは無視
           }
+        }
 
-          _posts[i] = Post(
-            id: _posts[i].id,
-            userId: _posts[i].userId,
-            username: _posts[i].username,
-            userIconPath: newIconPath,
-            userIconUrl: newIconUrl,
-            title: _posts[i].title,
-            content: _posts[i].content,
-            contentPath: _posts[i].contentPath,
-            type: _posts[i].type,
-            mediaUrl: _posts[i].mediaUrl,
-            thumbnailUrl: _posts[i].thumbnailUrl,
-            likes: _posts[i].likes,
-            playNum: _posts[i].playNum,
-            link: _posts[i].link,
-            comments: _posts[i].comments,
-            shares: _posts[i].shares,
-            isSpotlighted: _posts[i].isSpotlighted,
-            isText: _posts[i].isText,
-            nextContentId: _posts[i].nextContentId,
-            createdAt: _posts[i].createdAt,
-          );
+        if (kDebugMode) {
+          debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ キャッシュ削除エラー: $e');
         }
       }
-    });
+    }
+
+    // 新しいアイコンURLを構築
+    // iconPathの形式を確認して処理
+    String newIconPath;
+    String? baseIconUrl;
+
+    if (event.iconPath == null || event.iconPath!.isEmpty) {
+      newIconPath = 'default_icon.jpg';
+      baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+    } else if (event.iconPath!.startsWith('http://') ||
+        event.iconPath!.startsWith('https://')) {
+      // 完全なURLの場合はそのまま使用（CloudFront URLなど）
+      baseIconUrl = event.iconPath!;
+      newIconPath = event.iconPath!;
+    } else if (event.iconPath!.startsWith('/icon/')) {
+      // /icon/で始まる場合は、そのまま使用
+      baseIconUrl = '${AppConfig.backendUrl}${event.iconPath}';
+      newIconPath = event.iconPath!;
+    } else if (event.iconPath!.startsWith('/')) {
+      // /で始まるが/icon/でない場合は、そのまま使用（バックエンドのパス形式）
+      baseIconUrl = '${AppConfig.backendUrl}${event.iconPath}';
+      newIconPath = event.iconPath!;
+    } else {
+      // ファイル名のみの場合は/icon/を追加
+      newIconPath = event.iconPath!;
+      baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+    }
+
+    // キャッシュキーを現在時刻に更新（強制的に再読み込み）
+    final now = DateTime.now();
+    final cacheKey =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final separator = baseIconUrl.contains('?') ? '&' : '?';
+    final newIconUrl = '$baseIconUrl${separator}cache=$cacheKey';
+
+    // 新しいアイコンURLのキャッシュもクリア（確実に再読み込み）
+    try {
+      // キャッシュキー付きURLをクリア
+      await CachedNetworkImage.evictFromCache(newIconUrl);
+
+      // キャッシュキーを除いたベースURLもクリア
+      final baseUrl = baseIconUrl.split('?').first.split('&').first;
+      await CachedNetworkImage.evictFromCache(baseUrl);
+
+      // DefaultCacheManagerでもクリア
+      try {
+        final cacheManager = DefaultCacheManager();
+        await cacheManager.removeFile(newIconUrl);
+        await cacheManager.removeFile(baseUrl);
+      } catch (e) {
+        // エラーは無視
+      }
+
+      // DefaultCacheManagerでもクリア
+      try {
+        final cacheManager = DefaultCacheManager();
+        await cacheManager.removeFile(newIconUrl);
+        await cacheManager.removeFile(baseUrl);
+      } catch (e) {
+        // エラーは無視
+      }
+
+      // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+      // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+      final urlPatterns = [
+        baseUrl,
+        newIconUrl,
+        '$baseUrl?cache=$newIconPath',
+        '$baseUrl&cache=$newIconPath',
+      ];
+      for (final pattern in urlPatterns) {
+        try {
+          await CachedNetworkImage.evictFromCache(pattern);
+          final cacheManager = DefaultCacheManager();
+          await cacheManager.removeFile(pattern);
+        } catch (e) {
+          // エラーは無視
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 新しいアイコンURLのキャッシュもクリア: $newIconUrl');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 新しいアイコンキャッシュクリアエラー: $e');
+      }
+    }
+
+    // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
+    if (mounted) {
+      setState(() {
+        // キャッシュキーを現在時刻のミリ秒に更新（確実に再構築）
+        _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;
+
+        // 投稿リスト内のアイコンURLを更新
+        for (int i = 0; i < _posts.length; i++) {
+          if (_posts[i].username == event.username) {
+            if (kDebugMode) {
+              debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
+            }
+
+            _posts[i] = Post(
+              id: _posts[i].id,
+              userId: _posts[i].userId,
+              username: _posts[i].username,
+              userIconPath: newIconPath,
+              userIconUrl: newIconUrl,
+              title: _posts[i].title,
+              content: _posts[i].content,
+              contentPath: _posts[i].contentPath,
+              type: _posts[i].type,
+              mediaUrl: _posts[i].mediaUrl,
+              thumbnailUrl: _posts[i].thumbnailUrl,
+              likes: _posts[i].likes,
+              playNum: _posts[i].playNum,
+              link: _posts[i].link,
+              comments: _posts[i].comments,
+              shares: _posts[i].shares,
+              isSpotlighted: _posts[i].isSpotlighted,
+              isText: _posts[i].isText,
+              nextContentId: _posts[i].nextContentId,
+              createdAt: _posts[i].createdAt,
+            );
+          }
+        }
+      });
+
+      // 少し待ってから再度再構築（サーバー側の処理完了を待つ）
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (mounted) {
+        setState(() {
+          // 再度キャッシュキーを更新（確実に再読み込み）
+          _iconCacheKeys[event.username] =
+              DateTime.now().millisecondsSinceEpoch;
+        });
+
+        if (kDebugMode) {
+          debugPrint('🔄 ホーム画面のアイコンを再構築しました（確認）');
+        }
+      }
+    }
   }
 
   /// リアルタイム更新を開始
@@ -2642,15 +2787,30 @@ class _HomeScreenState extends State<HomeScreen>
                   backgroundColor: SpotLightColors.getSpotlightColor(0),
                   child: ClipOval(
                     key: ValueKey(
-                        '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
-                    child: RobustNetworkImage(
+                        '${post.username}_${post.userIconPath}_${_iconCacheKeys[post.username] ?? DateTime.now().millisecondsSinceEpoch}'),
+                    child: CachedNetworkImage(
                       imageUrl: _getCachedIconUrl(
                           post.userIconUrl, post.userIconPath),
                       fit: BoxFit.cover,
-                      maxWidth: 80,
-                      maxHeight: 80,
-                      placeholder: Container(),
-                      errorWidget: Container(),
+                      memCacheWidth: 80,
+                      memCacheHeight: 80,
+                      httpHeaders: const {
+                        'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                        'User-Agent': 'Flutter-Spotlight/1.0',
+                      },
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (context, url) => Container(
+                        color: SpotLightColors.getSpotlightColor(0),
+                      ),
+                      errorWidget: (context, url, error) {
+                        if (kDebugMode) {
+                          debugPrint('⚠️ ホーム画面アイコン読み込みエラー: ${post.username}');
+                          debugPrint('  - userIconUrl: ${post.userIconUrl}');
+                          debugPrint('  - userIconPath: ${post.userIconPath}');
+                          debugPrint('  - error: $error');
+                        }
+                        return Container();
+                      },
                     ),
                   ),
                 ),
@@ -3407,7 +3567,8 @@ class _HomeScreenState extends State<HomeScreen>
                 backgroundColor: const Color(0xFFFF6B35),
                 backgroundImage: comment.userIconUrl != null
                     ? CachedNetworkImageProvider(
-                        _getCachedIconUrl(comment.userIconUrl, ''))
+                        _getCachedIconUrl(comment.userIconUrl, ''),
+                      )
                     : null,
                 child: comment.userIconUrl == null
                     ? const Icon(Icons.person, size: 16, color: Colors.white)
