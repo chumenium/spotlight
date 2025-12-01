@@ -23,6 +23,8 @@ import '../services/user_service.dart';
 import '../services/icon_update_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:image/image.dart' as img;
+import 'dart:typed_data';
 import '../models/badge.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
@@ -1927,6 +1929,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// 画像を正方形に切り取る（中央から）
+  ///
+  /// 画像が正方形でない場合、中央から正方形に切り取ります。
+  /// 既に正方形の場合はそのまま返します。
+  Future<Uint8List?> _cropImageToSquare(Uint8List imageBytes) async {
+    try {
+      // 画像をデコード
+      final originalImage = img.decodeImage(imageBytes);
+      if (originalImage == null) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 画像のデコードに失敗しました');
+        }
+        return null;
+      }
+
+      final width = originalImage.width;
+      final height = originalImage.height;
+
+      // 既に正方形の場合はそのまま返す
+      if (width == height) {
+        if (kDebugMode) {
+          debugPrint('✅ 画像は既に正方形です（${width}x${height}）');
+        }
+        return imageBytes;
+      }
+
+      // 正方形のサイズを決定（短い辺の長さを使用）
+      final size = width < height ? width : height;
+
+      // 切り取る位置を計算（中央から）
+      final x = (width - size) ~/ 2;
+      final y = (height - size) ~/ 2;
+
+      if (kDebugMode) {
+        debugPrint('✂️ 画像を正方形に切り取ります:');
+        debugPrint('  - 元のサイズ: ${width}x${height}');
+        debugPrint('  - 切り取りサイズ: ${size}x${size}');
+        debugPrint('  - 切り取り位置: x=$x, y=$y');
+      }
+
+      // 画像を切り取る
+      final croppedImage = img.copyCrop(
+        originalImage,
+        x: x,
+        y: y,
+        width: size,
+        height: size,
+      );
+
+      // PNG形式でエンコード（品質を保持）
+      final croppedBytes = Uint8List.fromList(img.encodePng(croppedImage));
+
+      if (kDebugMode) {
+        debugPrint('✅ 画像を正方形に切り取りました: ${size}x${size}');
+      }
+
+      return croppedBytes;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 画像の切り取りエラー: $e');
+      }
+      return null;
+    }
+  }
+
   /// 画像を選択してアップロード
   Future<void> _pickAndUploadIcon(
       BuildContext context, AuthProvider authProvider) async {
@@ -1946,7 +2013,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showSafeLoadingDialog();
 
       // XFileから直接Uint8Listを取得（Web対応）
-      final imageBytes = await pickedFile.readAsBytes();
+      final originalImageBytes = await pickedFile.readAsBytes();
+
+      // 画像を正方形に切り取る
+      final imageBytes = await _cropImageToSquare(originalImageBytes);
+
+      if (imageBytes == null) {
+        _closeSafeLoadingDialog();
+        if (mounted) {
+          _showSafeSnackBar('画像の処理に失敗しました');
+        }
+        return;
+      }
+
       final user = authProvider.currentUser;
       final username = user?.backendUsername;
 
