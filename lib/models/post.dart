@@ -275,7 +275,10 @@ class Post {
       likes: spotlightnum,
       playNum: playnum,
       link: json['link'] as String?,
-      comments: json['comments'] as int? ?? 0,
+      comments: (json['comments'] ??
+          json['commentnum'] ??
+          json['comment_count'] ??
+          0) as int,
       shares: json['shares'] as int? ?? 0,
       isSpotlighted: spotlightflag,
       isText: isTextFlag,
@@ -287,10 +290,13 @@ class Post {
         }
         // バックエンドから来るデータはUTCとして扱う
         // タイムゾーン情報がない場合は、'Z'を追加してUTCとして明示的にパース
-        final hasTimezone = timestampStr.endsWith('Z') || 
-            timestampStr.contains('+') || 
-            (timestampStr.length > 10 && timestampStr[10] == '-' && timestampStr.contains('T'));
-        final normalizedTimestamp = hasTimezone ? timestampStr : '${timestampStr}Z';
+        final hasTimezone = timestampStr.endsWith('Z') ||
+            timestampStr.contains('+') ||
+            (timestampStr.length > 10 &&
+                timestampStr[10] == '-' &&
+                timestampStr.contains('T'));
+        final normalizedTimestamp =
+            hasTimezone ? timestampStr : '${timestampStr}Z';
         final parsed = DateTime.tryParse(normalizedTimestamp);
         // UTCとして解釈されたDateTimeを返す（表示時に.toLocal()でローカルタイムに変換）
         return parsed ?? DateTime.now();

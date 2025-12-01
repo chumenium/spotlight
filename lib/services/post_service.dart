@@ -152,6 +152,9 @@ class PostService {
               debugPrint('  title: ${data['title']}');
               debugPrint('  username: ${data['username']}');
               debugPrint('  iconimgpath: ${data['iconimgpath']}');
+              debugPrint('  comments: ${data['comments']}');
+              debugPrint('  commentnum: ${data['commentnum']}');
+              debugPrint('  comment_count: ${data['comment_count']}');
             }
 
             // コンテンツIDを追加
