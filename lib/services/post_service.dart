@@ -497,6 +497,130 @@ class PostService {
     return null;
   }
 
+  /// 投稿を削除
+  ///
+  /// データベースから指定された投稿を完全に削除
+  /// - contentID: 削除する投稿のID
+  static Future<bool> deletePost(String contentId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿削除] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      // API仕様書（API_ENDPOINTS.md 498-507行目）に基づく
+      // POST /api/delete/content
+      final url = '${AppConfig.apiBaseUrl}/delete/content';
+      final contentIdInt = int.tryParse(contentId);
+
+      if (contentIdInt == null || contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] contentIDの解析に失敗しました');
+          debugPrint('   - contentId (元の値): $contentId');
+        }
+        return false;
+      }
+
+      // API仕様書に基づき、キー名はcontentID（大文字のID）
+      final requestBody = {
+        'contentID': contentIdInt,
+      };
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿削除] ========== API呼び出し ==========');
+        debugPrint('📝 [投稿削除] URL: $url');
+        debugPrint('📝 [投稿削除] リクエストボディ: ${jsonEncode(requestBody)}');
+      }
+
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [投稿削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
+          }
+          throw TimeoutException('投稿削除のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿削除] HTTPステータスコード: ${response.statusCode}');
+        debugPrint('📝 [投稿削除] レスポンスボディ: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📝 [投稿削除] レスポンス（パース後）: ${responseData.toString()}');
+          }
+
+          if (responseData['status'] == 'success') {
+            if (kDebugMode) {
+              debugPrint('✅ [投稿削除] 成功: データベースから削除されました');
+            }
+            return true;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [投稿削除] APIレスポンスエラー');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
+            }
+            return false;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [投稿削除] レスポンスのパースエラー: $e');
+          }
+          return false;
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] エンドポイントが見つかりません (404)');
+          debugPrint('   - URL: $url');
+          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [投稿削除] HTTPエラー: ${response.statusCode}');
+          debugPrint('📝 [投稿削除] レスポンス: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [投稿削除] 例外: $e');
+        debugPrint('📝 [投稿削除] スタックトレース: $stackTrace');
+
+        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
+        if (e.toString().contains('ClientException') ||
+            e.toString().contains('Failed to fetch')) {
+          debugPrint('⚠️ [投稿削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
+          debugPrint(
+              '   - バックエンドに /api/delete/content エンドポイントが実装されているか確認してください');
+          debugPrint('   - CORS設定が正しく行われているか確認してください');
+          debugPrint('   - ネットワーク接続を確認してください');
+        }
+      }
+    }
+
+    return false;
+  }
+
   /// 視聴履歴を取得
   ///
   /// テーブル構造（postgreDBSQL.txt参照）:
@@ -971,6 +1095,153 @@ class PostService {
     }
 
     return [];
+  }
+
+  /// 視聴履歴を削除
+  ///
+  /// データベースから指定された視聴履歴を削除
+  /// - contentID: 削除する視聴履歴のコンテンツID
+  /// 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていない可能性があります。
+  /// バックエンド側でcontentIDからplayIDを取得する実装が必要な場合があります。
+  static Future<bool> deletePlayHistory(String contentId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [視聴履歴削除] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      // API仕様書（API_ENDPOINTS.md 430-439行目）に基づく
+      // POST /api/delete/playhistory
+      // 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていないため、
+      // contentIDで削除できると仮定しています。バックエンド側で対応が必要な場合があります。
+      final url = '${AppConfig.apiBaseUrl}/delete/playhistory';
+      final contentIdInt = int.tryParse(contentId);
+
+      if (contentIdInt == null || contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [視聴履歴削除] contentIDの解析に失敗しました');
+          debugPrint('   - contentId (元の値): $contentId');
+        }
+        return false;
+      }
+
+      // バックエンドの実装（routes/delete.py 28行目）を確認:
+      // playid = data.get("playID")
+      // バックエンドは "playID" を期待している
+      // しかし、getPlayHistory()のレスポンスにplayIDが含まれていないため、
+      // バックエンド側でcontentIDとuserIDから最新のplayIDを取得して削除する必要があります
+      // 現時点では、バックエンドがcontentIDを受け取ってplayIDを取得する実装になっていないため、
+      // この機能は動作しません
+      //
+      // 代替案: contentIDを送信して、バックエンド側で対応してもらう必要がありますが、
+      // バックエンドは編集しないため、この機能は動作しません
+      //
+      // 注意: バックエンドを編集できないため、視聴履歴削除機能は現時点では動作しません
+      // バックエンド側でcontentIDからplayIDを取得する実装が必要です
+      final requestBody = {
+        'playID': null, // playIDが取得できないため、nullを送信（バックエンド側でエラーになる）
+        'contentID': contentIdInt, // バックエンド側でcontentIDからplayIDを取得して削除する必要がある
+      };
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴削除] ========== API呼び出し ==========');
+        debugPrint('📝 [視聴履歴削除] URL: $url');
+        debugPrint('📝 [視聴履歴削除] リクエストボディ: ${jsonEncode(requestBody)}');
+        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: getPlayHistory()のレスポンスにplayIDが含まれていません');
+        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンドはplayIDを期待していますが、contentIDを送信します');
+        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンド側でcontentIDからplayIDを取得する実装が必要です');
+        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンドを編集できないため、この機能は動作しません');
+      }
+
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [視聴履歴削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
+          }
+          throw TimeoutException('視聴履歴削除のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('📝 [視聴履歴削除] HTTPステータスコード: ${response.statusCode}');
+        debugPrint('📝 [視聴履歴削除] レスポンスボディ: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📝 [視聴履歴削除] レスポンス（パース後）: ${responseData.toString()}');
+          }
+
+          if (responseData['status'] == 'success') {
+            if (kDebugMode) {
+              debugPrint('✅ [視聴履歴削除] 成功: データベースから削除されました');
+            }
+            return true;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [視聴履歴削除] APIレスポンスエラー');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
+            }
+            return false;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [視聴履歴削除] レスポンスのパースエラー: $e');
+          }
+          return false;
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ [視聴履歴削除] エンドポイントが見つかりません (404)');
+          debugPrint('   - URL: $url');
+          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [視聴履歴削除] HTTPエラー: ${response.statusCode}');
+          debugPrint('📝 [視聴履歴削除] レスポンス: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [視聴履歴削除] 例外: $e');
+        debugPrint('📝 [視聴履歴削除] スタックトレース: $stackTrace');
+
+        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
+        if (e.toString().contains('ClientException') ||
+            e.toString().contains('Failed to fetch')) {
+          debugPrint('⚠️ [視聴履歴削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
+          debugPrint(
+              '   - バックエンドに /api/delete/playhistory エンドポイントが実装されているか確認してください');
+          debugPrint('   - CORS設定が正しく行われているか確認してください');
+          debugPrint('   - ネットワーク接続を確認してください');
+          debugPrint(
+              '   - 注意: バックエンドはplayIDを期待していますが、現在のAPIレスポンスにplayIDが含まれていません');
+        }
+      }
+    }
+
+    return false;
   }
 
   /// 投稿を作成

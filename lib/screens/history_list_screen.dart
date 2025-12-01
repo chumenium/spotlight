@@ -372,7 +372,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _formatRelativeTime(post.createdAt),
+                        _formatRelativeTime(post.createdAt.toLocal()),
                         style: TextStyle(
                           color: Colors.grey[400],
                           fontSize: 12,
@@ -421,13 +421,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
             _buildMenuOption(
               icon: Icons.share,
               title: '共有',
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            _buildMenuOption(
-              icon: Icons.remove_circle_outline,
-              title: '履歴から削除',
               onTap: () {
                 Navigator.pop(context);
               },

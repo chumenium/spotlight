@@ -230,7 +230,10 @@ class AuthProvider extends ChangeNotifier {
 
       // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
       // ログイン時は強制更新（キャッシュを無視）
-      _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true);
+      _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true).then((_) {
+        // ログイン成功後、FCMトークンをサーバーに送信
+        _updateFcmTokenAfterLogin();
+      });
     } else {
       _currentUser = null;
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -238,6 +241,31 @@ class AuthProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// ログイン後にFCMトークンをサーバーに送信
+  Future<void> _updateFcmTokenAfterLogin() async {
+    try {
+      // JWTトークンを取得（ログイン後なので取得できるはず）
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+          debugPrint('🔔 ログイン後: JWTトークンが取得できません。FCMトークン更新をスキップします。');
+        }
+        return;
+      }
+
+      // 少し待ってからFCMトークンを送信（JWTトークンの取得を確実にするため）
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // FCMトークンをサーバーに送信
+      await FcmService.updateFcmTokenToServer(jwtToken);
+    } catch (e) {
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('❌ ログイン後のFCMトークン更新エラー: $e');
+      }
+    }
   }
 
   /// Firebase Userからユーザー名を抽出
@@ -959,15 +987,37 @@ class AuthProvider extends ChangeNotifier {
           finalIconPath = null;
           fullIconUrl = null;
         } else {
-          // iconPathはバックエンドでusername_icon.png形式で生成される
+          // iconPathの形式を確認
           finalIconPath = iconPath;
-          final baseIconUrl = '${AppConfig.backendUrl}$iconPath';
+          String baseIconUrl;
+
+          // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+          if (iconPath.startsWith('http://') ||
+              iconPath.startsWith('https://')) {
+            baseIconUrl = iconPath;
+          }
+          // 相対パスの場合はbackendUrlを追加
+          else {
+            baseIconUrl = '${AppConfig.backendUrl}$iconPath';
+          }
+
           fullIconUrl = _addIconCacheKey(baseIconUrl);
         }
       } else if (_currentUser!.iconPath != null &&
           _currentUser!.iconPath!.isNotEmpty) {
         finalIconPath = _currentUser!.iconPath;
-        final baseIconUrl = '${AppConfig.backendUrl}${_currentUser!.iconPath}';
+        String baseIconUrl;
+
+        // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+        if (_currentUser!.iconPath!.startsWith('http://') ||
+            _currentUser!.iconPath!.startsWith('https://')) {
+          baseIconUrl = _currentUser!.iconPath!;
+        }
+        // 相対パスの場合はbackendUrlを追加
+        else {
+          baseIconUrl = '${AppConfig.backendUrl}${_currentUser!.iconPath}';
+        }
+
         fullIconUrl = _addIconCacheKey(baseIconUrl);
       } else {
         finalIconPath = _currentUser!.iconPath;
@@ -1010,13 +1060,19 @@ class AuthProvider extends ChangeNotifier {
 
       if (userInfo != null) {
         final username = userInfo['username'] as String?;
-        final iconPath = userInfo['iconimgpath']
-            as String?; // バックエンドで生成（username_icon.png形式）
+        final iconPath =
+            userInfo['iconimgpath'] as String?; // バックエンドで生成（完全なURLまたは相対パス）
 
         if (kDebugMode) {
           debugPrint('🔐 最新ユーザー情報取得: username=$username, iconPath=$iconPath');
           if (iconPath != null) {
-            debugPrint('🔐 アイコンURL: ${AppConfig.backendUrl}$iconPath');
+            // iconPathの形式を確認してログ出力
+            if (iconPath.startsWith('http://') ||
+                iconPath.startsWith('https://')) {
+              debugPrint('🔐 アイコンURL（完全なURL）: $iconPath');
+            } else {
+              debugPrint('🔐 アイコンURL（相対パス）: ${AppConfig.backendUrl}$iconPath');
+            }
           }
         }
 

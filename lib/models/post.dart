@@ -280,8 +280,21 @@ class Post {
       isSpotlighted: spotlightflag,
       isText: isTextFlag,
       nextContentId: nextContentIdStr,
-      createdAt: DateTime.tryParse(json['posttimestamp'] as String? ?? '') ??
-          DateTime.now(),
+      createdAt: () {
+        final timestampStr = json['posttimestamp'] as String? ?? '';
+        if (timestampStr.isEmpty) {
+          return DateTime.now();
+        }
+        // バックエンドから来るデータはUTCとして扱う
+        // タイムゾーン情報がない場合は、'Z'を追加してUTCとして明示的にパース
+        final hasTimezone = timestampStr.endsWith('Z') || 
+            timestampStr.contains('+') || 
+            (timestampStr.length > 10 && timestampStr[10] == '-' && timestampStr.contains('T'));
+        final normalizedTimestamp = hasTimezone ? timestampStr : '${timestampStr}Z';
+        final parsed = DateTime.tryParse(normalizedTimestamp);
+        // UTCとして解釈されたDateTimeを返す（表示時に.toLocal()でローカルタイムに変換）
+        return parsed ?? DateTime.now();
+      }(),
     );
   }
 

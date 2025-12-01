@@ -379,7 +379,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _formatRelativeTime(post.createdAt),
+                        _formatRelativeTime(post.createdAt.toLocal()),
                         style: TextStyle(
                           color: Colors.grey[400],
                           fontSize: 12,
@@ -436,9 +436,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               title: 'プレイリストから削除',
               onTap: () {
                 Navigator.pop(context);
-                if (kDebugMode) {
-                  debugPrint('📋 [プレイリスト詳細] プレイリストから削除: contentID=${post.id}');
-                }
+                _showRemoveFromPlaylistDialog(context, post, index);
               },
             ),
             _buildMenuOption(
@@ -451,6 +449,75 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showRemoveFromPlaylistDialog(
+      BuildContext context, Post post, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'プレイリストから削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'このコンテンツをプレイリストから削除しますか？',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // ローディング表示
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('削除中...'),
+                    duration: Duration(seconds: 1),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+
+              final success = await PlaylistService.removeContentFromPlaylist(
+                widget.playlistId,
+                post.id.toString(),
+              );
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('プレイリストから削除しました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _fetchPlaylistContents();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('削除に失敗しました。エンドポイントが実装されていない可能性があります。'),
+                    duration: Duration(seconds: 4),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
       ),
     );
   }

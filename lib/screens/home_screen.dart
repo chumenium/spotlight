@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import 'dart:async';
@@ -788,6 +789,137 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// 再読み込みボタンから呼び出される処理
+  Future<void> _reloadMoreContent() async {
+    if (_isLoadingMore) return;
+
+    _isLoadingMore = true;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🔄 再読み込み開始: 最後の投稿IDから次のコンテンツを取得');
+      }
+
+      // 最後の投稿のIDから次のIDを計算
+      final lastPost = _posts.last;
+      final lastId = int.tryParse(lastPost.id) ?? 0;
+      final nextStartId = lastId + 1;
+
+      // 次のコンテンツを取得（3件）
+      final morePosts = await PostService.fetchPosts(
+        limit: _preloadAheadCount,
+        startId: nextStartId,
+      );
+
+      if (!_isDisposed && mounted) {
+        if (morePosts.isEmpty) {
+          // 追加のコンテンツがない場合
+          if (kDebugMode) {
+            debugPrint('⚠️ 追加のコンテンツがありません');
+          }
+          _showAllContentViewedDialog();
+        } else {
+          // 重複を防ぐために、既に取得済みの投稿を除外
+          final newPosts = morePosts
+              .where((post) => !_fetchedContentIds.contains(post.id))
+              .toList();
+
+          if (newPosts.isEmpty) {
+            // 全て重複していた場合
+            if (kDebugMode) {
+              debugPrint('⚠️ 全て重複していたため、次のIDから再試行');
+            }
+            // 次のIDから再試行
+            final nextNextStartId = nextStartId + _preloadAheadCount;
+            final retryPosts = await PostService.fetchPosts(
+              limit: _preloadAheadCount,
+              startId: nextNextStartId,
+            );
+
+            if (retryPosts.isEmpty) {
+              _showAllContentViewedDialog();
+            } else {
+              final retryNewPosts = retryPosts
+                  .where((post) => !_fetchedContentIds.contains(post.id))
+                  .toList();
+
+              if (retryNewPosts.isEmpty) {
+                _showAllContentViewedDialog();
+              } else {
+                setState(() {
+                  _posts.addAll(retryNewPosts);
+                  _noMoreContent = false;
+                  _hasMorePosts = retryNewPosts.length >= _preloadAheadCount;
+
+                  // 取得済みコンテンツIDを記録
+                  for (final post in retryNewPosts) {
+                    _fetchedContentIds.add(post.id);
+                  }
+                });
+
+                if (kDebugMode) {
+                  debugPrint('✅ 再読み込み完了: ${retryNewPosts.length}件追加');
+                }
+              }
+            }
+          } else {
+            // 新しいコンテンツがある場合
+            setState(() {
+              _posts.addAll(newPosts);
+              _noMoreContent = false;
+              _hasMorePosts = newPosts.length >= _preloadAheadCount;
+
+              // 取得済みコンテンツIDを記録
+              for (final post in newPosts) {
+                _fetchedContentIds.add(post.id);
+              }
+            });
+
+            if (kDebugMode) {
+              debugPrint('✅ 再読み込み完了: ${newPosts.length}件追加');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 再読み込みエラー: $e');
+      }
+      if (!_isDisposed && mounted) {
+        _showAllContentViewedDialog();
+      }
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  /// すべてのコンテンツを視聴済みのダイアログを表示
+  void _showAllContentViewedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'すべてのコンテンツを視聴済み',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'これ以上表示できるコンテンツはありません。',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 最新のコンテンツをチェックして先頭に追加
   Future<void> _checkForNewContent() async {
     // 既にチェック中の場合はスキップ
@@ -1034,24 +1166,36 @@ class _HomeScreenState extends State<HomeScreen>
     if (userIconUrl != null && userIconUrl.isNotEmpty) {
       iconUrl = userIconUrl;
     } else if (userIconPath.isNotEmpty) {
-      iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
+      // userIconPathの形式を確認
+      // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+      if (userIconPath.startsWith('http://') ||
+          userIconPath.startsWith('https://')) {
+        iconUrl = userIconPath;
+      }
+      // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+      else if (userIconPath.startsWith('/icon/')) {
+        iconUrl = '${AppConfig.backendUrl}$userIconPath';
+      }
+      // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+      else if (userIconPath.startsWith('/')) {
+        iconUrl = '${AppConfig.backendUrl}$userIconPath';
+      }
+      // ファイル名のみの場合は/icon/を追加
+      else {
+        iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
+      }
     } else {
       iconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
     }
 
-    // 既にキャッシュキーが含まれている場合はそのまま返す
-    if (iconUrl.contains('?cache=')) {
-      return iconUrl;
-    }
-
-    // 1時間ごとに更新されるキャッシュキーを生成（同じ時間帯は同じキー）
+    // 1時間ごとのキャッシュキーを追加（YYYYMMDDHH形式）
     final now = DateTime.now();
     final cacheKey =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
 
     // URLにキャッシュキーを追加
     final separator = iconUrl.contains('?') ? '&' : '?';
-    return '$iconUrl${separator}cache=$cacheKey';
+    return '$iconUrl$separator cache=$cacheKey';
   }
 
   /// アイコン更新イベントを受信したときの処理
@@ -1064,66 +1208,198 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // 古いアイコンURLをキャッシュから削除
+    final oldUrls = <String>[];
     for (int i = 0; i < _posts.length; i++) {
       if (_posts[i].username == event.username &&
           _posts[i].userIconUrl != null) {
-        try {
-          final oldUrl = _posts[i].userIconUrl!;
-          // cached_network_imageのキャッシュをクリア
-          await CachedNetworkImage.evictFromCache(oldUrl);
-
-          if (kDebugMode) {
-            debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ キャッシュ削除エラー: $e');
-          }
+        final oldUrl = _posts[i].userIconUrl!;
+        if (!oldUrls.contains(oldUrl)) {
+          oldUrls.add(oldUrl);
         }
       }
     }
 
-    // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
-    setState(() {
-      _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;
+    // すべての古いアイコンURLのキャッシュをクリア
+    for (final oldUrl in oldUrls) {
+      try {
+        // キャッシュキー付きURLも含めてクリア
+        await CachedNetworkImage.evictFromCache(oldUrl);
 
-      // 投稿リスト内のアイコンURLを更新
-      for (int i = 0; i < _posts.length; i++) {
-        if (_posts[i].username == event.username) {
-          // アイコンが削除された場合はdefault_icon.jpgに変更
-          final newIconPath = event.iconPath ?? 'default_icon.jpg';
-          final baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
-          final newIconUrl = _getCachedIconUrl(baseIconUrl, newIconPath);
+        // キャッシュキーを除いたベースURLもクリア
+        final baseUrl = oldUrl.split('?').first.split('&').first;
+        await CachedNetworkImage.evictFromCache(baseUrl);
 
-          if (kDebugMode) {
-            debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
+        // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+        // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+        // ここでは古いURLのパターンをクリアするため、baseUrlとoldUrlをクリア
+        final urlPatterns = [
+          baseUrl,
+          oldUrl,
+          '$baseUrl?cache=${event.iconPath ?? ""}',
+          '$baseUrl&cache=${event.iconPath ?? ""}',
+        ];
+        for (final pattern in urlPatterns) {
+          try {
+            await CachedNetworkImage.evictFromCache(pattern);
+            final cacheManager = DefaultCacheManager();
+            await cacheManager.removeFile(pattern);
+          } catch (e) {
+            // エラーは無視
           }
+        }
 
-          _posts[i] = Post(
-            id: _posts[i].id,
-            userId: _posts[i].userId,
-            username: _posts[i].username,
-            userIconPath: newIconPath,
-            userIconUrl: newIconUrl,
-            title: _posts[i].title,
-            content: _posts[i].content,
-            contentPath: _posts[i].contentPath,
-            type: _posts[i].type,
-            mediaUrl: _posts[i].mediaUrl,
-            thumbnailUrl: _posts[i].thumbnailUrl,
-            likes: _posts[i].likes,
-            playNum: _posts[i].playNum,
-            link: _posts[i].link,
-            comments: _posts[i].comments,
-            shares: _posts[i].shares,
-            isSpotlighted: _posts[i].isSpotlighted,
-            isText: _posts[i].isText,
-            nextContentId: _posts[i].nextContentId,
-            createdAt: _posts[i].createdAt,
-          );
+        if (kDebugMode) {
+          debugPrint('🗑️ 古いアイコンをキャッシュから削除: $oldUrl');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ キャッシュ削除エラー: $e');
         }
       }
-    });
+    }
+
+    // 新しいアイコンURLを構築
+    // iconPathの形式を確認して処理
+    String newIconPath;
+    String? baseIconUrl;
+
+    if (event.iconPath == null || event.iconPath!.isEmpty) {
+      newIconPath = 'default_icon.jpg';
+      baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+    } else if (event.iconPath!.startsWith('http://') ||
+        event.iconPath!.startsWith('https://')) {
+      // 完全なURLの場合はそのまま使用（CloudFront URLなど）
+      baseIconUrl = event.iconPath!;
+      newIconPath = event.iconPath!;
+    } else if (event.iconPath!.startsWith('/icon/')) {
+      // /icon/で始まる場合は、そのまま使用
+      baseIconUrl = '${AppConfig.backendUrl}${event.iconPath}';
+      newIconPath = event.iconPath!;
+    } else if (event.iconPath!.startsWith('/')) {
+      // /で始まるが/icon/でない場合は、そのまま使用（バックエンドのパス形式）
+      baseIconUrl = '${AppConfig.backendUrl}${event.iconPath}';
+      newIconPath = event.iconPath!;
+    } else {
+      // ファイル名のみの場合は/icon/を追加
+      newIconPath = event.iconPath!;
+      baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
+    }
+
+    // キャッシュキーを現在時刻に更新（強制的に再読み込み）
+    final now = DateTime.now();
+    final cacheKey =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final separator = baseIconUrl.contains('?') ? '&' : '?';
+    final newIconUrl = '$baseIconUrl${separator}cache=$cacheKey';
+
+    // 新しいアイコンURLのキャッシュもクリア（確実に再読み込み）
+    try {
+      // キャッシュキー付きURLをクリア
+      await CachedNetworkImage.evictFromCache(newIconUrl);
+
+      // キャッシュキーを除いたベースURLもクリア
+      final baseUrl = baseIconUrl.split('?').first.split('&').first;
+      await CachedNetworkImage.evictFromCache(baseUrl);
+
+      // DefaultCacheManagerでもクリア
+      try {
+        final cacheManager = DefaultCacheManager();
+        await cacheManager.removeFile(newIconUrl);
+        await cacheManager.removeFile(baseUrl);
+      } catch (e) {
+        // エラーは無視
+      }
+
+      // DefaultCacheManagerでもクリア
+      try {
+        final cacheManager = DefaultCacheManager();
+        await cacheManager.removeFile(newIconUrl);
+        await cacheManager.removeFile(baseUrl);
+      } catch (e) {
+        // エラーは無視
+      }
+
+      // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+      // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+      final urlPatterns = [
+        baseUrl,
+        newIconUrl,
+        '$baseUrl?cache=$newIconPath',
+        '$baseUrl&cache=$newIconPath',
+      ];
+      for (final pattern in urlPatterns) {
+        try {
+          await CachedNetworkImage.evictFromCache(pattern);
+          final cacheManager = DefaultCacheManager();
+          await cacheManager.removeFile(pattern);
+        } catch (e) {
+          // エラーは無視
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 新しいアイコンURLのキャッシュもクリア: $newIconUrl');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 新しいアイコンキャッシュクリアエラー: $e');
+      }
+    }
+
+    // アイコンキャッシュキーを更新（タイムスタンプを変更してウィジェットを再構築）
+    if (mounted) {
+      setState(() {
+        // キャッシュキーを現在時刻のミリ秒に更新（確実に再構築）
+        _iconCacheKeys[event.username] = DateTime.now().millisecondsSinceEpoch;
+
+        // 投稿リスト内のアイコンURLを更新
+        for (int i = 0; i < _posts.length; i++) {
+          if (_posts[i].username == event.username) {
+            if (kDebugMode) {
+              debugPrint('🔄 アイコンURL更新: ${_posts[i].username} -> $newIconUrl');
+            }
+
+            _posts[i] = Post(
+              id: _posts[i].id,
+              userId: _posts[i].userId,
+              username: _posts[i].username,
+              userIconPath: newIconPath,
+              userIconUrl: newIconUrl,
+              title: _posts[i].title,
+              content: _posts[i].content,
+              contentPath: _posts[i].contentPath,
+              type: _posts[i].type,
+              mediaUrl: _posts[i].mediaUrl,
+              thumbnailUrl: _posts[i].thumbnailUrl,
+              likes: _posts[i].likes,
+              playNum: _posts[i].playNum,
+              link: _posts[i].link,
+              comments: _posts[i].comments,
+              shares: _posts[i].shares,
+              isSpotlighted: _posts[i].isSpotlighted,
+              isText: _posts[i].isText,
+              nextContentId: _posts[i].nextContentId,
+              createdAt: _posts[i].createdAt,
+            );
+          }
+        }
+      });
+
+      // 少し待ってから再度再構築（サーバー側の処理完了を待つ）
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (mounted) {
+        setState(() {
+          // 再度キャッシュキーを更新（確実に再読み込み）
+          _iconCacheKeys[event.username] =
+              DateTime.now().millisecondsSinceEpoch;
+        });
+
+        if (kDebugMode) {
+          debugPrint('🔄 ホーム画面のアイコンを再構築しました（確認）');
+        }
+      }
+    }
   }
 
   /// リアルタイム更新を開始
@@ -1379,8 +1655,15 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     )
                   : GestureDetector(
-                      onPanUpdate: _handlePanUpdate,
-                      onPanEnd: _handlePanEnd,
+                      // 「表示できるコンテンツはありません」画面では右スワイプを無効化
+                      onPanUpdate:
+                          (_currentIndex >= _posts.length && _noMoreContent)
+                              ? null
+                              : _handlePanUpdate,
+                      onPanEnd:
+                          (_currentIndex >= _posts.length && _noMoreContent)
+                              ? null
+                              : _handlePanEnd,
                       child: Stack(
                         children: [
                           // メイン投稿表示（不透明な背景で完全に覆う）
@@ -1440,22 +1723,58 @@ class _HomeScreenState extends State<HomeScreen>
                                           // これ以上コンテンツがない場合はメッセージを表示
                                           return Container(
                                             color: Colors.black,
-                                            child: const Center(
+                                            child: Center(
                                               child: Column(
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.center,
                                                 children: [
-                                                  Icon(
+                                                  const Icon(
                                                     Icons.inbox_outlined,
                                                     color: Colors.white38,
                                                     size: 64,
                                                   ),
-                                                  SizedBox(height: 16),
-                                                  Text(
+                                                  const SizedBox(height: 16),
+                                                  const Text(
                                                     '表示できるコンテンツはありません',
                                                     style: TextStyle(
                                                       color: Colors.white70,
                                                       fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 32),
+                                                  ElevatedButton.icon(
+                                                    onPressed: () =>
+                                                        _reloadMoreContent(),
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          const Color(
+                                                              0xFFFF6B35),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 24,
+                                                        vertical: 12,
+                                                      ),
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                      ),
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.refresh,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    ),
+                                                    label: const Text(
+                                                      '再読み込み',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -2468,15 +2787,30 @@ class _HomeScreenState extends State<HomeScreen>
                   backgroundColor: SpotLightColors.getSpotlightColor(0),
                   child: ClipOval(
                     key: ValueKey(
-                        '${post.username}_${_iconCacheKeys[post.username] ?? 0}'),
-                    child: RobustNetworkImage(
+                        '${post.username}_${post.userIconPath}_${_iconCacheKeys[post.username] ?? DateTime.now().millisecondsSinceEpoch}'),
+                    child: CachedNetworkImage(
                       imageUrl: _getCachedIconUrl(
                           post.userIconUrl, post.userIconPath),
                       fit: BoxFit.cover,
-                      maxWidth: 80,
-                      maxHeight: 80,
-                      placeholder: Container(),
-                      errorWidget: Container(),
+                      memCacheWidth: 80,
+                      memCacheHeight: 80,
+                      httpHeaders: const {
+                        'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                        'User-Agent': 'Flutter-Spotlight/1.0',
+                      },
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (context, url) => Container(
+                        color: SpotLightColors.getSpotlightColor(0),
+                      ),
+                      errorWidget: (context, url, error) {
+                        if (kDebugMode) {
+                          debugPrint('⚠️ ホーム画面アイコン読み込みエラー: ${post.username}');
+                          debugPrint('  - userIconUrl: ${post.userIconUrl}');
+                          debugPrint('  - userIconPath: ${post.userIconPath}');
+                          debugPrint('  - error: $error');
+                        }
+                        return Container();
+                      },
                     ),
                   ),
                 ),
@@ -2495,7 +2829,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                     Text(
-                      '${_getTimeAgo(post.createdAt)}前',
+                      '${_getTimeAgo(post.createdAt.toLocal())}前',
                       style: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 12,
@@ -2749,23 +3083,43 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _handleCommentButton(Post post) {
     final commentController = TextEditingController();
+    final replyController = TextEditingController();
     bool isLoading = true;
     bool hasRequestedComments = false;
     bool isSheetOpen = true;
     List<Comment> comments = [];
+    int? replyingToCommentId; // 返信対象のコメントID
 
-    Future<void> refreshComments(StateSetter setModalState) async {
-      setModalState(() {
-        isLoading = true;
-      });
+    Future<List<Comment>> refreshComments(StateSetter setModalState) async {
+      if (!isSheetOpen) {
+        return comments;
+      }
+      try {
+        setModalState(() {
+          if (isSheetOpen) {
+            isLoading = true;
+          }
+        });
+      } catch (e) {
+        // モーダルが閉じられた場合はスキップ
+        return comments;
+      }
       final fetchedComments = await CommentService.getComments(post.id);
       if (!mounted || !isSheetOpen) {
-        return;
+        return comments;
       }
-      setModalState(() {
-        comments = fetchedComments;
-        isLoading = false;
-      });
+      try {
+        setModalState(() {
+          if (isSheetOpen) {
+            comments = fetchedComments;
+            isLoading = false;
+          }
+        });
+      } catch (e) {
+        // モーダルが閉じられた場合はスキップ
+        return comments;
+      }
+      return fetchedComments;
     }
 
     showModalBottomSheet(
@@ -2775,6 +3129,11 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            // モーダルが閉じられた場合は何も表示しない
+            if (!isSheetOpen) {
+              return const SizedBox.shrink();
+            }
+
             if (!hasRequestedComments) {
               hasRequestedComments = true;
               refreshComments(setModalState);
@@ -2845,11 +3204,193 @@ class _HomeScreenState extends State<HomeScreen>
                                       itemCount: comments.length,
                                       itemBuilder: (context, index) {
                                         return _buildCommentItem(
-                                            comments[index]);
+                                          comments[index],
+                                          replyingToCommentId:
+                                              replyingToCommentId,
+                                          onReplyPressed: (commentId) {
+                                            if (!isSheetOpen) return;
+                                            try {
+                                              setModalState(() {
+                                                if (isSheetOpen) {
+                                                  if (replyingToCommentId ==
+                                                      commentId) {
+                                                    replyingToCommentId = null;
+                                                    replyController.clear();
+                                                  } else {
+                                                    replyingToCommentId =
+                                                        commentId;
+                                                    replyController.clear();
+                                                  }
+                                                }
+                                              });
+                                            } catch (e) {
+                                              // モーダルが閉じられた場合はスキップ
+                                            }
+                                          },
+                                        );
                                       },
                                     ),
                         ),
 
+                        // 返信入力フィールド（返信対象がある場合のみ表示）
+                        if (replyingToCommentId != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 10),
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: isSheetOpen
+                                      ? TextField(
+                                          controller: replyController,
+                                          style: const TextStyle(
+                                              color: Colors.white),
+                                          decoration: InputDecoration(
+                                            hintText: '返信を入力...',
+                                            hintStyle: TextStyle(
+                                                color: Colors.grey[400]),
+                                            border: InputBorder.none,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () {
+                                    if (!isSheetOpen) return;
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          replyingToCommentId = null;
+                                          replyController.clear();
+                                        }
+                                      });
+                                    } catch (e) {
+                                      // モーダルが閉じられた場合はスキップ
+                                    }
+                                  },
+                                  icon: const Icon(Icons.close,
+                                      color: Colors.grey, size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                IconButton(
+                                  onPressed: () async {
+                                    if (!isSheetOpen) return;
+                                    final replyText =
+                                        replyController.text.trim();
+                                    if (replyText.isEmpty) return;
+
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          isLoading = true;
+                                        }
+                                      });
+                                    } catch (e) {
+                                      // モーダルが閉じられた場合はスキップ
+                                      return;
+                                    }
+
+                                    // 返信送信
+                                    final success =
+                                        await CommentService.addComment(
+                                      post.id,
+                                      replyText,
+                                      parentCommentId: replyingToCommentId,
+                                    );
+
+                                    if (!isSheetOpen || !mounted) return;
+
+                                    if (success) {
+                                      replyController.clear();
+                                      try {
+                                        setModalState(() {
+                                          if (isSheetOpen) {
+                                            replyingToCommentId = null;
+                                          }
+                                        });
+                                      } catch (e) {
+                                        // モーダルが閉じられた場合はスキップ
+                                      }
+                                      // コメント一覧を再取得
+                                      final updatedComments =
+                                          await refreshComments(setModalState);
+                                      if (!isSheetOpen || !mounted) return;
+                                      final updatedTotal =
+                                          _countAllComments(updatedComments);
+
+                                      // 投稿のコメント数を更新
+                                      if (mounted && !_isDisposed) {
+                                        setState(() {
+                                          _posts[_currentIndex] = Post(
+                                            id: _posts[_currentIndex].id,
+                                            userId:
+                                                _posts[_currentIndex].userId,
+                                            username:
+                                                _posts[_currentIndex].username,
+                                            userIconPath: _posts[_currentIndex]
+                                                .userIconPath,
+                                            userIconUrl: _posts[_currentIndex]
+                                                .userIconUrl,
+                                            title: _posts[_currentIndex].title,
+                                            content:
+                                                _posts[_currentIndex].content,
+                                            contentPath: _posts[_currentIndex]
+                                                .contentPath,
+                                            type: _posts[_currentIndex].type,
+                                            mediaUrl:
+                                                _posts[_currentIndex].mediaUrl,
+                                            thumbnailUrl: _posts[_currentIndex]
+                                                .thumbnailUrl,
+                                            likes: _posts[_currentIndex].likes,
+                                            playNum:
+                                                _posts[_currentIndex].playNum,
+                                            link: _posts[_currentIndex].link,
+                                            comments: updatedTotal,
+                                            shares:
+                                                _posts[_currentIndex].shares,
+                                            isSpotlighted: _posts[_currentIndex]
+                                                .isSpotlighted,
+                                            isText:
+                                                _posts[_currentIndex].isText,
+                                            nextContentId: _posts[_currentIndex]
+                                                .nextContentId,
+                                            createdAt:
+                                                _posts[_currentIndex].createdAt,
+                                          );
+                                        });
+                                      }
+                                    } else {
+                                      try {
+                                        setModalState(() {
+                                          if (isSheetOpen) {
+                                            isLoading = false;
+                                          }
+                                        });
+                                      } catch (e) {
+                                        // モーダルが閉じられた場合はスキップ
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.send,
+                                      color: Color(0xFFFF6B35), size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
                         // コメント入力
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -2863,36 +3404,49 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: TextField(
-                                  controller: commentController,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: InputDecoration(
-                                    hintText: 'コメントを追加...',
-                                    hintStyle:
-                                        TextStyle(color: Colors.grey[400]),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.grey[800],
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                  ),
-                                ),
+                                child: isSheetOpen
+                                    ? TextField(
+                                        controller: commentController,
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                        decoration: InputDecoration(
+                                          hintText: 'コメントを追加...',
+                                          hintStyle: TextStyle(
+                                              color: Colors.grey[400]),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                          filled: true,
+                                          fillColor: Colors.grey[800],
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 10,
+                                          ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
                               ),
                               const SizedBox(width: 10),
                               IconButton(
                                 onPressed: () async {
+                                  if (!isSheetOpen) return;
                                   final commentText =
                                       commentController.text.trim();
                                   if (commentText.isEmpty) return;
 
-                                  setModalState(() {
-                                    isLoading = true;
-                                  });
+                                  try {
+                                    setModalState(() {
+                                      if (isSheetOpen) {
+                                        isLoading = true;
+                                      }
+                                    });
+                                  } catch (e) {
+                                    // モーダルが閉じられた場合はスキップ
+                                    return;
+                                  }
 
                                   // コメント送信
                                   final success =
@@ -2901,51 +3455,65 @@ class _HomeScreenState extends State<HomeScreen>
                                     commentText,
                                   );
 
-                                  if (success && mounted) {
+                                  if (!isSheetOpen || !mounted) return;
+
+                                  if (success) {
                                     commentController.clear();
                                     // コメント一覧を再取得
-                                    await refreshComments(setModalState);
+                                    final updatedComments =
+                                        await refreshComments(setModalState);
+                                    if (!isSheetOpen || !mounted) return;
                                     final updatedTotal =
-                                        _countAllComments(comments);
+                                        _countAllComments(updatedComments);
 
                                     // 投稿のコメント数を更新
-                                    setState(() {
-                                      _posts[_currentIndex] = Post(
-                                        id: _posts[_currentIndex].id,
-                                        userId: _posts[_currentIndex].userId,
-                                        username:
-                                            _posts[_currentIndex].username,
-                                        userIconPath:
-                                            _posts[_currentIndex].userIconPath,
-                                        userIconUrl:
-                                            _posts[_currentIndex].userIconUrl,
-                                        title: _posts[_currentIndex].title,
-                                        content: _posts[_currentIndex].content,
-                                        contentPath:
-                                            _posts[_currentIndex].contentPath,
-                                        type: _posts[_currentIndex].type,
-                                        mediaUrl:
-                                            _posts[_currentIndex].mediaUrl,
-                                        thumbnailUrl:
-                                            _posts[_currentIndex].thumbnailUrl,
-                                        likes: _posts[_currentIndex].likes,
-                                        playNum: _posts[_currentIndex].playNum,
-                                        link: _posts[_currentIndex].link,
-                                        comments: updatedTotal,
-                                        shares: _posts[_currentIndex].shares,
-                                        isSpotlighted:
-                                            _posts[_currentIndex].isSpotlighted,
-                                        isText: _posts[_currentIndex].isText,
-                                        nextContentId:
-                                            _posts[_currentIndex].nextContentId,
-                                        createdAt:
-                                            _posts[_currentIndex].createdAt,
-                                      );
-                                    });
+                                    if (mounted && !_isDisposed) {
+                                      setState(() {
+                                        _posts[_currentIndex] = Post(
+                                          id: _posts[_currentIndex].id,
+                                          userId: _posts[_currentIndex].userId,
+                                          username:
+                                              _posts[_currentIndex].username,
+                                          userIconPath: _posts[_currentIndex]
+                                              .userIconPath,
+                                          userIconUrl:
+                                              _posts[_currentIndex].userIconUrl,
+                                          title: _posts[_currentIndex].title,
+                                          content:
+                                              _posts[_currentIndex].content,
+                                          contentPath:
+                                              _posts[_currentIndex].contentPath,
+                                          type: _posts[_currentIndex].type,
+                                          mediaUrl:
+                                              _posts[_currentIndex].mediaUrl,
+                                          thumbnailUrl: _posts[_currentIndex]
+                                              .thumbnailUrl,
+                                          likes: _posts[_currentIndex].likes,
+                                          playNum:
+                                              _posts[_currentIndex].playNum,
+                                          link: _posts[_currentIndex].link,
+                                          comments: updatedTotal,
+                                          shares: _posts[_currentIndex].shares,
+                                          isSpotlighted: _posts[_currentIndex]
+                                              .isSpotlighted,
+                                          isText: _posts[_currentIndex].isText,
+                                          nextContentId: _posts[_currentIndex]
+                                              .nextContentId,
+                                          createdAt:
+                                              _posts[_currentIndex].createdAt,
+                                        );
+                                      });
+                                    }
                                   } else {
-                                    setModalState(() {
-                                      isLoading = false;
-                                    });
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          isLoading = false;
+                                        }
+                                      });
+                                    } catch (e) {
+                                      // モーダルが閉じられた場合はスキップ
+                                    }
                                   }
                                 },
                                 icon: const Icon(Icons.send,
@@ -2963,13 +3531,29 @@ class _HomeScreenState extends State<HomeScreen>
           },
         );
       },
-    ).whenComplete(() {
+    ).then((_) {
+      // モーダルが閉じられたことをマーク（dispose()の前に設定）
       isSheetOpen = false;
-      commentController.dispose();
+    }).whenComplete(() {
+      // コントローラーを安全に破棄
+      try {
+        commentController.dispose();
+      } catch (e) {
+        // 既に破棄されている場合はスキップ
+      }
+      try {
+        replyController.dispose();
+      } catch (e) {
+        // 既に破棄されている場合はスキップ
+      }
     });
   }
 
-  Widget _buildCommentItem(Comment comment) {
+  Widget _buildCommentItem(
+    Comment comment, {
+    int? replyingToCommentId,
+    required Function(int) onReplyPressed,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -2983,7 +3567,8 @@ class _HomeScreenState extends State<HomeScreen>
                 backgroundColor: const Color(0xFFFF6B35),
                 backgroundImage: comment.userIconUrl != null
                     ? CachedNetworkImageProvider(
-                        _getCachedIconUrl(comment.userIconUrl, ''))
+                        _getCachedIconUrl(comment.userIconUrl, ''),
+                      )
                     : null,
                 child: comment.userIconUrl == null
                     ? const Icon(Icons.person, size: 16, color: Colors.white)
@@ -3026,19 +3611,18 @@ class _HomeScreenState extends State<HomeScreen>
                     Row(
                       children: [
                         IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.thumb_up_outlined,
-                              color: Colors.grey, size: 16),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 16),
-                        IconButton(
                           onPressed: () {
-                            // 返信機能（将来実装）
+                            onReplyPressed(comment.commentID);
                           },
-                          icon: const Icon(Icons.reply,
-                              color: Colors.grey, size: 16),
+                          icon: Icon(
+                            replyingToCommentId == comment.commentID
+                                ? Icons.close
+                                : Icons.reply,
+                            color: replyingToCommentId == comment.commentID
+                                ? Colors.orange
+                                : Colors.grey,
+                            size: 16,
+                          ),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -3056,7 +3640,11 @@ class _HomeScreenState extends State<HomeScreen>
               padding: const EdgeInsets.only(left: 42),
               child: Column(
                 children: comment.replies
-                    .map((reply) => _buildCommentItem(reply))
+                    .map((reply) => _buildCommentItem(
+                          reply,
+                          replyingToCommentId: replyingToCommentId,
+                          onReplyPressed: onReplyPressed,
+                        ))
                     .toList(),
               ),
             ),
@@ -3068,7 +3656,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   String _formatCommentTime(String timestamp) {
     try {
-      final dateTime = DateTime.parse(timestamp);
+      final dateTime = DateTime.parse(timestamp).toLocal();
       final now = DateTime.now();
       final difference = now.difference(dateTime);
 

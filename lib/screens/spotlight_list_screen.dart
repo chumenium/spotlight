@@ -175,12 +175,21 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     return GestureDetector(
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
-        final navigationProvider =
-            Provider.of<NavigationProvider>(context, listen: false);
-        navigationProvider.navigateToHome(postId: post.id);
+        try {
+          final postId = post.id.toString();
+          if (postId.isNotEmpty) {
+            final navigationProvider =
+                Provider.of<NavigationProvider>(context, listen: false);
+            navigationProvider.navigateToHome(postId: postId);
 
-        if (kDebugMode) {
-          debugPrint('📱 投稿をタップ: ID=${post.id}, タイトル=${post.title}');
+            if (kDebugMode) {
+              debugPrint('📱 投稿をタップ: ID=$postId, タイトル=${post.title}');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 投稿タップエラー: $e');
+          }
         }
       },
       child: Container(
@@ -299,7 +308,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _formatRelativeTime(post.createdAt),
+                    _formatRelativeTime(post.createdAt.toLocal()),
                     style: TextStyle(
                       color: Colors.grey[400],
                       fontSize: 12,
@@ -341,7 +350,24 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               title: '再生',
               onTap: () {
                 Navigator.pop(context);
-                // TODO: 投稿を再生（HomeScreenに遷移）
+                // 投稿を再生（HomeScreenに遷移）
+                try {
+                  final postId = post.id.toString();
+                  if (postId.isNotEmpty) {
+                    final navigationProvider =
+                        Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.navigateToHome(postId: postId);
+
+                    if (kDebugMode) {
+                      debugPrint(
+                          '📱 [自分の投稿] 再生メニューから: ID=$postId, タイトル=${post.title}');
+                    }
+                  }
+                } catch (e) {
+                  if (kDebugMode) {
+                    debugPrint('⚠️ [自分の投稿] 再生メニューエラー: $e');
+                  }
+                }
               },
             ),
             if (post.isSpotlighted)
@@ -378,8 +404,81 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                 // TODO: 共有機能
               },
             ),
+            _buildMenuOption(
+              icon: Icons.delete_outline,
+              title: '投稿を削除',
+              onTap: () {
+                Navigator.pop(context);
+                _showDeletePostDialog(context, post, index);
+              },
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeletePostDialog(BuildContext context, Post post, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '投稿を削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'この投稿を削除しますか？この操作は取り消せません。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // ローディング表示
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('削除中...'),
+                    duration: Duration(seconds: 1),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+
+              final success = await PostService.deletePost(post.id.toString());
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('投稿を削除しました'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _fetchUserContents();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('投稿の削除に失敗しました。エンドポイントが実装されていない可能性があります。'),
+                    duration: Duration(seconds: 4),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
       ),
     );
   }

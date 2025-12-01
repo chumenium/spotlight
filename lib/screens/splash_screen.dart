@@ -9,6 +9,9 @@ import 'create_post_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 import '../auth/social_login_screen.dart';
+import '../services/fcm_service.dart';
+import '../services/jwt_service.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// 静止画スプラッシュスクリーン
 class SplashScreen extends StatefulWidget {
@@ -22,10 +25,13 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    
+
+    // アプリ起動時にFCMトークンを更新
+    _updateFcmTokenOnStartup();
+
     // スプラッシュスクリーンを表示する時間
     const splashDuration = Duration(seconds: 3);
-    
+
     Future.delayed(splashDuration, () {
       if (mounted) {
         _navigateToNext();
@@ -33,9 +39,31 @@ class _SplashScreenState extends State<SplashScreen> {
     });
   }
 
+  /// アプリ起動時にFCMトークンをサーバーに送信
+  Future<void> _updateFcmTokenOnStartup() async {
+    try {
+      // JWTトークンを取得
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('🔔 アプリ起動時: JWTトークンが取得できません。FCMトークン更新をスキップします。');
+        }
+        return;
+      }
+
+      // FCMトークンをサーバーに送信
+      await FcmService.updateFcmTokenToServer(jwtToken);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ アプリ起動時のFCMトークン更新エラー: $e');
+      }
+    }
+  }
+
   void _navigateToNext() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // ログイン状態に応じて画面を切り替え
     if (authProvider.isLoggedIn) {
       Navigator.of(context).pushReplacement(
@@ -121,4 +149,3 @@ class MainScreen extends StatelessWidget {
     );
   }
 }
-

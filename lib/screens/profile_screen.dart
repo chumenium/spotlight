@@ -22,6 +22,9 @@ import '../services/jwt_service.dart';
 import '../services/user_service.dart';
 import '../services/icon_update_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:image/image.dart' as img;
+import 'dart:typed_data';
 import '../models/badge.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
@@ -51,6 +54,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoadingPlaylists = false;
   // 前回のナビゲーションインデックス（リロード制御用）
   int? _lastNavigationIndex;
+  // 画像のアスペクト比をキャッシュ（URL -> アスペクト比）
+  final Map<String, double> _imageAspectRatios = {};
+  // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
+  final Map<int, String?> _playlistFirstContentThumbnails = {};
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -411,57 +418,138 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // バックエンドから取得したDBのusernameを優先表示
           final displayName = user?.backendUsername ?? 'ユーザー';
 
+          // iconPathを明示的に監視して、変更時に確実に再構築されるようにする
+          final iconPath = user?.iconPath ?? '';
+
+          if (kDebugMode) {
+            debugPrint('🖼️ _buildProfileHeader: iconPath = $iconPath');
+          }
+
+          // アイコンURLを生成（iconPathを優先、常に最新のキャッシュキーを使用）
+          String? iconUrl;
+          String? baseIconUrl;
+
+          // iconPathを優先的に使用（バックエンドから取得した最新の値）
+          if (iconPath.isNotEmpty) {
+            // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+            if (iconPath.startsWith('http://') ||
+                iconPath.startsWith('https://')) {
+              baseIconUrl = iconPath;
+              if (kDebugMode) {
+                debugPrint(
+                    '🖼️ プロフィール: 完全なURLを使用: $baseIconUrl (iconPath: $iconPath)');
+              }
+            }
+            // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+            else if (iconPath.startsWith('/icon/')) {
+              baseIconUrl = '${AppConfig.backendUrl}$iconPath';
+              if (kDebugMode) {
+                debugPrint(
+                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
+              }
+            }
+            // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+            else if (iconPath.startsWith('/')) {
+              baseIconUrl = '${AppConfig.backendUrl}$iconPath';
+              if (kDebugMode) {
+                debugPrint(
+                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
+              }
+            }
+            // ファイル名のみの場合は/icon/を追加
+            else {
+              baseIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
+              if (kDebugMode) {
+                debugPrint(
+                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
+              }
+            }
+          } else {
+            // iconPathがない場合はデフォルトアイコンを使用
+            baseIconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+
+            if (kDebugMode) {
+              debugPrint('🖼️ プロフィール: デフォルトアイコンを使用 (iconPath: $iconPath)');
+            }
+          }
+
+          // アイコン変更時に即座に反映されるように、iconPathとタイムスタンプをキーに含める
+          // 常に新しいキーを生成することで、Flutterの画像キャッシュを無効化
+          final now = DateTime.now();
+          final iconKey =
+              '${user?.id ?? 'unknown'}_${iconPath}_${now.millisecondsSinceEpoch}';
+
+          if (kDebugMode) {
+            debugPrint('🖼️ プロフィール: アイコンキー生成');
+            debugPrint('  - user.id: ${user?.id}');
+            debugPrint('  - iconPath: $iconPath');
+            debugPrint('  - iconKey: $iconKey');
+          }
+
+          // 1時間ごとのキャッシュキーを追加（YYYYMMDDHH形式）
+          final cacheKey =
+              '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
+
+          // URLにキャッシュキーを追加
+          final separator = baseIconUrl.contains('?') ? '&' : '?';
+          iconUrl = '$baseIconUrl$separator cache=$cacheKey';
+
+          if (kDebugMode) {
+            debugPrint('🖼️ プロフィール: アイコンURL生成');
+            debugPrint('  - baseIconUrl: $baseIconUrl');
+            debugPrint('  - iconPath: ${user?.iconPath}');
+            debugPrint('  - iconUrl: $iconUrl');
+            debugPrint('  - iconKey: $iconKey');
+          }
+
           return Row(
             children: [
               GestureDetector(
                 onTap: () => _showIconMenu(context, authProvider),
-                child: Builder(
-                  builder: (context) {
-                    // authProviderから取得したavatarUrlを使用（キャッシュキーが既に含まれている）
-                    // キャッシュキーにより、1時間以内は同じURLが使用されるため、CachedNetworkImageのキャッシュが効く
-                    String? iconUrl = user?.avatarUrl;
-                    if (iconUrl == null || iconUrl.isEmpty) {
-                      // avatarUrlがnullの場合は、iconPathから生成（キャッシュキーを追加）
-                      final baseIconUrl = user?.iconPath != null
-                          ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
-                          : '${AppConfig.backendUrl}/icon/default_icon.jpg';
-                      // キャッシュキーを追加（1時間に1回の読み込み制限）
-                      if (!baseIconUrl.contains('?cache=')) {
-                        final now = DateTime.now();
-                        final cacheKey =
-                            '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
-                        final separator = baseIconUrl.contains('?') ? '&' : '?';
-                        iconUrl = '$baseIconUrl${separator}cache=$cacheKey';
-                      } else {
-                        iconUrl = baseIconUrl;
-                      }
-                    }
-                    // iconPathが変更されたときに再構築されるようにキーを設定
-                    final iconKey =
-                        '${user?.id ?? 'unknown'}_${user?.iconPath ?? 'default'}';
-
-                    return CircleAvatar(
-                      radius: 40,
-                      backgroundColor: const Color(0xFFFF6B35),
-                      child: ClipOval(
-                        key: ValueKey(iconKey), // アイコン変更時に強制的に再構築
-                        child: CachedNetworkImage(
-                          imageUrl: iconUrl,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 160,
-                          memCacheHeight: 160,
-                          httpHeaders: const {
-                            'Accept':
-                                'image/webp,image/avif,image/*, */*;q=0.8',
-                            'User-Agent': 'Flutter-Spotlight/1.0',
-                          },
-                          placeholder: (context, url) => Container(),
-                          errorWidget: (context, url, error) => Container(),
-                          fadeInDuration: const Duration(milliseconds: 200),
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundColor: const Color(0xFFFF6B35),
+                  child: ClipOval(
+                    key: ValueKey(
+                        iconKey), // アイコン変更時に強制的に再構築（iconPath + タイムスタンプ）
+                    child: CachedNetworkImage(
+                      imageUrl: iconUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 160,
+                      memCacheHeight: 160,
+                      httpHeaders: const {
+                        'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                        'User-Agent': 'Flutter-Spotlight/1.0',
+                      },
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (context, url) => Container(
+                        color: const Color(0xFFFF6B35),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         ),
                       ),
-                    );
-                  },
+                      errorWidget: (context, url, error) {
+                        if (kDebugMode) {
+                          debugPrint('⚠️ アイコン読み込みエラー:');
+                          debugPrint('  - iconUrl: $iconUrl');
+                          debugPrint('  - baseIconUrl: $baseIconUrl');
+                          debugPrint('  - iconPath: $iconPath');
+                          debugPrint('  - error: $error');
+                        }
+                        return Container(
+                          color: const Color(0xFFFF6B35),
+                          child: const Icon(
+                            Icons.person,
+                            color: Colors.white,
+                            size: 40,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -602,42 +690,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _myPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _myPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _myPosts[index];
-                              return _buildPostThumbnail(context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_myPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_myPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPostThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _myPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _myPosts[index];
+                        return _buildPostThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -686,12 +748,275 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// タイトルを20文字で切り詰めて「...」を追加
+  String _getTruncatedTitle(String title) {
+    if (title.length <= 20) {
+      return title;
+    }
+    return '${title.substring(0, 20)}...';
+  }
+
+  /// 再生リストの最初のコンテンツのサムネイルURLを取得
+  Future<String?> _getFirstContentThumbnail(int playlistId) async {
+    // キャッシュを確認
+    if (_playlistFirstContentThumbnails.containsKey(playlistId)) {
+      return _playlistFirstContentThumbnails[playlistId];
+    }
+
+    try {
+      // 再生リストのコンテンツを取得
+      final contentsJson = await PlaylistService.getPlaylistDetail(playlistId);
+
+      if (contentsJson.isEmpty) {
+        // コンテンツがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // 最初のコンテンツのサムネイルURLを取得
+      final firstContent = contentsJson[0];
+      final thumbnailpath = firstContent['thumbnailpath']?.toString();
+
+      if (thumbnailpath == null || thumbnailpath.isEmpty) {
+        // サムネイルがない場合はnullをキャッシュ
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      // サムネイルURLを構築
+      String thumbnailUrl;
+      if (thumbnailpath.startsWith('http://') ||
+          thumbnailpath.startsWith('https://')) {
+        // 既に完全なURLの場合はそのまま使用
+        thumbnailUrl = thumbnailpath;
+      } else {
+        // 相対パスの場合は、backendUrlと結合
+        final normalizedPath =
+            thumbnailpath.startsWith('/') ? thumbnailpath : '/$thumbnailpath';
+        thumbnailUrl = '${AppConfig.backendUrl}$normalizedPath';
+      }
+
+      // キャッシュに保存
+      _playlistFirstContentThumbnails[playlistId] = thumbnailUrl;
+      return thumbnailUrl;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 再生リストの最初のコンテンツ取得エラー: $e');
+      }
+      // エラーの場合はnullをキャッシュ
+      _playlistFirstContentThumbnails[playlistId] = null;
+      return null;
+    }
+  }
+
+  /// 固定サイズのサムネイルを構築（すべて同じサイズで表示）
+  Widget _buildThumbnailWithAspectRatio(
+      String thumbnailUrl, double itemWidth, Post post, int index) {
+    // 固定サイズ（高さ120px）
+    const thumbnailHeight = 120.0;
+
+    // URLの検証
+    if (thumbnailUrl.isEmpty) {
+      return Container(
+        width: itemWidth,
+        height: thumbnailHeight,
+        color: Colors.grey[800],
+        child: Center(
+          child: Icon(
+            post.postType == PostType.video
+                ? Icons.play_circle_outline
+                : post.postType == PostType.image
+                    ? Icons.image_outlined
+                    : post.postType == PostType.audio
+                        ? Icons.audiotrack_outlined
+                        : Icons.text_fields_outlined,
+            color: Colors.white,
+            size: 32,
+          ),
+        ),
+      );
+    }
+
+    // すべて同じサイズで表示（BoxFit.coverで中央を表示）
+    return SizedBox(
+      width: itemWidth,
+      height: thumbnailHeight,
+      child: Stack(
+        children: [
+          CachedNetworkImage(
+            imageUrl: thumbnailUrl,
+            width: itemWidth,
+            height: thumbnailHeight,
+            fit: BoxFit.cover,
+            memCacheWidth: 320,
+            memCacheHeight: 180,
+            httpHeaders: const {
+              'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+              'User-Agent': 'Flutter-Spotlight/1.0',
+            },
+            fadeInDuration: const Duration(milliseconds: 200),
+            placeholder: (context, url) => Container(
+              width: itemWidth,
+              height: thumbnailHeight,
+              color: Colors.grey[800],
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFFFF6B35),
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: itemWidth,
+              height: thumbnailHeight,
+              color: Colors.grey[800],
+              child: Center(
+                child: Icon(
+                  post.postType == PostType.video
+                      ? Icons.play_circle_outline
+                      : post.postType == PostType.image
+                          ? Icons.image_outlined
+                          : post.postType == PostType.audio
+                              ? Icons.audiotrack_outlined
+                              : Icons.text_fields_outlined,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+          // スポットライトアイコン
+          if (post.isSpotlighted)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: SpotLightColors.getSpotlightColor(index),
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SpotLightColors.getSpotlightColor(index)
+                          .withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.star,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 画像のアスペクト比を読み込む
+  void _loadImageAspectRatio(String url) {
+    // URLの検証
+    if (url.isEmpty) {
+      return;
+    }
+
+    // 既にアスペクト比が取得されている場合はスキップ
+    if (_imageAspectRatios.containsKey(url)) {
+      return;
+    }
+
+    // 読み込み中フラグを設定（重複読み込みを防ぐ）
+    if (!mounted) {
+      return;
+    }
+
+    try {
+      // NetworkImageを使用して画像のサイズを取得
+      final imageProvider = NetworkImage(url);
+      final imageStream = imageProvider.resolve(
+        const ImageConfiguration(),
+      );
+
+      late ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (ImageInfo imageInfo, bool synchronousCall) {
+          if (synchronousCall || !mounted) {
+            try {
+              imageStream.removeListener(listener);
+            } catch (e) {
+              // リスナーが既に削除されている場合は無視
+            }
+            return;
+          }
+
+          try {
+            final image = imageInfo.image;
+            final width = image.width.toDouble();
+            final height = image.height.toDouble();
+
+            if (width > 0 && height > 0) {
+              final aspectRatio = width / height;
+
+              if (mounted) {
+                final currentAspectRatio = _imageAspectRatios[url];
+                if (currentAspectRatio == null ||
+                    (currentAspectRatio - aspectRatio).abs() > 0.01) {
+                  setState(() {
+                    _imageAspectRatios[url] = aspectRatio;
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ アスペクト比計算エラー: $e');
+            }
+          } finally {
+            // リスナーを削除してメモリリークを防ぐ
+            if (mounted) {
+              try {
+                imageStream.removeListener(listener);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ リスナー削除エラー: $e');
+                }
+              }
+            }
+          }
+        },
+        onError: (exception, stackTrace) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 画像読み込みエラー: $exception');
+          }
+          if (mounted) {
+            try {
+              imageStream.removeListener(listener);
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ リスナー削除エラー: $e');
+              }
+            }
+          }
+        },
+      );
+
+      imageStream.addListener(listener);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ アスペクト比取得エラー: $e');
+      }
+    }
+  }
+
   /// 投稿のサムネイルを表示
   Widget _buildPostThumbnail(BuildContext context, Post post, int index) {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -722,6 +1047,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Container(
         width: itemWidth,
+        height: 148, // サムネイル120px + マージン8px + タイトル20px = 148px
         margin: EdgeInsets.only(
             right: index < _myPosts.length - 1 ? itemMargin : 0),
         child: Column(
@@ -729,23 +1055,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 120,
-                color: Colors.grey[800],
-                child: _hasValidThumbnail(post.thumbnailUrl)
-                    ? RobustNetworkImage(
-                        imageUrl: post.thumbnailUrl ?? '',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+              child: _hasValidThumbnail(post.thumbnailUrl)
+                  ? _buildThumbnailWithAspectRatio(
+                      post.thumbnailUrl ?? '',
+                      itemWidth,
+                      post,
+                      index,
+                    )
+                  : Container(
+                      width: itemWidth,
+                      height: 120,
+                      color: Colors.grey[800],
+                      child: Stack(
                         children: [
                           Center(
                             child: Icon(
@@ -790,18 +1111,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                         ],
                       ),
-              ),
+                    ),
             ),
             const SizedBox(height: 8),
-            Text(
-              _getSafeTitle(post.title),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            SizedBox(
+              height: 20, // タイトル部分の高さを固定
+              child: Text(
+                _getTruncatedTitle(_getSafeTitle(post.title)),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -882,43 +1206,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _historyPosts.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _historyPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _historyPosts[index];
-                              return _buildHistoryThumbnail(
-                                  context, post, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_historyPosts.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_historyPosts, 5);
-                              final pagePosts = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Post>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePosts.length,
-                                    (index) {
-                                      final post = pagePosts[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildHistoryThumbnail(
-                                          context, post, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _historyPosts.length,
+                      itemBuilder: (context, index) {
+                        final post = _historyPosts[index];
+                        return _buildHistoryThumbnail(context, post, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -929,7 +1226,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -960,6 +1257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Container(
         width: itemWidth,
+        height: 148, // サムネイル120px + マージン8px + タイトル20px = 148px
         margin: EdgeInsets.only(
             right: index < _historyPosts.length - 1 ? itemMargin : 0),
         child: Column(
@@ -967,23 +1265,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 120,
-                color: Colors.grey[800],
-                child: _hasValidThumbnail(post.thumbnailUrl)
-                    ? RobustNetworkImage(
-                        imageUrl: post.thumbnailUrl ?? '',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+              child: _hasValidThumbnail(post.thumbnailUrl)
+                  ? _buildThumbnailWithAspectRatio(
+                      post.thumbnailUrl ?? '',
+                      itemWidth,
+                      post,
+                      index,
+                    )
+                  : Container(
+                      width: itemWidth,
+                      height: 120,
+                      color: Colors.grey[800],
+                      child: Stack(
                         children: [
                           Center(
                             child: Icon(
@@ -1028,18 +1321,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                         ],
                       ),
-              ),
+                    ),
             ),
             const SizedBox(height: 8),
-            Text(
-              _getSafeTitle(post.title),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            SizedBox(
+              height: 20, // タイトル部分の高さを固定
+              child: Text(
+                _getTruncatedTitle(_getSafeTitle(post.title)),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -1053,7 +1349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 12.0; // アイテム間のマージン
+    final itemMargin = 15.0; // アイテム間のマージン
     final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
@@ -1094,32 +1390,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 height: 120,
                 color: Colors.grey[800],
-                child: playlist.thumbnailpath != null &&
-                        playlist.thumbnailpath!.isNotEmpty
-                    ? RobustNetworkImage(
-                        imageUrl:
-                            '${AppConfig.backendUrl}${playlist.thumbnailpath}',
-                        fit: BoxFit.cover,
-                        maxWidth: 320,
-                        maxHeight: 180,
-                        placeholder: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      )
-                    : Stack(
+                child: FutureBuilder<String?>(
+                  future: _getFirstContentThumbnail(playlist.playlistid),
+                  builder: (context, snapshot) {
+                    // 最初のコンテンツのサムネイルURLを取得
+                    final thumbnailUrl = snapshot.data;
+
+                    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+                      return Stack(
                         children: [
+                          // サムネイル画像（中央に配置）
+                          Positioned.fill(
+                            child: RobustNetworkImage(
+                              imageUrl: thumbnailUrl,
+                              fit: BoxFit.cover,
+                              maxWidth: 320,
+                              maxHeight: 180,
+                              placeholder: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFFFF6B35),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // 中央に再生リストアイコンを重ねて表示
                           const Center(
                             child: Icon(
                               Icons.playlist_play,
                               color: Colors.white,
-                              size: 32,
+                              size: 40,
                             ),
                           ),
                         ],
-                      ),
+                      );
+                    } else {
+                      // サムネイルがない場合はデフォルトアイコンを表示
+                      return const Center(
+                        child: Icon(
+                          Icons.playlist_play,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1212,43 +1528,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 : SizedBox(
                     height: 150,
-                    child: _playlists.length <= 5
-                        ? ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _playlists.length,
-                            itemBuilder: (context, index) {
-                              final playlist = _playlists[index];
-                              return _buildPlaylistThumbnail(
-                                  context, playlist, index);
-                            },
-                          )
-                        : PageView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: (_playlists.length / 5).ceil(),
-                            itemBuilder: (context, pageIndex) {
-                              final chunks = _chunkList(_playlists, 5);
-                              final pagePlaylists = chunks.length > pageIndex
-                                  ? chunks[pageIndex]
-                                  : <Playlist>[];
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Row(
-                                  children: List.generate(
-                                    pagePlaylists.length,
-                                    (index) {
-                                      final playlist = pagePlaylists[index];
-                                      final globalIndex = pageIndex * 5 + index;
-                                      return _buildPlaylistThumbnail(
-                                          context, playlist, globalIndex);
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, index) {
+                        final playlist = _playlists[index];
+                        return _buildPlaylistThumbnail(
+                            context, playlist, index);
+                      },
+                    ),
                   ),
       ],
     );
@@ -1639,6 +1929,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// 画像を正方形に切り取る（中央から）
+  ///
+  /// 画像が正方形でない場合、中央から正方形に切り取ります。
+  /// 既に正方形の場合はそのまま返します。
+  Future<Uint8List?> _cropImageToSquare(Uint8List imageBytes) async {
+    try {
+      // 画像をデコード
+      final originalImage = img.decodeImage(imageBytes);
+      if (originalImage == null) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 画像のデコードに失敗しました');
+        }
+        return null;
+      }
+
+      final width = originalImage.width;
+      final height = originalImage.height;
+
+      // 既に正方形の場合はそのまま返す
+      if (width == height) {
+        if (kDebugMode) {
+          debugPrint('✅ 画像は既に正方形です（${width}x${height}）');
+        }
+        return imageBytes;
+      }
+
+      // 正方形のサイズを決定（短い辺の長さを使用）
+      final size = width < height ? width : height;
+
+      // 切り取る位置を計算（中央から）
+      final x = (width - size) ~/ 2;
+      final y = (height - size) ~/ 2;
+
+      if (kDebugMode) {
+        debugPrint('✂️ 画像を正方形に切り取ります:');
+        debugPrint('  - 元のサイズ: ${width}x${height}');
+        debugPrint('  - 切り取りサイズ: ${size}x${size}');
+        debugPrint('  - 切り取り位置: x=$x, y=$y');
+      }
+
+      // 画像を切り取る
+      final croppedImage = img.copyCrop(
+        originalImage,
+        x: x,
+        y: y,
+        width: size,
+        height: size,
+      );
+
+      // PNG形式でエンコード（品質を保持）
+      final croppedBytes = Uint8List.fromList(img.encodePng(croppedImage));
+
+      if (kDebugMode) {
+        debugPrint('✅ 画像を正方形に切り取りました: ${size}x${size}');
+      }
+
+      return croppedBytes;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 画像の切り取りエラー: $e');
+      }
+      return null;
+    }
+  }
+
   /// 画像を選択してアップロード
   Future<void> _pickAndUploadIcon(
       BuildContext context, AuthProvider authProvider) async {
@@ -1658,7 +2013,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showSafeLoadingDialog();
 
       // XFileから直接Uint8Listを取得（Web対応）
-      final imageBytes = await pickedFile.readAsBytes();
+      final originalImageBytes = await pickedFile.readAsBytes();
+
+      // 画像を正方形に切り取る
+      final imageBytes = await _cropImageToSquare(originalImageBytes);
+
+      if (imageBytes == null) {
+        _closeSafeLoadingDialog();
+        if (mounted) {
+          _showSafeSnackBar('画像の処理に失敗しました');
+        }
+        return;
+      }
+
       final user = authProvider.currentUser;
       final username = user?.backendUsername;
 
@@ -1682,17 +2049,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         // 4. 画像のURLを取得
-        final newIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
+        // iconPathの形式を確認してURLを生成
+        String newIconUrl;
+        // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+        if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+          newIconUrl = iconPath;
+        }
+        // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+        else if (iconPath.startsWith('/icon/')) {
+          newIconUrl = '${AppConfig.backendUrl}$iconPath';
+        }
+        // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+        else if (iconPath.startsWith('/')) {
+          newIconUrl = '${AppConfig.backendUrl}$iconPath';
+        }
+        // ファイル名のみの場合は/icon/を追加
+        else {
+          newIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
+        }
 
         if (kDebugMode) {
           debugPrint('🔗 新しいアイコンURL: $newIconUrl');
         }
 
         // 古いアイコンURLを取得
-        final oldIconUrl = user?.avatarUrl ??
-            (user?.iconPath != null
-                ? '${AppConfig.backendUrl}/icon/${user!.iconPath}'
-                : null);
+        String? oldIconUrl;
+        if (user?.avatarUrl != null) {
+          oldIconUrl = user!.avatarUrl;
+        } else if (user?.iconPath != null && user!.iconPath!.isNotEmpty) {
+          final oldIconPath = user!.iconPath!;
+          // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+          if (oldIconPath.startsWith('http://') ||
+              oldIconPath.startsWith('https://')) {
+            oldIconUrl = oldIconPath;
+          }
+          // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+          else if (oldIconPath.startsWith('/icon/')) {
+            oldIconUrl = '${AppConfig.backendUrl}$oldIconPath';
+          }
+          // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+          else if (oldIconPath.startsWith('/')) {
+            oldIconUrl = '${AppConfig.backendUrl}$oldIconPath';
+          }
+          // ファイル名のみの場合は/icon/を追加
+          else {
+            oldIconUrl = '${AppConfig.backendUrl}/icon/$oldIconPath';
+          }
+        }
 
         if (kDebugMode) {
           debugPrint('🔗 古いアイコンURL: $oldIconUrl');
@@ -1701,71 +2104,552 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // 古いキャッシュをクリア（古いURLとデフォルトアイコン）
         await _clearIconCache(oldIconUrl: oldIconUrl);
 
-        // 新しいアイコンのキャッシュもクリア（強制的に再読み込み）
-        try {
-          await CachedNetworkImage.evictFromCache(newIconUrl);
-          if (kDebugMode) {
-            debugPrint('🗑️ 新しいアイコンURLのキャッシュもクリア: $newIconUrl');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 新しいアイコンキャッシュクリアエラー: $e');
-          }
-        }
-
         // 5. フロントにURLを元に画像を設定 & 6. キャッシュを更新
         // サーバー側で画像処理が完了するまで少し待機
         await Future.delayed(const Duration(milliseconds: 500));
 
         // バックエンドから最新のユーザー情報を再取得して反映（アイコン変更後は強制更新）
+        // 注意: refreshUserInfoFromBackend()はupdateUserInfo()を内部で呼び出すため、
+        // この時点でiconPathが更新される可能性がある
         final refreshed =
             await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
 
         if (kDebugMode) {
           debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
+          if (refreshed) {
+            final refreshedUserAfterRefresh = authProvider.currentUser;
+            debugPrint(
+                '📡 再取得後のiconPath: ${refreshedUserAfterRefresh?.iconPath}');
+          }
         }
 
-        // 新しいアイコンのURLを再度クリア（再取得後のURLもクリア）
-        try {
-          final refreshedUser = authProvider.currentUser;
-          final refreshedIconUrl = refreshedUser?.avatarUrl ??
-              (refreshedUser?.iconPath != null
-                  ? '${AppConfig.backendUrl}/icon/${refreshedUser!.iconPath}'
-                  : null);
-          if (refreshedIconUrl != null) {
-            await CachedNetworkImage.evictFromCache(refreshedIconUrl);
+        // すべてのアイコンURLのキャッシュをクリア（確実に再読み込み）
+        final allIconUrls = <String>[];
+        if (oldIconUrl != null) {
+          allIconUrls.add(oldIconUrl);
+        }
+        allIconUrls.add(newIconUrl);
+
+        // 再取得後のURLも追加
+        final refreshedUser = authProvider.currentUser;
+        String? refreshedIconUrl;
+        if (refreshedUser?.iconPath != null &&
+            refreshedUser!.iconPath!.isNotEmpty) {
+          // iconPathの形式を確認
+          final refreshedIconPath = refreshedUser.iconPath!;
+          // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+          if (refreshedIconPath.startsWith('http://') ||
+              refreshedIconPath.startsWith('https://')) {
+            refreshedIconUrl = refreshedIconPath;
+          }
+          // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+          else if (refreshedIconPath.startsWith('/icon/')) {
+            refreshedIconUrl = '${AppConfig.backendUrl}$refreshedIconPath';
+          }
+          // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+          else if (refreshedIconPath.startsWith('/')) {
+            refreshedIconUrl = '${AppConfig.backendUrl}$refreshedIconPath';
+          }
+          // ファイル名のみの場合は/icon/を追加
+          else {
+            refreshedIconUrl =
+                '${AppConfig.backendUrl}/icon/$refreshedIconPath';
+          }
+        } else {
+          refreshedIconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+        }
+        if (!allIconUrls.contains(refreshedIconUrl)) {
+          allIconUrls.add(refreshedIconUrl);
+        }
+
+        // すべてのURLのキャッシュをクリア
+        for (final url in allIconUrls) {
+          try {
+            await CachedNetworkImage.evictFromCache(url);
             if (kDebugMode) {
-              debugPrint('🗑️ 再取得後のアイコンURLのキャッシュもクリア: $refreshedIconUrl');
+              debugPrint('🗑️ アイコンURLのキャッシュをクリア: $url');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ キャッシュクリアエラー: $e');
             }
           }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 再取得後のキャッシュクリアエラー: $e');
+        }
+
+        // キャッシュキー付きURLもクリア
+        final now = DateTime.now();
+        for (int i = 0; i < 60; i++) {
+          final testTime = now.subtract(Duration(seconds: i));
+          final cacheKey =
+              '${testTime.year}${testTime.month.toString().padLeft(2, '0')}${testTime.day.toString().padLeft(2, '0')}${testTime.hour.toString().padLeft(2, '0')}${testTime.minute.toString().padLeft(2, '0')}${testTime.second.toString().padLeft(2, '0')}';
+          for (final baseUrl in [newIconUrl, refreshedIconUrl]) {
+            try {
+              final cachedUrl = baseUrl.contains('?')
+                  ? '$baseUrl&cache=$cacheKey'
+                  : '$baseUrl?cache=$cacheKey';
+              await CachedNetworkImage.evictFromCache(cachedUrl);
+            } catch (e) {
+              // エラーは無視（存在しないキャッシュの場合がある）
+            }
           }
         }
 
         // 他の画面にアイコン更新を通知（ホーム画面など）
+        // 通知を送信する前に、新しいアイコンURLを確実に反映させる
+        // iconPathを正しい形式に変換
+        String notificationIconPath;
+        // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+        if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+          notificationIconPath = iconPath;
+        }
+        // 相対パス（/icon/で始まる）の場合はそのまま使用
+        else if (iconPath.startsWith('/icon/')) {
+          notificationIconPath = iconPath;
+        }
+        // 相対パス（/で始まるが/icon/でない）の場合もそのまま使用
+        else if (iconPath.startsWith('/')) {
+          notificationIconPath = iconPath;
+        }
+        // ファイル名のみの場合は/icon/を追加
+        else {
+          notificationIconPath = '/icon/$iconPath';
+        }
         IconUpdateService().notifyIconUpdate(
           username,
-          iconPath: iconPath,
+          iconPath: notificationIconPath,
         );
 
         if (mounted) {
-          // 画面を再構築してアイコンを更新
-          setState(() {});
+          // iconPathを正しい形式に変換
+          // uploadIconは完全なURLまたはファイル名のみを返す可能性がある
+          String finalIconPath;
+          if (iconPath.startsWith('http://') ||
+              iconPath.startsWith('https://')) {
+            // 完全なURLの場合はそのまま使用（CloudFront URLなど）
+            finalIconPath = iconPath;
+            if (kDebugMode) {
+              debugPrint('📸 完全なURLを検出（そのまま使用）: $iconPath');
+            }
+          } else if (iconPath.startsWith('/icon/')) {
+            // /icon/で始まる相対パスの場合はそのまま使用
+            finalIconPath = iconPath;
+            if (kDebugMode) {
+              debugPrint('📸 /icon/で始まる相対パスを検出: $iconPath');
+            }
+          } else if (iconPath.startsWith('/')) {
+            // /で始まるが/icon/でない相対パスの場合もそのまま使用
+            finalIconPath = iconPath;
+            if (kDebugMode) {
+              debugPrint('📸 /で始まる相対パスを検出: $iconPath');
+            }
+          } else {
+            // ファイル名のみの場合は/icon/を追加
+            finalIconPath = '/icon/$iconPath';
+            if (kDebugMode) {
+              debugPrint(
+                  '📸 ファイル名のみを検出、/icon/を追加: $iconPath -> $finalIconPath');
+            }
+          }
+
+          if (kDebugMode) {
+            debugPrint('📸 アイコンアップロード後の処理:');
+            debugPrint('  - アップロード成功: iconPath = $iconPath');
+            debugPrint('  - 変換後: finalIconPath = $finalIconPath');
+            debugPrint('  - 現在のユーザーiconPath: ${user?.iconPath}');
+          }
+
+          // まず、手動でiconPathを更新（確実に反映させるため）
+          // 更新前に現在の状態を確認
+          final beforeUpdate = authProvider.currentUser;
+          if (kDebugMode) {
+            debugPrint('📸 updateUserInfo前:');
+            debugPrint('  - iconPath: ${beforeUpdate?.iconPath}');
+            debugPrint('  - avatarUrl: ${beforeUpdate?.avatarUrl}');
+          }
+
+          await authProvider.updateUserInfo(iconPath: finalIconPath);
+
+          // 更新直後に確認（notifyListeners()の処理を待つ）
+          await Future.delayed(const Duration(milliseconds: 200));
+          final afterUpdate = authProvider.currentUser;
+          if (kDebugMode) {
+            debugPrint('📸 updateUserInfo後（200ms待機後）:');
+            debugPrint('  - iconPath: ${afterUpdate?.iconPath}');
+            debugPrint('  - avatarUrl: ${afterUpdate?.avatarUrl}');
+            debugPrint('  - 期待するiconPath: $finalIconPath');
+            debugPrint(
+                '  - iconPath一致: ${afterUpdate?.iconPath == finalIconPath}');
+          }
+
+          // iconPathがまだ更新されていない場合は、再度更新を試みる
+          if (afterUpdate?.iconPath != finalIconPath) {
+            if (kDebugMode) {
+              debugPrint('⚠️ iconPathが更新されていないため、再度更新を試みます');
+            }
+            await authProvider.updateUserInfo(iconPath: finalIconPath);
+            await Future.delayed(const Duration(milliseconds: 200));
+            final retryUpdate = authProvider.currentUser;
+            if (kDebugMode) {
+              debugPrint('📸 再更新後:');
+              debugPrint('  - iconPath: ${retryUpdate?.iconPath}');
+              debugPrint('  - 期待するiconPath: $finalIconPath');
+              debugPrint(
+                  '  - iconPath一致: ${retryUpdate?.iconPath == finalIconPath}');
+            }
+          }
+
+          // refreshUserInfoFromBackend()は既にupdateUserInfo()を内部で呼び出しているため、
+          // ここで再度updateUserInfo()を呼び出す必要はない
+          // ただし、refreshUserInfoFromBackend()が失敗した場合や、
+          // iconPathが期待する値と異なる場合は、手動でupdateUserInfo()を呼び出す
+          if (refreshed) {
+            final refreshedUserAfterRefresh = authProvider.currentUser;
+            final refreshedIconPath = refreshedUserAfterRefresh?.iconPath;
+
+            if (kDebugMode) {
+              debugPrint('📸 refreshUserInfoFromBackend後の確認:');
+              debugPrint('  - 再取得後のiconPath: $refreshedIconPath');
+              debugPrint('  - 期待するiconPath: $finalIconPath');
+            }
+
+            // 再取得後のiconPathが期待する値と異なる場合は、手動更新を試みる
+            // バックエンドから取得した最新情報を優先する
+            if (refreshedIconPath != null && refreshedIconPath.isNotEmpty) {
+              // 再取得後のiconPathが期待する値と異なる場合
+              if (refreshedIconPath != finalIconPath) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ 再取得後のiconPathが期待値と異なります');
+                  debugPrint('  - 再取得後のiconPath: $refreshedIconPath');
+                  debugPrint('  - 期待するiconPath: $finalIconPath');
+                  debugPrint('  - バックエンドの最新情報を優先します');
+                }
+                // 再取得後のiconPathを使用（バックエンドの最新情報を優先）
+                await authProvider.updateUserInfo(iconPath: refreshedIconPath);
+                // finalIconPathを更新（以降の処理で使用）
+                finalIconPath = refreshedIconPath;
+              } else {
+                if (kDebugMode) {
+                  debugPrint('✅ 再取得後のiconPathが期待値と一致しています');
+                }
+              }
+            } else {
+              // 再取得後のiconPathがnullまたは空の場合は、手動更新を試みる
+              if (kDebugMode) {
+                debugPrint('⚠️ 再取得後のiconPathがnullまたは空のため、手動更新を試みます');
+              }
+              await authProvider.updateUserInfo(iconPath: finalIconPath);
+            }
+          } else {
+            // refreshUserInfoFromBackend()が失敗した場合は、手動更新のみに依存
+            if (kDebugMode) {
+              debugPrint('⚠️ refreshUserInfoFromBackend()が失敗したため、手動更新のみに依存します');
+            }
+          }
+
+          // 現在のユーザー情報を確認（updateUserInfo後の最新情報）
+          final currentUser = authProvider.currentUser;
+          if (kDebugMode) {
+            debugPrint('🖼️ 最終確認 - ユーザー情報:');
+            debugPrint('  - iconPath: ${currentUser?.iconPath}');
+            debugPrint('  - avatarUrl: ${currentUser?.avatarUrl}');
+            debugPrint('  - 期待するiconPath: $finalIconPath');
+            debugPrint(
+                '  - iconPath一致: ${currentUser?.iconPath == finalIconPath}');
+          }
+
+          // アイコンURLのキャッシュを完全にクリア（新しいiconPathに対応）
+          // finalIconPathの形式を確認してURLを生成
+          String expectedIconUrl;
+          // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+          if (finalIconPath.startsWith('http://') ||
+              finalIconPath.startsWith('https://')) {
+            expectedIconUrl = finalIconPath;
+          }
+          // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+          else if (finalIconPath.startsWith('/icon/')) {
+            expectedIconUrl = '${AppConfig.backendUrl}$finalIconPath';
+          }
+          // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+          else if (finalIconPath.startsWith('/')) {
+            expectedIconUrl = '${AppConfig.backendUrl}$finalIconPath';
+          }
+          // ファイル名のみの場合は/icon/を追加
+          else {
+            expectedIconUrl = '${AppConfig.backendUrl}/icon/$finalIconPath';
+          }
+
+          // すべてのアイコンURLのキャッシュをクリア（確実に再読み込み）
+          final allUrlsToClear = <String>[
+            expectedIconUrl,
+            newIconUrl,
+            if (oldIconUrl != null) oldIconUrl,
+            refreshedIconUrl, // refreshedIconUrlは既にnullチェック済み
+          ];
+
+          // DefaultCacheManagerを使用して、すべてのキャッシュをクリア
+          try {
+            final cacheManager = DefaultCacheManager();
+            await cacheManager.emptyCache();
+            if (kDebugMode) {
+              debugPrint('🗑️ DefaultCacheManagerでキャッシュを完全にクリアしました');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ DefaultCacheManagerキャッシュクリアエラー: $e');
+            }
+          }
+
+          for (final url in allUrlsToClear) {
+            try {
+              // ベースURLをクリア（キャッシュキーを除いたURL）
+              final baseUrl = url.split('?').first.split('&').first;
+              await CachedNetworkImage.evictFromCache(baseUrl);
+              await CachedNetworkImage.evictFromCache(url);
+
+              // DefaultCacheManagerでもクリア
+              try {
+                final cacheManager = DefaultCacheManager();
+                await cacheManager.removeFile(baseUrl);
+                await cacheManager.removeFile(url);
+              } catch (e) {
+                // エラーは無視
+              }
+
+              // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+              // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+              final iconPathForCache = finalIconPath;
+              if (iconPathForCache.isNotEmpty) {
+                // iconPathを含むすべてのURLパターンをクリア
+                final urlPatterns = [
+                  baseUrl,
+                  url,
+                  '$baseUrl?cache=$iconPathForCache',
+                  '$baseUrl&cache=$iconPathForCache',
+                ];
+                for (final pattern in urlPatterns) {
+                  try {
+                    await CachedNetworkImage.evictFromCache(pattern);
+                    final cacheManager = DefaultCacheManager();
+                    await cacheManager.removeFile(pattern);
+                  } catch (e) {
+                    // エラーは無視
+                  }
+                }
+              }
+              if (kDebugMode) {
+                debugPrint('🗑️ アイコンURLのキャッシュをクリア: $url (ベースURL: $baseUrl)');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ キャッシュクリアエラー: $e');
+              }
+            }
+          }
+
+          // 追加で、すべての可能性のあるURLパターンをクリア
+          // 完全なURLの場合はそのまま、相対パスの場合はbackendUrlを追加したURLもクリア
+          final additionalUrlsToClear = <String>[];
+          for (final url in allUrlsToClear) {
+            // ベースURLを取得
+            final baseUrl = url.split('?').first.split('&').first;
+            additionalUrlsToClear.add(baseUrl);
+
+            // 完全なURLの場合は、相対パス形式も試す
+            if (baseUrl.startsWith('http://') ||
+                baseUrl.startsWith('https://')) {
+              // CloudFront URLの場合は、backendUrl形式も試す
+              if (baseUrl.contains('cloudfront.net')) {
+                final pathMatch = RegExp(r'/icon/([^/]+)$').firstMatch(baseUrl);
+                if (pathMatch != null) {
+                  final filename = pathMatch.group(1);
+                  additionalUrlsToClear
+                      .add('${AppConfig.backendUrl}/icon/$filename');
+                }
+              }
+            }
+          }
+
+          // 追加のURLもクリア
+          for (final url in additionalUrlsToClear) {
+            if (!allUrlsToClear.contains(url)) {
+              try {
+                await CachedNetworkImage.evictFromCache(url);
+                if (kDebugMode) {
+                  debugPrint('🗑️ 追加のアイコンURLのキャッシュをクリア: $url');
+                }
+              } catch (e) {
+                // エラーは無視
+              }
+            }
+          }
+
+          // 画面を再構築してアイコンを更新（即座に反映）
+          // Consumer<AuthProvider>はupdateUserInfo内でnotifyListeners()が呼ばれるため、
+          // 自動的に再構築される。しかし、確実に反映させるためにsetState()も呼び出す
+          if (mounted) {
+            // まず、現在のユーザー情報を確認
+            final currentUserForState = authProvider.currentUser;
+            if (kDebugMode) {
+              debugPrint('🔄 setState()前の確認:');
+              debugPrint('  - iconPath: ${currentUserForState?.iconPath}');
+              debugPrint('  - avatarUrl: ${currentUserForState?.avatarUrl}');
+              debugPrint('  - 期待するiconPath: $finalIconPath');
+            }
+
+            // キャッシュクリア後に少し待ってからsetState()を呼び出す（確実に再構築されるようにする）
+            await Future.delayed(const Duration(milliseconds: 100));
+
+            setState(() {
+              // iconPathが変更されたことを確実に反映するため、空のsetStateを呼び出す
+              // Consumer<AuthProvider>が再構築されるようにする
+            });
+
+            if (kDebugMode) {
+              debugPrint(
+                  '🔄 setState()を呼び出しました（Consumer<AuthProvider>の再構築を促す）');
+              final afterSetState = authProvider.currentUser;
+              debugPrint(
+                  '  - setState()後のiconPath: ${afterSetState?.iconPath}');
+              debugPrint(
+                  '  - setState()後のavatarUrl: ${afterSetState?.avatarUrl}');
+            }
+
+            // さらに少し待ってから再度setState()を呼び出す（確実に再構築されるようにする）
+            await Future.delayed(const Duration(milliseconds: 100));
+            if (mounted) {
+              setState(() {
+                // 再度setState()を呼び出して、確実に再構築されるようにする
+              });
+            }
+          }
 
           if (kDebugMode) {
             debugPrint('🔄 プロフィール画面を再構築しました（アイコン更新）');
           }
 
-          // 7. レスポンスメッセージ表示
-          if (refreshed) {
-            _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
-          } else {
-            // 再取得に失敗した場合は、レスポンスのiconPathを使用
-            await authProvider.updateUserInfo(iconPath: iconPath);
-            _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
+          // 少し待ってから再度再構築（サーバー側の処理完了を待つ）
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          if (mounted) {
+            // 再度ユーザー情報を確認
+            final updatedUser = authProvider.currentUser;
+            if (kDebugMode) {
+              debugPrint('🖼️ 最終確認 - ユーザー情報:');
+              debugPrint('  - iconPath: ${updatedUser?.iconPath}');
+              debugPrint('  - avatarUrl: ${updatedUser?.avatarUrl}');
+              debugPrint('  - 期待するiconPath: $finalIconPath');
+              debugPrint(
+                  '  - iconPath一致: ${updatedUser?.iconPath == finalIconPath}');
+            }
+
+            // iconPathがまだ更新されていない場合は、再度手動更新
+            if (updatedUser?.iconPath != finalIconPath) {
+              if (kDebugMode) {
+                debugPrint('⚠️ iconPathがまだ更新されていないため、再度手動更新します');
+                debugPrint('  - 現在: ${updatedUser?.iconPath}');
+                debugPrint('  - 期待: $finalIconPath');
+              }
+              // 再度updateUserInfoを呼び出して、notifyListeners()を確実に呼ぶ
+              await authProvider.updateUserInfo(iconPath: finalIconPath);
+
+              // 更新後の確認
+              final reUpdatedUser = authProvider.currentUser;
+              if (kDebugMode) {
+                debugPrint('🖼️ 再更新後の確認:');
+                debugPrint('  - iconPath: ${reUpdatedUser?.iconPath}');
+                debugPrint('  - 期待するiconPath: $finalIconPath');
+                debugPrint(
+                    '  - iconPath一致: ${reUpdatedUser?.iconPath == finalIconPath}');
+              }
+
+              // 少し待ってからsetStateを呼び出す（notifyListeners()の処理を待つ）
+              await Future.delayed(const Duration(milliseconds: 200));
+            }
+
+            // アイコンキャッシュを再度クリア（確実に再読み込み）
+            // finalIconPathの形式を確認してURLを生成
+            String expectedIconUrlForRetry;
+            // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+            if (finalIconPath.startsWith('http://') ||
+                finalIconPath.startsWith('https://')) {
+              expectedIconUrlForRetry = finalIconPath;
+            }
+            // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
+            else if (finalIconPath.startsWith('/icon/')) {
+              expectedIconUrlForRetry = '${AppConfig.backendUrl}$finalIconPath';
+            }
+            // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
+            else if (finalIconPath.startsWith('/')) {
+              expectedIconUrlForRetry = '${AppConfig.backendUrl}$finalIconPath';
+            }
+            // ファイル名のみの場合は/icon/を追加
+            else {
+              expectedIconUrlForRetry =
+                  '${AppConfig.backendUrl}/icon/$finalIconPath';
+            }
+            try {
+              // ベースURLをクリア（キャッシュキーを除いたURL）
+              final baseUrlForRetry =
+                  expectedIconUrlForRetry.split('?').first.split('&').first;
+              await CachedNetworkImage.evictFromCache(baseUrlForRetry);
+              await CachedNetworkImage.evictFromCache(expectedIconUrlForRetry);
+
+              // DefaultCacheManagerでもクリア
+              try {
+                final cacheManager = DefaultCacheManager();
+                await cacheManager.removeFile(baseUrlForRetry);
+                await cacheManager.removeFile(expectedIconUrlForRetry);
+              } catch (e) {
+                // エラーは無視
+              }
+
+              // iconPathに関連するすべてのキャッシュキー付きURLもクリア
+              // キャッシュキーはiconPathなので、iconPathを含むすべてのURLをクリア
+              final iconPathForRetry = finalIconPath;
+              if (iconPathForRetry.isNotEmpty) {
+                // iconPathを含むすべてのURLパターンをクリア
+                final urlPatterns = [
+                  baseUrlForRetry,
+                  expectedIconUrlForRetry,
+                  '$baseUrlForRetry?cache=$iconPathForRetry',
+                  '$baseUrlForRetry&cache=$iconPathForRetry',
+                ];
+                for (final pattern in urlPatterns) {
+                  try {
+                    await CachedNetworkImage.evictFromCache(pattern);
+                    final cacheManager = DefaultCacheManager();
+                    await cacheManager.removeFile(pattern);
+                  } catch (e) {
+                    // エラーは無視
+                  }
+                }
+              }
+              if (kDebugMode) {
+                debugPrint(
+                    '🗑️ アイコンキャッシュを再度クリア: $expectedIconUrlForRetry (ベースURL: $baseUrlForRetry)');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ キャッシュクリアエラー: $e');
+              }
+            }
+
+            // 最終的にsetStateを呼び出して、Consumer<AuthProvider>が再構築されるようにする
+            setState(() {
+              // iconPathが変更されたことを確実に反映するため、空のsetStateを呼び出す
+              // Consumer<AuthProvider>が再構築されるようにする
+            });
+
+            if (kDebugMode) {
+              debugPrint('🔄 プロフィール画面を再度再構築しました（アイコン更新確認）');
+              final finalUser = authProvider.currentUser;
+              debugPrint('  - 最終確認iconPath: ${finalUser?.iconPath}');
+              debugPrint('  - 期待するiconPath: $finalIconPath');
+            }
           }
+
+          // 7. レスポンスメッセージ表示
+          _showSafeSnackBar('アイコンを設定しました', backgroundColor: Colors.green);
         }
       } else {
         if (mounted) {
@@ -1871,18 +2755,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // デフォルトアイコンの処理
       await _setDefaultIcon(authProvider);
 
-      // サーバー側で処理が完了するまで待機（300ms）
-      await Future.delayed(const Duration(milliseconds: 300));
+      // サーバー側で処理が完了するまで待機（500ms）
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (kDebugMode) {
         debugPrint(
-            '📤 アイコン削除通知を送信: username=$username, iconPath=null (default)');
+            '📤 アイコン削除通知を送信: username=$username, iconPath=/icon/default_icon.jpg');
       }
 
       // 他の画面にアイコン削除を通知（ホーム画面など）
+      // nullの代わりに/icon/default_icon.jpgを明示的に指定
       IconUpdateService().notifyIconUpdate(
         username,
-        iconPath: null, // nullでdefault_icon.jpgを使用
+        iconPath: '/icon/default_icon.jpg', // デフォルトアイコンを明示的に指定
       );
 
       if (mounted) {

@@ -11,14 +11,14 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> 
+class _NotificationsScreenState extends State<NotificationsScreen>
     with SingleTickerProviderStateMixin {
   List<NotificationItem> notifications = [];
   late TabController _tabController;
   bool _isLoading = false;
   String? _errorMessage;
   int _lastRefreshTrigger = -1; // 最後に処理したリフレッシュトリガーの値
-  
+
   // タブの定義
   final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'トレンド', 'システム'];
 
@@ -31,7 +31,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   Future<void> _loadNotifications() async {
     if (_isLoading) return; // 既に読み込み中の場合はスキップ
-    
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -70,7 +70,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       builder: (context, navigationProvider, _) {
         final refreshTrigger = navigationProvider.notificationRefreshTrigger;
         final currentIndex = navigationProvider.currentIndex;
-        
+
         // 通知画面が表示されている場合、かつトリガーが更新された場合に再取得
         if (currentIndex == 3 && refreshTrigger != _lastRefreshTrigger) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -82,72 +82,74 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             }
           });
         }
-        
+
         return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: const Text(
-          '通知',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            title: const Text(
+              '通知',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: const Color(0xFF1E1E1E),
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.done_all, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    notifications = notifications
+                        .map((n) => NotificationItem(
+                              id: n.id,
+                              type: n.type,
+                              title: n.title,
+                              message: n.message,
+                              username: n.username,
+                              userAvatar: n.userAvatar,
+                              postId: n.postId,
+                              postTitle: n.postTitle,
+                              thumbnailUrl: n.thumbnailUrl,
+                              createdAt: n.createdAt,
+                              isRead: true,
+                            ))
+                        .toList();
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('すべて既読にしました'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                tooltip: 'すべて既読にする',
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              indicatorColor: SpotLightColors.primaryOrange,
+              indicatorWeight: 3,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+              ),
+              tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+            ),
           ),
-        ),
-        backgroundColor: const Color(0xFF1E1E1E),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.done_all, color: Colors.white),
-            onPressed: () {
-              setState(() {
-                notifications = notifications.map((n) => NotificationItem(
-                  id: n.id,
-                  type: n.type,
-                  title: n.title,
-                  message: n.message,
-                  username: n.username,
-                  userAvatar: n.userAvatar,
-                  postId: n.postId,
-                  postTitle: n.postTitle,
-                  thumbnailUrl: n.thumbnailUrl,
-                  createdAt: n.createdAt,
-                  isRead: true,
-                )).toList();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('すべて既読にしました'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            tooltip: 'すべて既読にする',
+          body: TabBarView(
+            controller: _tabController,
+            children: _tabs.map((tab) {
+              return _buildTabContent(tab);
+            }).toList(),
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorColor: SpotLightColors.primaryOrange,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.normal,
-          ),
-          tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _tabs.map((tab) {
-          return _buildTabContent(tab);
-        }).toList(),
-      ),
         );
       },
     );
@@ -196,12 +198,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       );
     }
 
-    List<NotificationItem> filteredNotifications = _getFilteredNotifications(tabName);
-    
+    List<NotificationItem> filteredNotifications =
+        _getFilteredNotifications(tabName);
+
     if (filteredNotifications.isEmpty) {
       return _buildEmptyState(tabName);
     }
-    
+
     return RefreshIndicator(
       onRefresh: _loadNotifications,
       color: SpotLightColors.primaryOrange,
@@ -220,14 +223,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'すべて':
         return notifications;
       case 'スポットライト':
-        return notifications.where((n) => n.type == NotificationType.spotlight).toList();
+        return notifications
+            .where((n) => n.type == NotificationType.spotlight)
+            .toList();
       case 'コメント':
-        return notifications.where((n) => 
-          n.type == NotificationType.comment || n.type == NotificationType.reply).toList();
+        return notifications
+            .where((n) =>
+                n.type == NotificationType.comment ||
+                n.type == NotificationType.reply)
+            .toList();
       case 'トレンド':
-        return notifications.where((n) => n.type == NotificationType.trending).toList();
+        return notifications
+            .where((n) => n.type == NotificationType.trending)
+            .toList();
       case 'システム':
-        return notifications.where((n) => n.type == NotificationType.system).toList();
+        return notifications
+            .where((n) => n.type == NotificationType.system)
+            .toList();
       default:
         return notifications;
     }
@@ -236,7 +248,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Widget _buildEmptyState(String tabName) {
     String message;
     IconData icon;
-    
+
     switch (tabName) {
       case 'すべて':
         message = '通知はありません';
@@ -262,7 +274,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         message = '通知はありません';
         icon = Icons.notifications_none;
     }
-    
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -288,7 +300,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Widget _buildNotificationItem(NotificationItem notification) {
     return Container(
       decoration: BoxDecoration(
-        color: notification.isRead 
+        color: notification.isRead
             ? const Color(0xFF1E1E1E)
             : const Color(0xFF2A2A2A),
         border: Border(
@@ -332,7 +344,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               // 左側のアイコン
               _buildLeadingWidget(notification),
               const SizedBox(width: 12),
-              
+
               // 中央のコンテンツ
               Expanded(
                 child: Column(
@@ -345,7 +357,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           child: Text(
                             notification.title,
                             style: TextStyle(
-                              fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
+                              fontWeight: notification.isRead
+                                  ? FontWeight.normal
+                                  : FontWeight.bold,
                               fontSize: 14,
                               color: Colors.white,
                             ),
@@ -363,7 +377,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       ],
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // メッセージ
                     Text(
                       notification.message,
@@ -374,7 +388,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    
+
                     // 投稿タイトル（ある場合）
                     if (notification.postTitle != null) ...[
                       const SizedBox(height: 4),
@@ -388,11 +402,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    
+
                     // 時刻
                     const SizedBox(height: 6),
                     Text(
-                      _formatTime(notification.createdAt),
+                      _formatTime(notification.createdAt.toLocal()),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey[600],
@@ -401,7 +415,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   ],
                 ),
               ),
-              
+
               // 右側のサムネイル（ある場合）
               if (notification.thumbnailUrl != null) ...[
                 const SizedBox(width: 12),

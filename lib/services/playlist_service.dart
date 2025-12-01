@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -655,5 +656,267 @@ class PlaylistService {
     }
 
     return [];
+  }
+
+  /// プレイリストからコンテンツを削除
+  ///
+  /// playlistdetailテーブルから指定されたコンテンツを削除
+  /// - playlistID: 指定されたプレイリストID
+  /// - contentID: 指定されたコンテンツID
+  static Future<bool> removeContentFromPlaylist(
+      int playlistId, String contentId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📋 [プレイリスト削除] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      // API仕様書（API_ENDPOINTS.md 441-451行目）に基づく
+      // POST /api/delete/playlistdetail
+      final url = '${AppConfig.apiBaseUrl}/delete/playlistdetail';
+      final contentIdInt = int.tryParse(contentId);
+
+      if (contentIdInt == null || contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] contentIDの解析に失敗しました');
+          debugPrint('   - contentId (元の値): $contentId');
+        }
+        return false;
+      }
+
+      if (playlistId <= 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] playlistIDが無効です: $playlistId');
+        }
+        return false;
+      }
+
+      // バックエンドの実装（routes/delete.py 53-54行目）を確認:
+      // playlistid = data.get("playlistID")
+      // contentid = data.get("contentID")
+      // バックエンドは "playlistID" と "contentID"（大文字）を期待している
+      final requestBody = {
+        'playlistID': playlistId, // バックエンドは "playlistID"（大文字）を期待
+        'contentID': contentIdInt, // バックエンドは "contentID"（大文字）を期待
+      };
+
+      if (kDebugMode) {
+        debugPrint('📋 [プレイリスト削除] ========== API呼び出し ==========');
+        debugPrint('📋 [プレイリスト削除] URL: $url');
+        debugPrint('📋 [プレイリスト削除] リクエストボディ: ${jsonEncode(requestBody)}');
+        debugPrint('📋 [プレイリスト削除] バックエンドは "playlistID" と "contentID"（大文字）を期待');
+      }
+
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [プレイリスト削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
+          }
+          throw TimeoutException('プレイリスト削除のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 [プレイリスト削除] HTTPステータスコード: ${response.statusCode}');
+        debugPrint('📋 [プレイリスト削除] レスポンスボディ: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📋 [プレイリスト削除] レスポンス（パース後）: ${responseData.toString()}');
+          }
+
+          if (responseData['status'] == 'success') {
+            if (kDebugMode) {
+              debugPrint('✅ [プレイリスト削除] 成功: playlistdetailテーブルから削除されました');
+            }
+            return true;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [プレイリスト削除] APIレスポンスエラー');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
+            }
+            return false;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [プレイリスト削除] レスポンスのパースエラー: $e');
+          }
+          return false;
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] エンドポイントが見つかりません (404)');
+          debugPrint('   - URL: $url');
+          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] HTTPエラー: ${response.statusCode}');
+          debugPrint('📋 [プレイリスト削除] レスポンス: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [プレイリスト削除] 例外: $e');
+        debugPrint('📋 [プレイリスト削除] スタックトレース: $stackTrace');
+
+        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
+        if (e.toString().contains('ClientException') ||
+            e.toString().contains('Failed to fetch')) {
+          debugPrint('⚠️ [プレイリスト削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
+          debugPrint(
+              '   - バックエンドに /api/delete/playlistdetail エンドポイントが実装されているか確認してください');
+          debugPrint('   - CORS設定が正しく行われているか確認してください');
+          debugPrint('   - ネットワーク接続を確認してください');
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /// プレイリストを削除
+  ///
+  /// データベースから指定されたプレイリストを完全に削除
+  /// - playlistId: 削除するプレイリストのID
+  static Future<bool> deletePlaylist(int playlistId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📋 [プレイリスト削除] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      // API仕様書（API_ENDPOINTS.md 453-462行目）に基づく
+      // POST /api/delete/playlist
+      final url = '${AppConfig.apiBaseUrl}/delete/playlist';
+
+      if (playlistId <= 0) {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] playlistIDが無効です: $playlistId');
+        }
+        return false;
+      }
+
+      // バックエンドの実装を確認:
+      // バックエンドは "playlistID"（大文字のID）を期待している
+      // API仕様書では小文字と記載されているが、実際のバックエンド実装では大文字が必要
+      final requestBody = {
+        'playlistID': playlistId, // バックエンドは "playlistID"（大文字）を期待
+      };
+
+      if (kDebugMode) {
+        debugPrint('📋 [プレイリスト削除] ========== API呼び出し ==========');
+        debugPrint('📋 [プレイリスト削除] URL: $url');
+        debugPrint('📋 [プレイリスト削除] リクエストボディ: ${jsonEncode(requestBody)}');
+      }
+
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [プレイリスト削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
+          }
+          throw TimeoutException('プレイリスト削除のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 [プレイリスト削除] HTTPステータスコード: ${response.statusCode}');
+        debugPrint('📋 [プレイリスト削除] レスポンスボディ: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📋 [プレイリスト削除] レスポンス（パース後）: ${responseData.toString()}');
+          }
+
+          if (responseData['status'] == 'success') {
+            if (kDebugMode) {
+              debugPrint('✅ [プレイリスト削除] 成功: データベースから削除されました');
+            }
+            return true;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [プレイリスト削除] APIレスポンスエラー');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
+            }
+            return false;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [プレイリスト削除] レスポンスのパースエラー: $e');
+          }
+          return false;
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] エンドポイントが見つかりません (404)');
+          debugPrint('   - URL: $url');
+          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [プレイリスト削除] HTTPエラー: ${response.statusCode}');
+          debugPrint('📋 [プレイリスト削除] レスポンス: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [プレイリスト削除] 例外: $e');
+        debugPrint('📋 [プレイリスト削除] スタックトレース: $stackTrace');
+
+        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
+        if (e.toString().contains('ClientException') ||
+            e.toString().contains('Failed to fetch')) {
+          debugPrint('⚠️ [プレイリスト削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
+          debugPrint(
+              '   - バックエンドに /api/delete/playlist エンドポイントが実装されているか確認してください');
+          debugPrint('   - CORS設定が正しく行われているか確認してください');
+          debugPrint('   - ネットワーク接続を確認してください');
+        }
+      }
+    }
+
+    return false;
   }
 }
