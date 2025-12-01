@@ -3,12 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
-import '../config/app_config.dart';
 import '../providers/navigation_provider.dart';
 import '../screens/splash_screen.dart';
 
 /// ソーシャルログイン専用画面
-/// Google、Twitter（X）でのログインをサポート
+/// Googleでのログインをサポート
 /// すべてFirebase Authentication経由で処理されます
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
@@ -58,36 +57,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
   }
 
 
-  Future<void> _handleTwitterLogin() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
-    final success = await authProvider.loginWithTwitter();
-
-    if (success && mounted) {
-      // NavigationProviderをリセット
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
-      navigationProvider.reset();
-      // MainScreenに遷移
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
-    } else if (mounted && authProvider.errorMessage != null) {
-      _showErrorSnackBar(authProvider.errorMessage!);
-    }
-  }
-
-  void _handleSkip() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    authProvider.skipLogin();
-    
-    // NavigationProviderをリセット
-    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
-    navigationProvider.reset();
-    // MainScreenに遷移
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainScreen()),
-    );
-  }
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -185,22 +154,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     textColor: Colors.black87,
                   ),
                 
-                if (authProvider.canUseGoogle) const SizedBox(height: 12),
-                
-                // Twitterログインボタン（X）
-                if (authProvider.canUseTwitter)
-                  _SocialLoginButton(
-                    onPressed: authProvider.isLoading ? null : _handleTwitterLogin,
-                    icon: const Icon(
-                      Icons.tag,  // Xアイコンの代わり（カスタムアイコン推奨）
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    label: 'X（Twitter）でログイン',
-                    backgroundColor: Colors.black,  // Xのブランドカラー
-                    textColor: Colors.white,
-                  ),
-                
                 const SizedBox(height: 32),
                 
                 // 区切り線
@@ -258,34 +211,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     backgroundColor: SpotLightColors.primaryOrange,
                     textColor: Colors.white,
                   ),
-                
-                // 開発モードのみ表示：開発用ログインボタン
-                if (AppConfig.canSkipAuth) ...[
-                  const SizedBox(height: 24),
-                  _SocialLoginButton(
-                    onPressed: authProvider.isLoading ? null : _handleSkip,
-                    icon: const Icon(
-                      Icons.developer_mode,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    label: '🚀 開発モード（ログインスキップ）',
-                    backgroundColor: Colors.purple.shade600,
-                    textColor: Colors.white,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '※ 開発・テスト用機能です',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                ],
                 
                 const SizedBox(height: 32),
                 
