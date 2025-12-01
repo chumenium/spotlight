@@ -77,9 +77,16 @@ class UserService {
           }
         }
       } else {
-        // Android/iOS: imageFileはdart:ioのFile
-        final file = imageFile as dart_io.File;
-        imageBytes = await file.readAsBytes();
+        // Android/iOS: imageFileはdart:ioのFileまたはUint8List
+        if (imageFile is Uint8List) {
+          imageBytes = imageFile.toList();
+        } else if (imageFile is List<int>) {
+          imageBytes = imageFile;
+        } else {
+          // dart:ioのFileの場合
+          final file = imageFile as dart_io.File;
+          imageBytes = await file.readAsBytes();
+        }
       }
 
       final base64Image = base64Encode(imageBytes);
