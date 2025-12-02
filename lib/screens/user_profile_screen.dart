@@ -152,12 +152,61 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final spotlightNum = userData['spotlightnum'] as int? ?? 0;
         final contents = userData['contents'] as List<dynamic>? ?? [];
         
-        // 投稿を取得
+        if (kDebugMode) {
+          debugPrint('👤 投稿データ数: ${contents.length}');
+          if (contents.isNotEmpty) {
+            debugPrint('👤 最初の投稿データ: ${contents.first}');
+          }
+        }
+        
+        // 投稿を取得（APIレスポンスをPost.fromJsonが期待する形式に変換）
         final posts = contents.map((json) {
-          // contentIDをidとして設定
-          final contentId = json['contentID']?.toString() ?? '';
-          json['id'] = contentId;
-          return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
+          // APIレスポンスのフィールド名をPost.fromJsonが期待する形式に変換
+          // thumbnailurlは既にCloudFront URLとして正規化されている可能性がある
+          final thumbnailUrl = json['thumbnailurl'] as String?;
+          
+          final postJson = <String, dynamic>{
+            'contentID': json['contentID'],
+            'id': json['contentID']?.toString() ?? '',
+            'title': json['title'] ?? '',
+            'spotlightnum': json['spotlightnum'] ?? 0,
+            'playnum': json['playnum'] ?? 0,
+            'posttimestamp': json['posttimestamp'],
+            'link': json['link'],
+            // thumbnailurlをthumbnailpathとして設定
+            // _normalizeContentUrlは既に完全なURLの場合はそのまま返す
+            'thumbnailpath': thumbnailUrl,
+            // linkをcontentpathとして設定
+            'contentpath': json['link'],
+            // ユーザー名を追加（親のデータから）
+            'username': resolvedUsername,
+            // その他の必須フィールド
+            'spotlightflag': false, // デフォルト値
+            'textflag': false, // デフォルト値
+            'commentnum': 0, // デフォルト値
+          };
+          
+          if (kDebugMode) {
+            debugPrint('📦 投稿データ変換:');
+            debugPrint('  contentID: ${postJson['contentID']}');
+            debugPrint('  title: ${postJson['title']}');
+            debugPrint('  thumbnailurl: $thumbnailUrl');
+            debugPrint('  link: ${json['link']}');
+            debugPrint('  spotlightnum: ${postJson['spotlightnum']}');
+            debugPrint('  playnum: ${postJson['playnum']}');
+          }
+          
+          final post = Post.fromJson(postJson, backendUrl: AppConfig.backendUrl);
+          
+          if (kDebugMode) {
+            debugPrint('📦 Post.fromJson完了:');
+            debugPrint('  id: ${post.id}');
+            debugPrint('  title: ${post.title}');
+            debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
+            debugPrint('  mediaUrl: ${post.mediaUrl}');
+          }
+          
+          return post;
         }).toList();
         
         if (mounted) {
@@ -415,7 +464,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             'バッジ',
@@ -427,68 +476,65 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           const SizedBox(height: 12),
           normalBadges.isEmpty
-              ? Text(
-                  'まだバッジがありません',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[400],
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'まだバッジがありません',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[400],
+                    ),
                   ),
                 )
-              : SizedBox(
-                  height: 80,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: normalBadges.length,
-                    itemBuilder: (context, index) {
-                      final badge = normalBadges[index];
-                      return Container(
-                        margin: const EdgeInsets.only(right: 12),
-                        width: 70,
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: SpotLightColors.getGradient(badge.id),
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
+              : Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: normalBadges.map((badge) {
+                    return SizedBox(
+                      width: 70,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: SpotLightColors.getGradient(badge.id),
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: badge.badgeColor.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
                                 ),
-                                borderRadius: BorderRadius.circular(30),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: badge.badgeColor.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                badge.icon,
-                                color: Colors.white,
-                                size: 30,
-                              ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            SizedBox(
-                              width: 70,
-                              child: Text(
-                                badge.name,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[300],
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                              ),
+                            child: Icon(
+                              badge.icon,
+                              color: Colors.white,
+                              size: 30,
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            badge.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[300],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
         ],
       ),
@@ -535,11 +581,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   : GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(2),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 2,
+                        mainAxisSpacing: 2,
                         childAspectRatio: 0.75,
                       ),
                       itemCount: _userPosts.length,
@@ -554,11 +601,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildPostThumbnail(Post post) {
-    String? thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
+    final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
     
     return GestureDetector(
       onTap: () {
         // ホーム画面に遷移して、その投稿を表示
+        if (kDebugMode) {
+          debugPrint('👤 投稿タップ: ${post.id} - ${post.title}');
+        }
         final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
         navigationProvider.navigateToHome(
           postId: post.id.toString(),
@@ -569,17 +619,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       },
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
           color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(4),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: thumbnailUrl != null
-              ? RobustNetworkImage(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // サムネイル画像
+            if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: RobustNetworkImage(
                   imageUrl: thumbnailUrl,
                   fit: BoxFit.cover,
                   placeholder: Container(
-                    color: Colors.grey[900],
+                    color: Colors.grey[800],
                     child: const Center(
                       child: CircularProgressIndicator(
                         color: SpotLightColors.primaryOrange,
@@ -588,20 +642,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ),
                   ),
                   errorWidget: Container(
-                    color: Colors.grey[900],
-                    child: Icon(
-                      post.type == 'video'
-                          ? Icons.play_circle_outline
-                          : post.type == 'audio'
-                              ? Icons.audiotrack
-                              : Icons.image,
-                      color: Colors.grey[600],
-                      size: 40,
+                    color: Colors.grey[800],
+                    child: Center(
+                      child: Icon(
+                        post.type == 'video'
+                            ? Icons.play_circle_outline
+                            : post.type == 'audio'
+                                ? Icons.audiotrack
+                                : Icons.image,
+                        color: Colors.grey[600],
+                        size: 32,
+                      ),
                     ),
                   ),
-                )
-              : Container(
-                  color: Colors.grey[900],
+                ),
+              )
+            else
+              Container(
+                color: Colors.grey[800],
+                child: Center(
                   child: Icon(
                     post.type == 'video'
                         ? Icons.play_circle_outline
@@ -609,9 +668,85 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             ? Icons.audiotrack
                             : Icons.image,
                     color: Colors.grey[600],
-                    size: 40,
+                    size: 32,
                   ),
                 ),
+              ),
+            
+            // グラデーションオーバーレイ（下部）
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(4),
+                    bottomRight: Radius.circular(4),
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                    ],
+                  ),
+                ),
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // タイトル
+                    Text(
+                      post.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // 統計情報
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.flashlight_on,
+                          size: 12,
+                          color: SpotLightColors.getSpotlightColor(0),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${post.likes}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.play_circle_outline,
+                          size: 12,
+                          color: Colors.white70,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${post.playNum}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
