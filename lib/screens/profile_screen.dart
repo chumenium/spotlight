@@ -646,71 +646,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildMaxBadgeIcon() {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, _) {
-        // 管理者ユーザーの場合は管理者バッジを優先表示
         final isAdmin = authProvider.currentUser?.admin == true;
+        final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
+        
+        // 管理者バッジ（ID: 999）と開発者バッジ（ID: 777）を除外したリストを作成
+        final normalBadges = unlockedBadges.where((b) => b.id != 999 && b.id != 777).toList();
+        
+        // 管理者ユーザーの場合、管理者バッジと通常の最大バッジの2つを表示
         if (isAdmin) {
           final adminBadge = BadgeManager.getBadgeById(999);
-          if (adminBadge != null) {
-            return Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: SpotLightColors.getGradient(adminBadge.id),
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: adminBadge.badgeColor.withOpacity(0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(
-                adminBadge.icon,
-                color: Colors.white,
-                size: 16,
-              ),
-            );
-          }
+          final maxNormalBadge = normalBadges.isNotEmpty 
+              ? normalBadges.last 
+              : null;
+          
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 管理者バッジ
+              if (adminBadge != null)
+                _buildBadgeIcon(adminBadge),
+              // 通常の最大バッジ（存在する場合）
+              if (maxNormalBadge != null) ...[
+                const SizedBox(width: 4),
+                _buildBadgeIcon(maxNormalBadge),
+              ],
+            ],
+          );
         }
 
-        // 解放されているバッジの中で最大のバッジを取得
-        final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
-        if (unlockedBadges.isEmpty) {
+        // 通常ユーザーの場合は最大バッジのみ表示
+        // 管理者バッジと開発者バッジは既に除外済み
+        if (normalBadges.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        final maxBadge = unlockedBadges.last; // 最後のバッジが最大（requiredSpotlightsが最大）
-
-        return Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: SpotLightColors.getGradient(maxBadge.id),
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: maxBadge.badgeColor.withOpacity(0.3),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(
-            maxBadge.icon,
-            color: Colors.white,
-            size: 16,
-          ),
-        );
+        final maxBadge = normalBadges.last;
+        return _buildBadgeIcon(maxBadge);
       },
+    );
+  }
+
+  /// バッジアイコンを生成するヘルパーメソッド
+  Widget _buildBadgeIcon(Badge badge) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: SpotLightColors.getGradient(badge.id),
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: badge.badgeColor.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        badge.icon,
+        color: Colors.white,
+        size: 16,
+      ),
     );
   }
 
