@@ -20,6 +20,7 @@ import '../services/playlist_service.dart';
 import '../models/comment.dart';
 import '../auth/auth_provider.dart';
 import '../services/report_service.dart';
+import 'user_profile_screen.dart';
 
 /// 通報ダイアログ（独立したStatefulWidgetとして分離）
 class _ReportDialog extends StatefulWidget {
@@ -3264,68 +3265,94 @@ class _HomeScreenState extends State<HomeScreen>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 投稿者情報
-          Row(
-            children: [
-              // RepaintBoundaryでアイコン部分を分離し、setStateの影響を受けないようにする
-              RepaintBoundary(
-                child: CircleAvatar(
-                  radius: 20,
-                  backgroundColor: SpotLightColors.getSpotlightColor(0),
-                  child: ClipOval(
-                    key: ValueKey(
-                        '${post.username}_${post.userIconPath}_${_iconCacheKeys[post.username] ?? DateTime.now().millisecondsSinceEpoch}'),
-                    child: CachedNetworkImage(
-                      imageUrl: _getCachedIconUrl(
-                          post.userIconUrl, post.userIconPath),
-                      fit: BoxFit.cover,
-                      memCacheWidth: 80,
-                      memCacheHeight: 80,
-                      httpHeaders: const {
-                        'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
-                        'User-Agent': 'Flutter-Spotlight/1.0',
-                      },
-                      fadeInDuration: const Duration(milliseconds: 200),
-                      placeholder: (context, url) => Container(
-                        color: SpotLightColors.getSpotlightColor(0),
+          // 投稿者情報（タップ可能）
+          GestureDetector(
+            onTap: () {
+              // 他ユーザーのプロフィール画面に遷移
+              if (kDebugMode) {
+                debugPrint('👤 ユーザープロフィール画面に遷移:');
+                debugPrint('  userId: ${post.userId}');
+                debugPrint('  username: ${post.username}');
+                debugPrint('  userIconUrl: ${post.userIconUrl}');
+                debugPrint('  userIconPath: ${post.userIconPath}');
+              }
+              
+              // userIdが空でも、usernameがあれば遷移を許可
+              // UserProfileScreenでusernameから情報を取得する
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserProfileScreen(
+                    userId: post.userId.isEmpty ? '' : post.userId,
+                    username: post.username,
+                    userIconUrl: post.userIconUrl,
+                    userIconPath: post.userIconPath,
+                  ),
+                ),
+              );
+            },
+            child: Row(
+              children: [
+                // RepaintBoundaryでアイコン部分を分離し、setStateの影響を受けないようにする
+                RepaintBoundary(
+                  child: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: SpotLightColors.getSpotlightColor(0),
+                    child: ClipOval(
+                      key: ValueKey(
+                          '${post.username}_${post.userIconPath}_${_iconCacheKeys[post.username] ?? DateTime.now().millisecondsSinceEpoch}'),
+                      child: CachedNetworkImage(
+                        imageUrl: _getCachedIconUrl(
+                            post.userIconUrl, post.userIconPath),
+                        fit: BoxFit.cover,
+                        memCacheWidth: 80,
+                        memCacheHeight: 80,
+                        httpHeaders: const {
+                          'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                          'User-Agent': 'Flutter-Spotlight/1.0',
+                        },
+                        fadeInDuration: const Duration(milliseconds: 200),
+                        placeholder: (context, url) => Container(
+                          color: SpotLightColors.getSpotlightColor(0),
+                        ),
+                        errorWidget: (context, url, error) {
+                          if (kDebugMode) {
+                            debugPrint('⚠️ ホーム画面アイコン読み込みエラー: ${post.username}');
+                            debugPrint('  - userIconUrl: ${post.userIconUrl}');
+                            debugPrint('  - userIconPath: ${post.userIconPath}');
+                            debugPrint('  - error: $error');
+                          }
+                          return Container();
+                        },
                       ),
-                      errorWidget: (context, url, error) {
-                        if (kDebugMode) {
-                          debugPrint('⚠️ ホーム画面アイコン読み込みエラー: ${post.username}');
-                          debugPrint('  - userIconUrl: ${post.userIconUrl}');
-                          debugPrint('  - userIconPath: ${post.userIconPath}');
-                          debugPrint('  - error: $error');
-                        }
-                        return Container();
-                      },
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      post.username,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.username,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${_getTimeAgo(post.createdAt.toLocal())}前',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 12,
+                      Text(
+                        '${_getTimeAgo(post.createdAt.toLocal())}前',
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           // タイトル

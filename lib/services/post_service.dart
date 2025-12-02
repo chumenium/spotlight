@@ -152,9 +152,22 @@ class PostService {
               debugPrint('  title: ${data['title']}');
               debugPrint('  username: ${data['username']}');
               debugPrint('  iconimgpath: ${data['iconimgpath']}');
+              debugPrint('  user_id: ${data['user_id']}');
+              debugPrint('  firebase_uid: ${data['firebase_uid']}');
+              debugPrint('  全フィールド: ${data.keys.toList()}');
               debugPrint('  comments: ${data['comments']}');
               debugPrint('  commentnum: ${data['commentnum']}');
               debugPrint('  comment_count: ${data['comment_count']}');
+            }
+
+            // user_idまたはfirebase_uidが含まれていない場合、警告を出す
+            if ((data['user_id'] == null || data['user_id'] == '') &&
+                (data['firebase_uid'] == null || data['firebase_uid'] == '')) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
+                debugPrint('  contentID: $contentId');
+                debugPrint('  username: ${data['username']}');
+              }
             }
 
             // コンテンツIDを追加
@@ -1032,11 +1045,11 @@ class PostService {
         debugPrint('📝 [視聴履歴] 例外: $e');
         debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
       }
-      return [];
-    }
+    return [];
   }
+}
 
-  /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
+/// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
   static Future<List<Post>> getUserContents() async {
     try {
       final jwtToken = await JwtService.getJwtToken();
@@ -1408,5 +1421,89 @@ class PostService {
       }
       throw Exception('投稿作成中にエラーが発生しました: $e');
     }
+  }
+
+  /// 指定されたユーザーIDの投稿一覧を取得
+  static Future<List<Post>> getUserPostsByUserId(String userId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 JWTトークンが取得できません');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/users/getusercontents';
+
+      if (kDebugMode) {
+        debugPrint('📝 ユーザー投稿取得URL: $url');
+        debugPrint('📝 ユーザーID (firebase_uid): $userId');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({
+          'firebase_uid': userId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📝 ユーザー投稿取得レスポンス: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> postsJson = responseData['data'];
+
+          if (kDebugMode) {
+            debugPrint('📝 ユーザー投稿数: ${postsJson.length}');
+            if (postsJson.isNotEmpty) {
+              final firstPost = postsJson.first;
+              debugPrint('📝 最初の投稿のuser_id: ${firstPost['user_id']}');
+              debugPrint('📝 リクエストしたuserId: $userId');
+            }
+          }
+
+          final posts = postsJson.map((json) {
+            // contentIDをidとして設定
+            final contentId = json['contentID']?.toString() ?? '';
+            json['id'] = contentId;
+            return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
+          }).toList();
+
+          // 取得した投稿が指定したユーザーのものか確認
+          if (kDebugMode && posts.isNotEmpty) {
+            final firstPostUserId = posts.first.userId;
+            if (firstPostUserId != userId) {
+              debugPrint('⚠️ 警告: 取得した投稿のユーザーIDが一致しません');
+              debugPrint('  期待されるuserId: $userId');
+              debugPrint('  実際のuserId: $firstPostUserId');
+            }
+          }
+
+          return posts;
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 ユーザー投稿取得エラー: ${response.statusCode}');
+          debugPrint('レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 ユーザー投稿取得例外: $e');
+      }
+    }
+
+    return [];
   }
 }

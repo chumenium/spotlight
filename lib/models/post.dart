@@ -260,9 +260,21 @@ class Post {
       postType = isTextFlag ? 'text' : 'text';
     }
 
+    // user_idまたはfirebase_uidを取得
+    final userId = json['user_id'] as String? ?? 
+                   json['firebase_uid'] as String? ?? 
+                   '';
+    
+    if (kDebugMode && userId.isEmpty && (json['username'] as String? ?? '').isNotEmpty) {
+      debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
+      debugPrint('  contentID: $contentIdStr');
+      debugPrint('  username: ${json['username']}');
+      debugPrint('  利用可能なフィールド: ${json.keys.toList()}');
+    }
+
     return Post(
       id: contentIdStr,
-      userId: json['user_id'] as String? ?? '',
+      userId: userId,
       username: json['username'] as String? ?? '',
       userIconPath: iconPath,
       userIconUrl: userIconUrl,
