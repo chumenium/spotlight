@@ -9,6 +9,7 @@ class Comment {
   final String commenttext;
   final int? parentcommentID;
   final List<Comment> replies;
+  final String? userId; // コメントを投稿したユーザーID（通報用）
 
   Comment({
     required this.commentID,
@@ -18,12 +19,14 @@ class Comment {
     required this.commenttext,
     this.parentcommentID,
     this.replies = const [],
+    this.userId,
   });
 
   factory Comment.fromJson(Map<String, dynamic> json, String backendUrl) {
     final replies = json['replies'] != null
         ? (json['replies'] as List)
-            .map((reply) => Comment.fromJson(reply as Map<String, dynamic>, backendUrl))
+            .map((reply) =>
+                Comment.fromJson(reply as Map<String, dynamic>, backendUrl))
             .toList()
         : <Comment>[];
 
@@ -37,6 +40,21 @@ class Comment {
           ? int.tryParse(json['parentcommentID'].toString())
           : null,
       replies: replies,
+      userId: () {
+        // 複数のフィールド名を試行（バックエンドの実装に応じて）
+        final userId = json['user_id']?.toString() ??
+            json['userId']?.toString() ??
+            json['uid']?.toString() ??
+            json['firebase_uid']?.toString();
+
+        // デバッグログ（開発時のみ）
+        if (userId == null || userId.isEmpty) {
+          // デバッグモードで利用可能なフィールドを確認
+          // print('⚠️ コメントにuser_idが含まれていません: ${json.keys.toList()}');
+        }
+
+        return userId?.trim().isEmpty == true ? null : userId?.trim();
+      }(),
     );
   }
 
@@ -45,7 +63,8 @@ class Comment {
       return null;
     }
     // 絶対パスの場合はそのまま返す
-    if (iconimgpath!.startsWith('http://') || iconimgpath!.startsWith('https://')) {
+    if (iconimgpath!.startsWith('http://') ||
+        iconimgpath!.startsWith('https://')) {
       return iconimgpath;
     }
     // 相対パスの場合はbackendUrlと結合
@@ -57,4 +76,3 @@ class Comment {
     return '$backendUrl/icon/$iconimgpath';
   }
 }
-

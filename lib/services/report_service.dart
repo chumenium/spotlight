@@ -20,11 +20,12 @@ class ReportService {
   /// - type: 通報の種類 ("user", "content", "comment")
   /// - reason: 通報理由
   /// - detail: 通報の詳細な理由（オプション）
-  /// - targetuidID: 通報対象のユーザーID（必須）
-  /// - uid: typeが"user"の時に通報された側のuserID（オプション、targetuidIDと重複する場合は不要）
-  /// - contentID: typeが"content"の時は該当contentID、typeが"comment"の時はコメントが投稿されているコンテンツのcontentID（オプション）
-  /// - commentID: typeが"comment"の時該当するcommentID（オプション）
+  /// - uid: typeが"user"の時に通報された側のuserID（type="user"の場合のみ必須）
+  /// - contentID: typeが"content"の時は該当contentID、typeが"comment"の時はコメントが投稿されているコンテンツのcontentID
+  /// - commentID: typeが"comment"の時該当するcommentID（type="comment"の場合のみ必須）
   /// - currentUserId: 現在のユーザーID（自分の投稿チェック用）
+  /// - postUserId: 投稿のユーザーID（自分の投稿チェック用、type="content"の場合）
+  /// - commentUserId: コメントのユーザーID（自分のコメントチェック用、type="comment"の場合）
   ///
   /// 戻り値:
   /// - ReportResult: 通報送信結果（successとerrorMessageを含む）
@@ -32,22 +33,23 @@ class ReportService {
     required String type,
     required String reason,
     String? detail,
-    String? targetuidID,
     String? uid,
     String? contentID,
     int? commentID,
     String? currentUserId,
+    String? postUserId,
+    String? commentUserId,
   }) async {
     try {
       // 自分の投稿かどうかをチェック（contentタイプの場合）
-      if (type == 'content' && targetuidID != null && currentUserId != null) {
-        final targetUserIdStr = targetuidID.toString().trim();
+      if (type == 'content' && postUserId != null && currentUserId != null) {
+        final targetUserIdStr = postUserId.toString().trim();
         final currentUserIdStr = currentUserId.toString().trim();
 
         if (kDebugMode) {
           debugPrint('🚨 ReportService: 自分の投稿チェック');
           debugPrint('  currentUserId: "$currentUserIdStr"');
-          debugPrint('  targetuidID: "$targetUserIdStr"');
+          debugPrint('  postUserId: "$targetUserIdStr"');
           debugPrint('  一致: ${currentUserIdStr == targetUserIdStr}');
         }
 
@@ -60,6 +62,53 @@ class ReportService {
           return ReportResult(
             success: false,
             errorMessage: '自分の投稿は通報できません',
+          );
+        }
+      }
+
+      // 自分のコメントかどうかをチェック（commentタイプの場合）
+      if (type == 'comment' && commentUserId != null && currentUserId != null) {
+        final targetUserIdStr = commentUserId.toString().trim();
+        final currentUserIdStr = currentUserId.toString().trim();
+
+        if (kDebugMode) {
+          debugPrint('🚨 ReportService: 自分のコメントチェック');
+          debugPrint('  currentUserId: "$currentUserIdStr"');
+          debugPrint('  commentUserId: "$targetUserIdStr"');
+          debugPrint('  一致: ${currentUserIdStr == targetUserIdStr}');
+        }
+
+        if (currentUserIdStr.isNotEmpty &&
+            targetUserIdStr.isNotEmpty &&
+            currentUserIdStr == targetUserIdStr) {
+          if (kDebugMode) {
+            debugPrint('🚨 ReportService: 自分のコメントへの通報をブロックしました');
+          }
+          return ReportResult(
+            success: false,
+            errorMessage: '自分のコメントは通報できません',
+          );
+        }
+      }
+
+      // コメント通報の場合、commentIDとcontentIDが必須
+      if (type == 'comment') {
+        if (commentID == null) {
+          if (kDebugMode) {
+            debugPrint('❌ コメント通報: commentIDが指定されていません');
+          }
+          return ReportResult(
+            success: false,
+            errorMessage: 'コメントIDが指定されていません',
+          );
+        }
+        if (contentID == null || contentID.isEmpty) {
+          if (kDebugMode) {
+            debugPrint('❌ コメント通報: contentIDが指定されていません');
+          }
+          return ReportResult(
+            success: false,
+            errorMessage: 'コンテンツIDが指定されていません',
           );
         }
       }
@@ -83,28 +132,31 @@ class ReportService {
         debugPrint('📢 通報内容: type=$type, reason=$reason');
       }
 
-      // リクエストボディを構築
+      // リクエストボディを構築（API仕様に従う）
       final Map<String, dynamic> body = {
         'type': type,
         'reason': reason,
       };
 
-      // 必須フィールド: targetuidID
-      if (targetuidID != null && targetuidID.isNotEmpty) {
-        body['targetuidID'] = targetuidID;
-      }
-
-      // オプションフィールドを追加
+      // オプションフィールドを追加（必要に応じて）
       if (detail != null && detail.isNotEmpty) {
         body['detail'] = detail;
       }
-      if (uid != null && uid.isNotEmpty) {
+
+      // type="user"の場合のみuidを追加
+      if (type == 'user' && uid != null && uid.isNotEmpty) {
         body['uid'] = uid;
       }
-      if (contentID != null && contentID.isNotEmpty) {
+
+      // type="content"またはtype="comment"の場合、contentIDを追加
+      if ((type == 'content' || type == 'comment') &&
+          contentID != null &&
+          contentID.isNotEmpty) {
         body['contentID'] = contentID;
       }
-      if (commentID != null) {
+
+      // type="comment"の場合のみcommentIDを追加
+      if (type == 'comment' && commentID != null) {
         body['commentID'] = commentID;
       }
 
