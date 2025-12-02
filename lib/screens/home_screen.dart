@@ -19,6 +19,484 @@ import '../services/comment_service.dart';
 import '../services/playlist_service.dart';
 import '../models/comment.dart';
 import '../auth/auth_provider.dart';
+import '../services/report_service.dart';
+
+/// 通報ダイアログ（独立したStatefulWidgetとして分離）
+class _ReportDialog extends StatefulWidget {
+  final Post post;
+
+  const _ReportDialog({required this.post});
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  final _reasonController = TextEditingController();
+  String _selectedReason = '';
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 自分の投稿かどうかをチェック
+    _checkIfOwnPost();
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  /// エラーダイアログを表示（ダイアログ内から呼び出し用）
+  void _showErrorDialogInDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // エラーアイコン
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                color: Color(0xFFFF6B35),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // メッセージ
+            Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 自分の投稿かどうかをチェック
+  void _checkIfOwnPost() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUserId = authProvider.currentUser?.id;
+      final postUserId = widget.post.userId.toString().trim();
+      final currentUserIdStr = currentUserId?.toString().trim() ?? '';
+
+      if (kDebugMode) {
+        debugPrint('🚨 通報ダイアログ内チェック:');
+        debugPrint('  currentUserId: "$currentUserIdStr"');
+        debugPrint('  postUserId: "$postUserId"');
+        debugPrint('  一致: ${currentUserIdStr == postUserId}');
+      }
+
+      if (currentUserIdStr.isNotEmpty &&
+          postUserId.isNotEmpty &&
+          currentUserIdStr == postUserId) {
+        // 自分の投稿の場合はダイアログを閉じてエラーダイアログを表示
+        Navigator.of(context).pop();
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title: const Text(
+        '投稿を通報',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '通報理由を選択してください',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            // 通報理由の選択肢
+            _buildReasonOption(
+              '不適切なコンテンツ',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              'スパムまたは詐欺',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              '著作権侵害',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              'その他',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '詳細（任意）',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _reasonController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: '詳細な理由を入力してください',
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                ),
+                filled: true,
+                fillColor: Colors.grey[900],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting
+              ? null
+              : () {
+                  Navigator.of(context).pop();
+                },
+          child: const Text(
+            'キャンセル',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+        TextButton(
+          onPressed: _isSubmitting || _selectedReason.isEmpty
+              ? null
+              : () async {
+                  if (!mounted) return;
+
+                  // 自分の投稿かどうかを再度チェック（送信前に最終確認）
+                  final authProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  final currentUserId = authProvider.currentUser?.id;
+                  final postUserId = widget.post.userId.toString().trim();
+                  final currentUserIdStr =
+                      currentUserId?.toString().trim() ?? '';
+
+                  if (kDebugMode) {
+                    debugPrint('🚨 通報送信前チェック:');
+                    debugPrint('  currentUserId: "$currentUserIdStr"');
+                    debugPrint('  postUserId: "$postUserId"');
+                    debugPrint('  一致: ${currentUserIdStr == postUserId}');
+                  }
+
+                  // 自分の投稿かどうかを厳密にチェック（送信前に最終確認）
+                  if (currentUserIdStr.isNotEmpty &&
+                      postUserId.isNotEmpty &&
+                      currentUserIdStr == postUserId) {
+                    // 自分の投稿の場合は送信をブロックしてエラーダイアログを表示
+                    if (kDebugMode) {
+                      debugPrint('🚨 自分の投稿への通報をブロックしました');
+                    }
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
+                      });
+                    }
+                    return; // ここで必ずreturnして送信をブロック
+                  }
+
+                  // 念のため、もう一度チェック（二重チェック）
+                  if (currentUserIdStr == postUserId) {
+                    if (kDebugMode) {
+                      debugPrint('🚨 二重チェック: 自分の投稿への通報をブロックしました');
+                    }
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
+                      });
+                    }
+                    return;
+                  }
+
+                  // reasonController.textを先に取得（破棄される前に）
+                  final detailText = _reasonController.text.trim();
+
+                  setState(() {
+                    _isSubmitting = true;
+                  });
+
+                  if (!mounted) return;
+
+                  // バックエンドに送信する前に、もう一度チェック
+                  final finalCheckAuthProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  final finalCheckCurrentUserId =
+                      (finalCheckAuthProvider.currentUser?.id ?? '')
+                          .toString()
+                          .trim();
+                  final finalCheckPostUserId =
+                      widget.post.userId.toString().trim();
+
+                  if (finalCheckCurrentUserId.isNotEmpty &&
+                      finalCheckPostUserId.isNotEmpty &&
+                      finalCheckCurrentUserId == finalCheckPostUserId) {
+                    // 自分の投稿の場合は送信をブロック
+                    if (kDebugMode) {
+                      debugPrint('🚨 最終チェック: 自分の投稿への通報をブロックしました');
+                    }
+                    setState(() {
+                      _isSubmitting = false;
+                    });
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
+                      });
+                    }
+                    return;
+                  }
+
+                  // 現在のユーザーIDを取得してReportServiceに渡す
+                  final reportCheckAuthProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  final reportCurrentUserId =
+                      reportCheckAuthProvider.currentUser?.id;
+
+                  final result = await ReportService.sendReport(
+                    type: 'content',
+                    reason: _selectedReason,
+                    detail: detailText.isNotEmpty ? detailText : null,
+                    targetuidID: widget.post.userId,
+                    contentID: widget.post.id.toString(),
+                    currentUserId: reportCurrentUserId,
+                  );
+
+                  if (!mounted) return;
+
+                  setState(() {
+                    _isSubmitting = false;
+                  });
+
+                  if (!mounted) return;
+
+                  if (result.success) {
+                    // 送信成功後も念のためチェック（バックエンドが自分の投稿を通報させた場合）
+                    final postCheckAuthProvider =
+                        Provider.of<AuthProvider>(context, listen: false);
+                    final postCheckCurrentUserId =
+                        (postCheckAuthProvider.currentUser?.id ?? '')
+                            .toString()
+                            .trim();
+                    final postCheckPostUserId =
+                        widget.post.userId.toString().trim();
+
+                    if (postCheckCurrentUserId.isNotEmpty &&
+                        postCheckPostUserId.isNotEmpty &&
+                        postCheckCurrentUserId == postCheckPostUserId) {
+                      // 自分の投稿だった場合は成功ダイアログを表示せず、エラーダイアログを表示
+                      if (kDebugMode) {
+                        debugPrint('🚨 送信後チェック: 自分の投稿だったため、成功を無効化しました');
+                      }
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) {
+                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                          }
+                        });
+                      }
+                      return;
+                    }
+
+                    Navigator.of(context).pop(true);
+                  } else {
+                    if (mounted) {
+                      // エラーメッセージを表示
+                      final errorMessage =
+                          result.errorMessage ?? '通報の送信に失敗しました';
+
+                      // バックエンドが自分の投稿を通報させないようにした場合のエラーメッセージを確認
+                      if (errorMessage.contains('自分の') ||
+                          errorMessage.contains('own') ||
+                          errorMessage.contains('self')) {
+                        // 自分の投稿に関するエラーの場合は、エラーダイアログを表示
+                        Navigator.of(context).pop();
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) {
+                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                          }
+                        });
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(errorMessage),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    }
+                  }
+                },
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFFF6B35),
+                  ),
+                )
+              : const Text(
+                  '送信',
+                  style: TextStyle(color: Color(0xFFFF6B35)),
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// 通報理由の選択肢を構築
+  Widget _buildReasonOption(
+    String reason,
+    String selectedReason,
+    Function(String) onTap,
+  ) {
+    final isSelected = selectedReason == reason;
+    return GestureDetector(
+      onTap: () => onTap(reason),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFFF6B35).withOpacity(0.2)
+              : Colors.grey[900],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6B35) : Colors.grey[700]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? const Color(0xFFFF6B35) : Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                reason,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[300],
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// 音声背景用のカスタムペインター
 class _AudioBackgroundPainter extends CustomPainter {
@@ -139,6 +617,9 @@ class _HomeScreenState extends State<HomeScreen>
   // 初回起動時のリトライ管理
   int _initialRetryCount = 0;
   static const int _maxInitialRetries = 5; // 最大リトライ回数（初回ログイン後も確実に読み込むため増加）
+
+  // 通報済みコンテンツID管理（同一ユーザーから同一コンテンツへの通報は1回まで）
+  final Set<String> _reportedContentIds = {};
 
   @override
   void initState() {
@@ -1558,12 +2039,13 @@ class _HomeScreenState extends State<HomeScreen>
           });
         }
 
-        return _buildScaffold(context);
+        return _buildScaffold(context, navigationProvider);
       },
     );
   }
 
-  Widget _buildScaffold(BuildContext context) {
+  Widget _buildScaffold(
+      BuildContext context, NavigationProvider navigationProvider) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: _isLoading
@@ -1847,6 +2329,11 @@ class _HomeScreenState extends State<HomeScreen>
                               child: _buildRightBottomControls(
                                   _posts[_currentIndex]),
                             ),
+
+                          // 右上の通報ボタン（自分の投稿以外）
+                          if (_posts.isNotEmpty &&
+                              _currentIndex < _posts.length)
+                            _buildReportButton(_posts[_currentIndex]),
                         ],
                       ),
                     ),
@@ -4063,6 +4550,255 @@ class _HomeScreenState extends State<HomeScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
+      ),
+    );
+  }
+
+  /// 通報ボタンを構築（画面右上に配置）
+  Widget _buildReportButton(Post post) {
+    // Selectorを使用して、currentUser.idのみを監視（依存関係の問題を回避）
+    return Selector<AuthProvider, String?>(
+      selector: (context, authProvider) => authProvider.currentUser?.id,
+      shouldRebuild: (prev, next) => prev != next,
+      builder: (context, currentUserId, child) {
+        final postUserId = post.userId.toString().trim();
+        final currentUserIdStr = currentUserId?.toString().trim() ?? '';
+
+        if (kDebugMode) {
+          debugPrint('🚨 通報ボタン表示チェック:');
+          debugPrint('  currentUserId: "$currentUserIdStr"');
+          debugPrint('  postUserId: "$postUserId"');
+          debugPrint('  一致: ${currentUserIdStr == postUserId}');
+        }
+
+        // 自分の投稿の場合は非表示
+        if (currentUserIdStr.isNotEmpty &&
+            postUserId.isNotEmpty &&
+            currentUserIdStr == postUserId) {
+          if (kDebugMode) {
+            debugPrint('🚨 通報ボタンを非表示にしました（自分の投稿）');
+          }
+          return const SizedBox.shrink();
+        }
+
+        return Positioned(
+          top: 40,
+          right: 20,
+          child: GestureDetector(
+            onTap: () => _showReportDialog(post),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.flag_outlined,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 通報ダイアログを表示
+  void _showReportDialog(Post post) {
+    if (!mounted) return;
+
+    // 自分の投稿かどうかをチェック
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.currentUser?.id;
+    final postUserId = post.userId.toString().trim();
+    final currentUserIdStr = currentUserId?.toString().trim() ?? '';
+
+    if (kDebugMode) {
+      debugPrint('🚨 通報ダイアログ表示前チェック:');
+      debugPrint('  currentUserId: "$currentUserIdStr"');
+      debugPrint('  postUserId: "$postUserId"');
+      debugPrint('  一致: ${currentUserIdStr == postUserId}');
+    }
+
+    if (currentUserIdStr.isNotEmpty &&
+        postUserId.isNotEmpty &&
+        currentUserIdStr == postUserId) {
+      // 自分の投稿の場合はエラーダイアログを表示
+      if (kDebugMode) {
+        debugPrint('🚨 自分の投稿への通報をブロックしました');
+      }
+      _showErrorDialog('自分の投稿は通報できません');
+      return;
+    }
+
+    // 既に通報済みかどうかをチェック
+    final contentId = post.id.toString();
+    if (_reportedContentIds.contains(contentId)) {
+      _showErrorDialog('この投稿は既に通報済みです');
+      return;
+    }
+
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _ReportDialog(post: post),
+    ).then((success) {
+      if (success == true && mounted) {
+        // 通報成功時に通報済みリストに追加
+        _reportedContentIds.add(contentId);
+        _showReportSuccessDialog();
+      }
+    });
+  }
+
+  /// エラーダイアログを表示（HomeScreenState用）
+  void _showErrorDialog(String message) {
+    if (!mounted) return;
+    _showErrorDialogInContext(context, message);
+  }
+
+  /// エラーダイアログを表示（任意のcontext用）
+  static void _showErrorDialogInContext(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // エラーアイコン
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                color: Color(0xFFFF6B35),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // メッセージ
+            Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 通報成功ダイアログを表示
+  void _showReportSuccessDialog() {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 成功アイコン
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // メッセージ
+            const Text(
+              '通報を送信しました',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'ご報告ありがとうございます。\n内容を確認し、適切に対応いたします。',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
