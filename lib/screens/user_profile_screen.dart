@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/post.dart';
 import '../models/badge.dart';
-import '../services/post_service.dart';
 import '../services/jwt_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
@@ -42,8 +41,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isLoadingProfile = true;
   bool _isLoadingPosts = false;
   String? _errorMessage;
-  String? _resolvedUserId; // プロフィール情報取得後に解決されたuserId
-
   // 投稿リスト
   List<Post> _userPosts = [];
 
@@ -63,13 +60,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
     
     _fetchUserProfile();
-    // 投稿取得はプロフィール情報取得後に実行（userIdが解決されるため）
+    // 新しいAPIではプロフィール情報と投稿一覧を同時に取得するため、_fetchUserPostsは不要
   }
 
-  /// ユーザーのプロフィール情報を取得
+  /// ユーザーのプロフィール情報と投稿一覧を取得（新しいAPIを使用）
   Future<void> _fetchUserProfile() async {
     setState(() {
       _isLoadingProfile = true;
+      _isLoadingPosts = true;
       _errorMessage = null;
     });
 
@@ -79,115 +77,123 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         setState(() {
           _errorMessage = '認証が必要です';
           _isLoadingProfile = false;
+          _isLoadingPosts = false;
         });
         return;
       }
 
-      // userIdが空の場合は、usernameのみで検索を試みる
-      final requestBody = <String, dynamic>{};
+      // usernameを取得（userIdが空の場合はwidget.usernameを使用）
+      final username = widget.username ?? '';
       
-      if (widget.userId.isNotEmpty && widget.userId.trim().isNotEmpty) {
-        // firebase_uidで検索
-        requestBody['firebase_uid'] = widget.userId;
-      } else if (widget.username != null && widget.username!.isNotEmpty) {
-        // usernameで検索（バックエンドがサポートしている場合）
-        requestBody['username'] = widget.username;
-        if (kDebugMode) {
-          debugPrint('👤 userIdが空のため、usernameで検索を試みます: ${widget.username}');
-        }
-      } else {
+      if (username.isEmpty) {
         setState(() {
-          _errorMessage = 'ユーザー情報が不足しています';
+          _errorMessage = 'ユーザー名が必要です';
           _isLoadingProfile = false;
+          _isLoadingPosts = false;
         });
         return;
+      }
+
+      // usericonパスを取得
+      final usericon = widget.userIconPath ?? widget.userIconUrl ?? '';
+
+      if (kDebugMode) {
+        debugPrint('👤 ユーザープロフィール取得開始:');
+        debugPrint('  username: $username');
+        debugPrint('  usericon: $usericon');
       }
 
       final response = await http.post(
-        Uri.parse('${AppConfig.backendUrl}/api/users/getusername'),
+        Uri.parse('${AppConfig.backendUrl}/api/users/userhome'),
         headers: {
           'Authorization': 'Bearer $jwtToken',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode(requestBody),
+        body: jsonEncode({
+          'username': username,
+          'usericon': usericon,
+        }),
       );
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         
         if (kDebugMode) {
-          debugPrint('👤 プロフィール情報取得レスポンス:');
+          debugPrint('👤 ユーザープロフィール取得レスポンス:');
           debugPrint('  status: ${responseData['status']}');
-          debugPrint('  data: ${responseData['data']}');
+          debugPrint('  data: ${responseData.toString()}');
         }
         
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final userInfo = responseData['data'] as Map<String, dynamic>;
-          
-          if (kDebugMode) {
-            debugPrint('👤 取得したユーザー情報:');
-            debugPrint('  username: ${userInfo['username']}');
-            debugPrint('  iconimgpath: ${userInfo['iconimgpath']}');
-            debugPrint('  admin: ${userInfo['admin']}');
-          }
-          
-          // レスポンスからfirebase_uidを取得（投稿取得に使用）
-          final resolvedFirebaseUid = (userInfo['firebase_uid'] as String?)?.isNotEmpty == true
-              ? userInfo['firebase_uid'] as String
-              : (widget.userId.isNotEmpty ? widget.userId : null);
-          
-          if (kDebugMode) {
-            debugPrint('👤 解決されたfirebase_uid: $resolvedFirebaseUid');
-          }
-          
-          if (mounted) {
-            setState(() {
-              _displayUsername = userInfo['username'] as String? ?? widget.username;
-              _iconPath = userInfo['iconimgpath'] as String? ?? widget.userIconPath;
-              _isAdmin = userInfo['admin'] as bool? ?? false;
-              _resolvedUserId = resolvedFirebaseUid;
-              
-              // アイコンURLを生成
-              if (_iconPath != null && _iconPath!.isNotEmpty) {
-                if (_iconPath!.startsWith('http://') || 
-                    _iconPath!.startsWith('https://')) {
-                  _iconUrl = _iconPath;
-                } else {
-                  _iconUrl = '${AppConfig.backendUrl}$_iconPath';
-                }
-              } else {
-                _iconUrl = widget.userIconUrl;
-              }
-              
-              _isLoadingProfile = false;
-            });
-          }
-          
-          // 解決されたuserIdで投稿を取得
-          if (resolvedFirebaseUid != null && resolvedFirebaseUid.isNotEmpty) {
-            _fetchUserPosts();
-          } else {
-            if (kDebugMode) {
-              debugPrint('⚠️ firebase_uidが解決できなかったため、投稿を取得できません');
-            }
-          }
-          
-          // スポットライト数を取得（ユーザーの投稿から集計）
-          _calculateSpotlightCount();
-        } else {
+        // レスポンス形式: {"status": "success", "data": {...}}
+        if (responseData['status'] != 'success' || responseData['data'] == null) {
           if (mounted) {
             setState(() {
               _errorMessage = 'ユーザー情報の取得に失敗しました';
               _isLoadingProfile = false;
+              _isLoadingPosts = false;
             });
           }
+          return;
+        }
+
+        final userData = responseData['data'] as Map<String, dynamic>;
+        
+        if (kDebugMode) {
+          debugPrint('👤 取得したユーザーデータ:');
+          debugPrint('  username: ${userData['username']}');
+          debugPrint('  usericon: ${userData['usericon']}');
+          debugPrint('  spotlightnum: ${userData['spotlightnum']}');
+          debugPrint('  contents: ${userData['contents']}');
+        }
+        
+        // ユーザー情報を設定
+        final resolvedUsername = userData['username'] as String? ?? widget.username ?? '';
+        final userIcon = userData['usericon'] as String? ?? widget.userIconPath;
+        final spotlightNum = userData['spotlightnum'] as int? ?? 0;
+        final contents = userData['contents'] as List<dynamic>? ?? [];
+        
+        // 投稿を取得
+        final posts = contents.map((json) {
+          // contentIDをidとして設定
+          final contentId = json['contentID']?.toString() ?? '';
+          json['id'] = contentId;
+          return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
+        }).toList();
+        
+        if (mounted) {
+          setState(() {
+            _displayUsername = resolvedUsername;
+            _iconPath = userIcon;
+            _spotlightCount = spotlightNum;
+            _isAdmin = userData['admin'] as bool? ?? false;
+            _userPosts = posts;
+            
+            // アイコンURLを生成
+            if (_iconPath != null && _iconPath!.isNotEmpty) {
+              if (_iconPath!.startsWith('http://') || 
+                  _iconPath!.startsWith('https://')) {
+                _iconUrl = _iconPath;
+              } else {
+                _iconUrl = '${AppConfig.backendUrl}$_iconPath';
+              }
+            } else {
+              _iconUrl = widget.userIconUrl;
+            }
+            
+            _isLoadingProfile = false;
+            _isLoadingPosts = false;
+          });
         }
       } else {
+        if (kDebugMode) {
+          debugPrint('❌ ユーザープロフィール取得エラー: ${response.statusCode}');
+          debugPrint('レスポンス: ${response.body}');
+        }
         if (mounted) {
           setState(() {
             _errorMessage = 'ユーザー情報の取得に失敗しました';
             _isLoadingProfile = false;
+            _isLoadingPosts = false;
           });
         }
       }
@@ -199,88 +205,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         setState(() {
           _errorMessage = 'エラーが発生しました';
           _isLoadingProfile = false;
-        });
-      }
-    }
-  }
-
-  /// スポットライト数を計算（ユーザーの投稿から集計）
-  void _calculateSpotlightCount() {
-    int totalSpotlights = 0;
-    for (var post in _userPosts) {
-      totalSpotlights += post.likes;
-    }
-    if (mounted) {
-      setState(() {
-        _spotlightCount = totalSpotlights;
-      });
-    }
-  }
-
-  /// ユーザーの投稿を取得
-  Future<void> _fetchUserPosts() async {
-    setState(() {
-      _isLoadingPosts = true;
-    });
-
-    try {
-      // 解決されたuserIdを使用（空の場合はwidget.userIdを使用）
-      final targetUserId = _resolvedUserId ?? widget.userId;
-      
-      if (targetUserId.isEmpty || targetUserId.trim().isEmpty) {
-        if (kDebugMode) {
-          debugPrint('⚠️ ユーザーIDが解決できなかったため、投稿を取得できません');
-        }
-        if (mounted) {
-          setState(() {
-            _isLoadingPosts = false;
-          });
-        }
-        return;
-      }
-      
-      if (kDebugMode) {
-        debugPrint('👤 ユーザー投稿取得開始: userId=$targetUserId');
-      }
-      
-      final posts = await PostService.getUserPostsByUserId(targetUserId);
-      
-      if (kDebugMode) {
-        debugPrint('👤 ユーザー投稿取得完了: ${posts.length}件');
-        if (posts.isNotEmpty) {
-          debugPrint('👤 最初の投稿のuserId: ${posts.first.userId}');
-          debugPrint('👤 期待されるuserId: ${widget.userId}');
-          if (posts.first.userId != widget.userId) {
-            debugPrint('⚠️ 警告: 取得した投稿のユーザーIDが一致しません！');
-          }
-        }
-      }
-      
-      if (mounted) {
-        // 取得した投稿が指定したユーザーのもののみをフィルタリング
-        final filteredPosts = posts.where((post) => post.userId == widget.userId).toList();
-        
-        if (kDebugMode && filteredPosts.length != posts.length) {
-          debugPrint('👤 フィルタリング: ${posts.length}件 -> ${filteredPosts.length}件');
-        }
-        
-        setState(() {
-          _userPosts = filteredPosts;
-          _isLoadingPosts = false;
-        });
-        _calculateSpotlightCount();
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ユーザー投稿取得エラー: $e');
-      }
-      if (mounted) {
-        setState(() {
           _isLoadingPosts = false;
         });
       }
     }
   }
+
+  // 注: 新しいAPIでは投稿も一緒に取得されるため、_fetchUserPostsメソッドは不要になりました
+  // スポットライト数はAPIから直接取得されるため、_calculateSpotlightCountメソッドも不要です
 
   @override
   Widget build(BuildContext context) {
@@ -317,7 +249,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       ElevatedButton(
                         onPressed: () {
                           _fetchUserProfile();
-                          _fetchUserPosts();
                         },
                         child: const Text('再試行'),
                       ),
@@ -327,7 +258,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               : RefreshIndicator(
                   onRefresh: () async {
                     await _fetchUserProfile();
-                    await _fetchUserPosts();
                   },
                   color: SpotLightColors.primaryOrange,
                   child: CustomScrollView(
