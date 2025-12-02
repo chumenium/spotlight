@@ -291,11 +291,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (kDebugMode) {
-        debugPrint('📡 リクエスト送信: ${AppConfig.backendUrl}/api/users/profile');
+        debugPrint(
+            '📡 リクエスト送信: ${AppConfig.backendUrl}/api/users/getspotlightnum');
       }
 
-      final response = await http.get(
-        Uri.parse('${AppConfig.backendUrl}/api/users/profile'),
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/api/users/getspotlightnum'),
         headers: {
           'Authorization': 'Bearer $jwtToken',
           'Content-Type': 'application/json',
@@ -309,7 +310,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (mounted && response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final newSpotlightCount = data['spotlightnum'] ?? 0;
+
+        // レスポンス形式: {"status": "success", "num": num}
+        if (data['status'] != 'success' || data['num'] == null) {
+          if (kDebugMode) {
+            debugPrint('⚠️ レスポンス形式が不正です: $data');
+          }
+          return;
+        }
+
+        final newSpotlightCount = data['num'] as int;
 
         // 前回のspotlight数と比較して、新しいバッジが解放されたかチェック
         final previousUnlockedBadges =
