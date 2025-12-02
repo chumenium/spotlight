@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
@@ -125,6 +126,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
     Future.delayed(const Duration(milliseconds: 300), () {
       _slideController.forward();
     });
+
+    // ログイン済みの場合は自動的にホーム画面にリダイレクト
+    _checkLoginState();
   }
 
   @override
@@ -137,14 +141,40 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
     _shineController.dispose();
     super.dispose();
   }
+
+  /// ログイン状態をチェックして、ログイン済みの場合はホーム画面にリダイレクト
+  Future<void> _checkLoginState() async {
+    // 少し待機してFirebase Authenticationのセッション復元を待つ
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // ログイン済みの場合はホーム画面にリダイレクト
+    if (authProvider.isLoggedIn) {
+      if (kDebugMode) {
+        debugPrint('🔐 ログイン済みのため、ホーム画面にリダイレクトします。');
+      }
+      // NavigationProviderをリセット
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
+      // MainScreenに遷移
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    }
+  }
   Future<void> _handleGoogleLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
       // NavigationProviderをリセット
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
       // MainScreenに遷移
       Navigator.of(context).pushReplacement(
@@ -157,13 +187,14 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
 
   Future<void> _handleGoogleSignUp() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // Google新規登録もloginWithGoogleを使用（Firebase側で自動的に新規/既存を判定）
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
       // NavigationProviderをリセット
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
       // MainScreenに遷移
       Navigator.of(context).pushReplacement(
@@ -175,8 +206,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
       _showErrorSnackBar(authProvider.errorMessage!);
     }
   }
-
-
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

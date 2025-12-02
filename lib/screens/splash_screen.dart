@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth/auth_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../providers/navigation_provider.dart';
 import '../widgets/bottom_navigation_bar.dart';
 import 'home_screen.dart';
@@ -22,21 +22,125 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _isExpired = false; // 半年以上経過しているかどうか
+
   @override
   void initState() {
     super.initState();
 
-    // アプリ起動時にFCMトークンを更新
-    _updateFcmTokenOnStartup();
+    // アプリ起動時に認証状態をチェックしてから画面遷移
+    _initializeAndNavigate();
+  }
 
-    // スプラッシュスクリーンを表示する時間
-    const splashDuration = Duration(seconds: 3);
+  /// 認証状態をチェックしてから画面遷移
+  Future<void> _initializeAndNavigate() async {
+    final startTime = DateTime.now();
 
-    Future.delayed(splashDuration, () {
-      if (mounted) {
-        _navigateToNext();
+    // 認証状態をチェック
+    await _checkAuthStateOnStartup();
+
+    // 半年未満でJWTトークンが存在する場合は、Firebase Authenticationのセッション復元を待つ
+    if (!_isExpired) {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken != null) {
+        // Firebase Authenticationのセッション復元を待つ（最大2秒）
+        await _waitForAuthRestore();
       }
-    });
+    }
+
+    // スプラッシュスクリーンを表示する時間（最小3秒）
+    const splashDuration = Duration(seconds: 3);
+    final elapsed = DateTime.now().difference(startTime);
+    if (elapsed < splashDuration) {
+      await Future.delayed(splashDuration - elapsed);
+    }
+
+    if (mounted) {
+      _navigateToNext();
+    }
+  }
+
+  /// Firebase Authenticationのセッション復元を待つ
+  Future<void> _waitForAuthRestore() async {
+    try {
+      final auth = firebase_auth.FirebaseAuth.instance;
+
+      // 既にcurrentUserが存在する場合は即座に返す
+      if (auth.currentUser != null) {
+        if (kDebugMode) {
+          debugPrint('🔐 Firebase Authenticationのセッションが既に復元されています。');
+        }
+        return;
+      }
+
+      // authStateChanges()の最初のイベントを待つ（最大2秒）
+      try {
+        await auth.authStateChanges().first.timeout(
+              const Duration(seconds: 2),
+            );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ Firebase Authenticationのセッション復元待機がタイムアウトしました。');
+        }
+      }
+
+      if (kDebugMode) {
+        final currentUser = auth.currentUser;
+        if (currentUser != null) {
+          debugPrint(
+              '🔐 Firebase Authenticationのセッションが復元されました: ${currentUser.uid}');
+        } else {
+          debugPrint('⚠️ Firebase Authenticationのセッションが復元されませんでした。');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ Firebase Authenticationのセッション復元待機エラー: $e');
+      }
+    }
+  }
+
+  /// アプリ起動時に認証状態をチェック
+  Future<void> _checkAuthStateOnStartup() async {
+    try {
+      // 最後の利用日時をチェック
+      _isExpired = await JwtService.isLastAccessExpired();
+
+      if (_isExpired) {
+        // 半年以上経過している場合は、認証情報をクリア
+        if (kDebugMode) {
+          debugPrint('🔐 最後の利用から半年以上経過しています。認証情報をクリアします。');
+        }
+
+        // JWTトークンとユーザー情報をクリア
+        await JwtService.clearAll();
+
+        // Firebase Authenticationのセッションもクリア
+        try {
+          await firebase_auth.FirebaseAuth.instance.signOut();
+          if (kDebugMode) {
+            debugPrint('🔐 Firebase Authenticationのセッションをクリアしました。');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ Firebase Authenticationのセッションクリアエラー: $e');
+          }
+        }
+      } else {
+        // 半年未満の場合は、最後の利用日時を更新
+        await JwtService.saveLastAccessTime();
+
+        // FCMトークンを更新（非同期で実行）
+        _updateFcmTokenOnStartup();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 認証状態チェックエラー: $e');
+      }
+      // エラーが発生した場合は、期限切れとみなす
+      _isExpired = true;
+      await JwtService.clearAll();
+    }
   }
 
   /// アプリ起動時にFCMトークンをサーバーに送信
@@ -61,19 +165,45 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  void _navigateToNext() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    // ログイン状態に応じて画面を切り替え
-    if (authProvider.isLoggedIn) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
-    } else {
+  void _navigateToNext() async {
+    // 半年以上経過している場合は、ログイン画面に遷移
+    if (_isExpired) {
+      if (kDebugMode) {
+        debugPrint('🔐 半年以上経過しているため、ログイン画面に遷移します。');
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const SocialLoginScreen()),
       );
+      return;
     }
+
+    // 半年未満の場合は、ログイン状態を確認
+    // Firebase AuthenticationのcurrentUserとJWTトークンの両方を確認
+    final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final jwtToken = await JwtService.getJwtToken();
+
+    // 両方が存在する場合は、ログイン済みと判定してホーム画面に直接遷移
+    if (firebaseUser != null && jwtToken != null) {
+      if (kDebugMode) {
+        debugPrint('🔐 ログイン状態が維持されているため、ホーム画面に直接遷移します。');
+        debugPrint('  - Firebase User: ${firebaseUser.uid}');
+        debugPrint('  - JWT Token: 存在');
+      }
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+      return;
+    }
+
+    // ログイン状態が復元されていない場合は、ログイン画面に遷移
+    if (kDebugMode) {
+      debugPrint('🔐 ログイン状態が復元されていないため、ログイン画面に遷移します。');
+      debugPrint('  - Firebase User: ${firebaseUser?.uid ?? "null"}');
+      debugPrint('  - JWT Token: ${jwtToken != null ? "存在" : "null"}');
+    }
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const SocialLoginScreen()),
+    );
   }
 
   @override
