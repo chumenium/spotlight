@@ -79,13 +79,6 @@ class BadgeManager {
           badgeColor: SpotLightColors.getSpotlightColor(7),
         ),
         Badge(
-          id: 777,
-          name: '開発者',
-          icon: Icons.developer_mode,
-          requiredSpotlights: 0,
-          badgeColor: SpotLightColors.getSpotlightColor(777),
-        ),
-        Badge(
           id: 999,
           name: '管理者',
           icon: Icons.admin_panel_settings,
