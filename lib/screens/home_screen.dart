@@ -4917,6 +4917,9 @@ class _HomeScreenState extends State<HomeScreen>
                 final title = titleController.text.trim();
                 if (title.isEmpty) return;
 
+                // ScaffoldMessengerのインスタンスを事前に取得（Navigator.popの前に）
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+
                 Navigator.pop(context);
 
                 final playlistId = await PlaylistService.createPlaylist(title);
@@ -4925,35 +4928,133 @@ class _HomeScreenState extends State<HomeScreen>
                   debugPrint('📋 [ホーム画面] プレイリスト作成結果: playlistId=$playlistId');
                 }
 
-                if (playlistId != null && playlistId > 0 && mounted) {
-                  if (kDebugMode) {
-                    debugPrint('📋 [ホーム画面] 作成したプレイリストにコンテンツを追加');
-                    debugPrint('   - playlistID: $playlistId');
-                    debugPrint('   - contentID: ${post.id}');
-                  }
-                  // 作成したプレイリストにコンテンツを追加
-                  final success = await PlaylistService.addContentToPlaylist(
-                    playlistId,
-                    post.id,
-                  );
+                if (playlistId != null && playlistId >= 0 && mounted) {
+                  // playlistIdが0の場合は、作成は成功しているがplaylistidが取得できなかった場合
+                  // この場合、プレイリスト一覧を再取得して最新のプレイリストを取得する
+                  if (playlistId == 0) {
+                    if (kDebugMode) {
+                      debugPrint(
+                          '📋 [ホーム画面] playlistidが取得できなかったため、プレイリスト一覧を再取得します');
+                    }
+                    // プレイリスト一覧を再取得して、最新のプレイリスト（作成したもの）を取得
+                    final playlists = await PlaylistService.getPlaylists();
+                    if (playlists.isNotEmpty) {
+                      // タイトルで一致する最新のプレイリストを探す
+                      final createdPlaylist = playlists.firstWhere(
+                        (p) => p.title == title,
+                        orElse: () => playlists.first, // 見つからない場合は最初のプレイリストを使用
+                      );
+                      final actualPlaylistId = createdPlaylist.playlistid;
 
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          success ? 'プレイリストを作成して追加しました' : '追加に失敗しました',
-                        ),
-                        backgroundColor: success ? Colors.green : Colors.red,
-                      ),
+                      if (kDebugMode) {
+                        debugPrint(
+                            '📋 [ホーム画面] 再取得したplaylistid: $actualPlaylistId');
+                      }
+
+                      if (actualPlaylistId > 0) {
+                        // 作成したプレイリストにコンテンツを追加
+                        final success =
+                            await PlaylistService.addContentToPlaylist(
+                          actualPlaylistId,
+                          post.id,
+                        );
+
+                        if (mounted) {
+                          try {
+                            scaffoldMessenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success ? 'プレイリストを作成して追加しました' : '追加に失敗しました',
+                                ),
+                                backgroundColor:
+                                    success ? Colors.green : Colors.red,
+                              ),
+                            );
+                          } catch (e) {
+                            if (kDebugMode) {
+                              debugPrint('⚠️ SnackBar表示エラー: $e');
+                            }
+                          }
+                        }
+                      } else {
+                        // プレイリストは作成されたが、コンテンツ追加はスキップ
+                        if (mounted) {
+                          try {
+                            scaffoldMessenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('プレイリストを作成しました'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            if (kDebugMode) {
+                              debugPrint('⚠️ SnackBar表示エラー: $e');
+                            }
+                          }
+                        }
+                      }
+                    } else {
+                      // プレイリスト一覧が取得できなかった場合でも、作成は成功している
+                      if (mounted) {
+                        try {
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('プレイリストを作成しました'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } catch (e) {
+                          if (kDebugMode) {
+                            debugPrint('⚠️ SnackBar表示エラー: $e');
+                          }
+                        }
+                      }
+                    }
+                  } else {
+                    // playlistIdが正しく取得できた場合
+                    if (kDebugMode) {
+                      debugPrint('📋 [ホーム画面] 作成したプレイリストにコンテンツを追加');
+                      debugPrint('   - playlistID: $playlistId');
+                      debugPrint('   - contentID: ${post.id}');
+                    }
+                    // 作成したプレイリストにコンテンツを追加
+                    final success = await PlaylistService.addContentToPlaylist(
+                      playlistId,
+                      post.id,
                     );
+
+                    if (mounted) {
+                      try {
+                        scaffoldMessenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success ? 'プレイリストを作成して追加しました' : '追加に失敗しました',
+                            ),
+                            backgroundColor:
+                                success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      } catch (e) {
+                        if (kDebugMode) {
+                          debugPrint('⚠️ SnackBar表示エラー: $e');
+                        }
+                      }
+                    }
                   }
                 } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('プレイリストの作成に失敗しました'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
+                  // playlistIdがnullの場合は、作成に失敗した
+                  try {
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('プレイリストの作成に失敗しました'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } catch (e) {
+                    if (kDebugMode) {
+                      debugPrint('⚠️ SnackBar表示エラー: $e');
+                    }
+                  }
                 }
               },
               child: const Text(
