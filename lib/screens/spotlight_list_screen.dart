@@ -180,7 +180,13 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
           if (postId.isNotEmpty) {
             final navigationProvider =
                 Provider.of<NavigationProvider>(context, listen: false);
-            navigationProvider.navigateToHome(postId: postId);
+
+            // ホーム画面に遷移して対象のコンテンツを表示
+            navigationProvider.navigateToHome(
+                postId: postId, postTitle: post.title);
+
+            // 現在の画面を閉じてホーム画面に戻る
+            Navigator.of(context).popUntil((route) => route.isFirst);
 
             if (kDebugMode) {
               debugPrint('📱 投稿をタップ: ID=$postId, タイトル=${post.title}');

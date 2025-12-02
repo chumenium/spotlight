@@ -42,6 +42,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
+  int _previousSpotlightCount = 0; // 前回のspotlight数を保存
+  final Set<int> _newlyUnlockedBadgeIds = {}; // 新しく解放されたバッジのID
   final ImagePicker _imagePicker = ImagePicker();
   // 自分の投稿リスト
   List<Post> _myPosts = [];
@@ -170,6 +172,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchMyPosts();
     _fetchHistory();
     _fetchPlaylists();
+
+    // 初期化時に前回のspotlight数を設定（初回は0）
+    _previousSpotlightCount = 0;
   }
 
   /// 視聴履歴を取得（最前の5件まで）
@@ -304,15 +309,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (mounted && response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final newSpotlightCount = data['spotlightnum'] ?? 0;
+
+        // 前回のspotlight数と比較して、新しいバッジが解放されたかチェック
+        final previousUnlockedBadges =
+            BadgeManager.getUnlockedBadges(_previousSpotlightCount);
+        final newUnlockedBadges =
+            BadgeManager.getUnlockedBadges(newSpotlightCount);
+
+        // 新しく解放されたバッジを取得
+        final newlyUnlockedBadges = newUnlockedBadges
+            .where(
+                (badge) => !previousUnlockedBadges.any((b) => b.id == badge.id))
+            .toList();
+
         setState(() {
-          _spotlightCount = data['spotlightnum'] ?? 0;
+          _spotlightCount = newSpotlightCount;
         });
 
         if (kDebugMode) {
           debugPrint('✅ スポットライト数取得成功: $_spotlightCount');
           debugPrint(
-              '🎖️ 解放バッジ数: ${BadgeManager.getUnlockedBadges(_spotlightCount).length}/8');
+              '🎖️ 解放バッジ数: ${newUnlockedBadges.length}/${BadgeManager.allBadges.length}');
+          if (newlyUnlockedBadges.isNotEmpty) {
+            debugPrint(
+                '🎉 新しいバッジが解放されました: ${newlyUnlockedBadges.map((b) => b.name).join(', ')}');
+          }
         }
+
+        // 新しいバッジが解放された場合は通知を表示
+        if (newlyUnlockedBadges.isNotEmpty && mounted) {
+          final badgeNames = newlyUnlockedBadges.map((b) => b.name).join('、');
+
+          // 新しく解放されたバッジのIDを保存（アニメーション用）
+          setState(() {
+            _newlyUnlockedBadgeIds.clear();
+            _newlyUnlockedBadgeIds.addAll(newlyUnlockedBadges.map((b) => b.id));
+          });
+
+          _showSafeSnackBar(
+            '🎉 新しいバッジを獲得しました: $badgeNames',
+            backgroundColor: Colors.green,
+          );
+
+          // 3秒後にハイライトを解除
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                _newlyUnlockedBadgeIds.clear();
+              });
+            }
+          });
+        }
+
+        // 前回のspotlight数を更新
+        _previousSpotlightCount = newSpotlightCount;
       } else {
         if (kDebugMode) {
           debugPrint('❌ HTTPエラー: ${response.statusCode}');
@@ -1584,13 +1635,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             itemBuilder: (context, index) {
               final badge = allBadges[index];
               final isUnlocked = unlockedBadges.any((b) => b.id == badge.id);
+              final isNewlyUnlocked = _newlyUnlockedBadgeIds.contains(badge.id);
 
               return Container(
                 width: 80,
                 margin: const EdgeInsets.only(right: 12),
                 child: Column(
                   children: [
-                    Container(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
@@ -1606,17 +1659,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         boxShadow: isUnlocked
                             ? [
                                 BoxShadow(
-                                  color: badge.badgeColor.withOpacity(0.3),
-                                  blurRadius: 8,
+                                  color: badge.badgeColor
+                                      .withOpacity(isNewlyUnlocked ? 0.6 : 0.3),
+                                  blurRadius: isNewlyUnlocked ? 12 : 8,
                                   offset: const Offset(0, 4),
                                 ),
                               ]
                             : null,
+                        border: isNewlyUnlocked
+                            ? Border.all(
+                                color: badge.badgeColor,
+                                width: 2,
+                              )
+                            : null,
                       ),
-                      child: Icon(
-                        isUnlocked ? badge.icon : Icons.lock,
-                        color: isUnlocked ? Colors.white : Colors.grey[600],
-                        size: 30,
+                      child: Center(
+                        child: Icon(
+                          isUnlocked ? badge.icon : Icons.lock,
+                          color: isUnlocked ? Colors.white : Colors.grey[600],
+                          size: 30,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),

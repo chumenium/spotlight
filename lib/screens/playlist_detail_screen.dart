@@ -260,7 +260,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           if (postId.isNotEmpty) {
             final navigationProvider =
                 Provider.of<NavigationProvider>(context, listen: false);
-            navigationProvider.navigateToHome(postId: postId);
+
+            // ホーム画面に遷移して対象のコンテンツを表示
+            navigationProvider.navigateToHome(
+                postId: postId, postTitle: _getSafeTitle(post.title));
+
+            // 現在の画面を閉じてホーム画面に戻る
+            Navigator.of(context).popUntil((route) => route.isFirst);
 
             if (kDebugMode) {
               debugPrint(
