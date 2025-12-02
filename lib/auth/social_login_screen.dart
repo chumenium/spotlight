@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
@@ -17,14 +18,47 @@ class SocialLoginScreen extends StatefulWidget {
 }
 
 class _SocialLoginScreenState extends State<SocialLoginScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // ログイン済みの場合は自動的にホーム画面にリダイレクト
+    _checkLoginState();
+  }
+
+  /// ログイン状態をチェックして、ログイン済みの場合はホーム画面にリダイレクト
+  Future<void> _checkLoginState() async {
+    // 少し待機してFirebase Authenticationのセッション復元を待つ
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // ログイン済みの場合はホーム画面にリダイレクト
+    if (authProvider.isLoggedIn) {
+      if (kDebugMode) {
+        debugPrint('🔐 ログイン済みのため、ホーム画面にリダイレクトします。');
+      }
+      // NavigationProviderをリセット
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
+      // MainScreenに遷移
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    }
+  }
+
   Future<void> _handleGoogleLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
       // NavigationProviderをリセット
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
       // MainScreenに遷移
       Navigator.of(context).pushReplacement(
@@ -37,13 +71,14 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
 
   Future<void> _handleGoogleSignUp() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // Google新規登録もloginWithGoogleを使用（Firebase側で自動的に新規/既存を判定）
     final success = await authProvider.loginWithGoogle();
 
     if (success && mounted) {
       // NavigationProviderをリセット
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
       // MainScreenに遷移
       Navigator.of(context).pushReplacement(
@@ -55,8 +90,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
   }
-
-
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -98,7 +131,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 60),
-                
+
                 // ロゴ
                 Icon(
                   Icons.flashlight_on,
@@ -106,7 +139,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   color: SpotLightColors.primaryOrange,
                 ),
                 const SizedBox(height: 24),
-                
+
                 // アプリ名
                 const Text(
                   'SpotLight',
@@ -127,7 +160,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 80),
-                
+
                 // ログインセクション
                 Text(
                   'ログイン',
@@ -139,11 +172,12 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Googleログインボタン
                 if (authProvider.canUseGoogle)
                   _SocialLoginButton(
-                    onPressed: authProvider.isLoading ? null : _handleGoogleLogin,
+                    onPressed:
+                        authProvider.isLoading ? null : _handleGoogleLogin,
                     icon: SvgPicture.asset(
                       'assets/images/google_logo.svg',
                       width: 24,
@@ -153,9 +187,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     backgroundColor: Colors.white,
                     textColor: Colors.black87,
                   ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // 区切り線
                 Row(
                   children: [
@@ -183,9 +217,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // 新規登録セクション
                 Text(
                   'アカウント新規登録',
@@ -197,11 +231,12 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Google新規登録ボタン
                 if (authProvider.canUseGoogle)
                   _SocialLoginButton(
-                    onPressed: authProvider.isLoading ? null : _handleGoogleSignUp,
+                    onPressed:
+                        authProvider.isLoading ? null : _handleGoogleSignUp,
                     icon: SvgPicture.asset(
                       'assets/images/google_logo.svg',
                       width: 24,
@@ -211,9 +246,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     backgroundColor: SpotLightColors.primaryOrange,
                     textColor: Colors.white,
                   ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // ローディングインジケーター
                 if (authProvider.isLoading)
                   Center(
@@ -221,9 +256,9 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                       color: SpotLightColors.primaryOrange,
                     ),
                   ),
-                
+
                 const SizedBox(height: 40),
-                
+
                 // 利用規約
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -256,7 +291,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                
               ],
             ),
           ),
@@ -316,4 +350,3 @@ class _SocialLoginButton extends StatelessWidget {
     );
   }
 }
-

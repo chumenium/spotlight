@@ -231,6 +231,8 @@ class AuthProvider extends ChangeNotifier {
       // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
       // ログイン時は強制更新（キャッシュを無視）
       _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true).then((_) {
+        // ログイン成功後、最後の利用日時を更新
+        JwtService.saveLastAccessTime();
         // ログイン成功後、FCMトークンをサーバーに送信
         _updateFcmTokenAfterLogin();
       });
