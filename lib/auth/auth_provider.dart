@@ -59,6 +59,12 @@ class User {
   /// バックエンドで処理されたURLが含まれる場合がある
   final String? iconPath;
 
+  /// 管理者フラグ
+  ///
+  /// バックエンドから取得した管理者権限フラグ
+  /// trueの場合、管理者機能にアクセス可能
+  final bool admin;
+
   User({
     required this.id,
     required this.email,
@@ -66,6 +72,7 @@ class User {
     this.avatarUrl,
     this.backendUsername,
     this.iconPath,
+    this.admin = false,
   });
 }
 
@@ -220,6 +227,7 @@ class AuthProvider extends ChangeNotifier {
         email: firebaseUser.email ?? '',
         username: _extractUsername(firebaseUser),
         avatarUrl: firebaseUser.photoURL,
+        admin: false, // 初期値はfalse、APIから取得後に更新される
       );
 
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -656,6 +664,7 @@ class AuthProvider extends ChangeNotifier {
       email: 'guest@spotlight.app',
       username: 'ゲスト',
       avatarUrl: null,
+      admin: false,
     );
     notifyListeners();
   }
@@ -830,37 +839,77 @@ class AuthProvider extends ChangeNotifier {
       final data =
           await UserService.refreshUserInfo(uid, forceRefresh: forceRefresh);
 
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('🔐 ユーザー情報取得結果: ${data != null ? '成功' : '失敗（null）'}');
+        if (data != null) {
+          debugPrint('🔐 取得したデータ: $data');
+        }
+      }
+
       if (data != null) {
         final username = data['username'] as String?;
         final iconPath = data['iconimgpath'] as String?;
+        final admin = data['admin'] as bool? ?? false;
 
         if (kDebugMode && AuthConfig.enableAuthDebugLog) {
           debugPrint('🔐 バックエンドから受け取った情報:');
           debugPrint('  username: $username');
           debugPrint('  iconPath: $iconPath');
+          debugPrint('  admin: $admin');
         }
 
         // ユーザー情報を更新
-        if (_currentUser != null && username != null) {
+        // usernameがnullでも、既存のユーザー情報を保持しつつadmin情報だけ更新する
+        if (_currentUser != null) {
           // iconPathが存在する場合は、serverURLと結合して完全なURLにする
           // iconPathはバックエンドでusername_icon.png形式で生成される
+          // またはCloudFront URLがそのまま返ってくる場合もある
           String? fullIconUrl;
-          if (iconPath != null && iconPath.isNotEmpty) {
-            fullIconUrl = '${AppConfig.backendUrl}$iconPath';
+          // iconPathがnullでも空文字列でもない場合のみ処理
+          if (iconPath != null && iconPath.trim().isNotEmpty) {
+            // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
+            if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+              fullIconUrl = iconPath;
+            } else {
+              // 相対パスの場合はbackendUrlと結合
+              fullIconUrl = '${AppConfig.backendUrl}$iconPath';
+            }
             if (kDebugMode && AuthConfig.enableAuthDebugLog) {
               debugPrint('🔐 アイコンURL: $fullIconUrl');
             }
           }
+
+          // iconPathが空文字列の場合はnullに変換（既存のアイコンを保持するため）
+          final finalIconPath = (iconPath != null && iconPath.trim().isNotEmpty) 
+              ? iconPath 
+              : _currentUser!.iconPath;
 
           _currentUser = User(
             id: _currentUser!.id,
             email: _currentUser!.email,
             username: _currentUser!.username,
             avatarUrl: fullIconUrl ?? _currentUser!.avatarUrl,
-            backendUsername: username,
-            iconPath: iconPath,
+            backendUsername: username ?? _currentUser!.backendUsername,
+            iconPath: finalIconPath,
+            admin: admin,
           );
+          
+          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+            debugPrint('🔐 ユーザー情報更新完了:');
+            debugPrint('  backendUsername: ${_currentUser!.backendUsername}');
+            debugPrint('  iconPath: ${_currentUser!.iconPath}');
+            debugPrint('  admin: ${_currentUser!.admin}');
+          }
+          
           notifyListeners();
+        } else {
+          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+            debugPrint('⚠️ ユーザー情報更新スキップ: _currentUserがnull');
+          }
+        }
+      } else {
+        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+          debugPrint('⚠️ ユーザー情報取得失敗: dataがnull');
         }
       }
     } catch (e) {

@@ -338,6 +338,10 @@ class UserService {
         }),
       );
 
+      if (kDebugMode) {
+        debugPrint('📥 ユーザー情報APIレスポンス: statusCode=${response.statusCode}');
+      }
+
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
@@ -348,6 +352,13 @@ class UserService {
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final userInfo = responseData['data'] as Map<String, dynamic>;
+          
+          if (kDebugMode) {
+            debugPrint('📥 ユーザー情報抽出:');
+            debugPrint('  username: ${userInfo['username']}');
+            debugPrint('  iconimgpath: ${userInfo['iconimgpath']}');
+            debugPrint('  admin: ${userInfo['admin']}');
+          }
 
           // キャッシュに保存
           _userInfoCache[firebaseUid] = _CachedUserInfo(
@@ -360,6 +371,17 @@ class UserService {
           }
 
           return userInfo;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ ユーザー情報レスポンス形式が不正:');
+            debugPrint('  status: ${responseData['status']}');
+            debugPrint('  data: ${responseData['data']}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ ユーザー情報取得失敗: statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
         }
       }
     } catch (e) {

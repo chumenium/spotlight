@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Badge;
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -12,9 +12,9 @@ import 'spotlight_list_screen.dart';
 import 'help_screen.dart';
 import 'feedback_screen.dart';
 import 'about_screen.dart';
-import 'jwt_test_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
+import 'admin_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
@@ -644,37 +644,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildMaxBadgeIcon() {
-    // 解放されているバッジの中で最大のバッジを取得
-    final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
-    if (unlockedBadges.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, _) {
+        // 管理者ユーザーの場合は管理者バッジを優先表示
+        final isAdmin = authProvider.currentUser?.admin == true;
+        if (isAdmin) {
+          final adminBadge = BadgeManager.getBadgeById(999);
+          if (adminBadge != null) {
+            return Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: SpotLightColors.getGradient(adminBadge.id),
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: adminBadge.badgeColor.withOpacity(0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                adminBadge.icon,
+                color: Colors.white,
+                size: 16,
+              ),
+            );
+          }
+        }
 
-    final maxBadge = unlockedBadges.last; // 最後のバッジが最大（requiredSpotlightsが最大）
+        // 解放されているバッジの中で最大のバッジを取得
+        final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
+        if (unlockedBadges.isEmpty) {
+          return const SizedBox.shrink();
+        }
 
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: SpotLightColors.getGradient(maxBadge.id),
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: maxBadge.badgeColor.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+        final maxBadge = unlockedBadges.last; // 最後のバッジが最大（requiredSpotlightsが最大）
+
+        return Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: SpotLightColors.getGradient(maxBadge.id),
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: maxBadge.badgeColor.withOpacity(0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Icon(
-        maxBadge.icon,
-        color: Colors.white,
-        size: 16,
-      ),
+          child: Icon(
+            maxBadge.icon,
+            color: Colors.white,
+            size: 16,
+          ),
+        );
+      },
     );
   }
 
@@ -1606,46 +1642,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBadgeSection() {
-    final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
-    final allBadges = BadgeManager.allBadges;
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, _) {
+        final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
+        final allBadges = BadgeManager.allBadges;
+        
+        // 管理者ユーザーの場合、管理者バッジを追加
+        final displayBadges = List<Badge>.from(allBadges);
+        final isAdmin = authProvider.currentUser?.admin == true;
+        
+        // 管理者バッジがまだリストにない場合のみ追加
+        final adminBadge = BadgeManager.getBadgeById(999);
+        if (isAdmin && adminBadge != null && !displayBadges.any((b) => b.id == 999)) {
+          displayBadges.add(adminBadge);
+        }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'バッジ',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'バッジ',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    '${unlockedBadges.length + (isAdmin ? 1 : 0)}/${displayBadges.length}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                '${unlockedBadges.length}/${allBadges.length}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[400],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: allBadges.length,
-            itemBuilder: (context, index) {
-              final badge = allBadges[index];
-              final isUnlocked = unlockedBadges.any((b) => b.id == badge.id);
-              final isNewlyUnlocked = _newlyUnlockedBadgeIds.contains(badge.id);
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: displayBadges.length,
+                itemBuilder: (context, index) {
+                  final badge = displayBadges[index];
+                  // 管理者バッジの場合は常に解放されているとみなす
+                  final isAdminBadge = badge.id == 999;
+                  final isUnlocked = isAdminBadge 
+                      ? isAdmin 
+                      : unlockedBadges.any((b) => b.id == badge.id);
+                  final isNewlyUnlocked = _newlyUnlockedBadgeIds.contains(badge.id);
 
               return Container(
                 width: 80,
@@ -1708,7 +1760,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
         ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -1720,6 +1774,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // 総視聴時間
 
           const SizedBox(height: 16),
+
+          // 管理者画面（adminがtrueの場合のみ表示）
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, _) {
+              if (authProvider.currentUser?.admin == true) {
+                return Column(
+                  children: [
+                    _buildMenuTile(
+                      icon: Icons.admin_panel_settings,
+                      title: '管理者画面',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AdminScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
 
           // ヘルプ・フィードバック
           _buildMenuTile(
@@ -1754,18 +1834,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AboutScreen(),
-                ),
-              );
-            },
-          ),
-          _buildMenuTile(
-            icon: Icons.security,
-            title: 'JWTトークンテスト',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const JwtTestScreen(),
                 ),
               );
             },
