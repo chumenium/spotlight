@@ -32,6 +32,399 @@ class _ReportDialog extends StatefulWidget {
   State<_ReportDialog> createState() => _ReportDialogState();
 }
 
+/// コメント通報ダイアログ（独立したStatefulWidgetとして分離）
+class _CommentReportDialog extends StatefulWidget {
+  final Comment comment;
+  final Post post;
+
+  const _CommentReportDialog({
+    required this.comment,
+    required this.post,
+  });
+
+  @override
+  State<_CommentReportDialog> createState() => _CommentReportDialogState();
+}
+
+class _CommentReportDialogState extends State<_CommentReportDialog> {
+  final _reasonController = TextEditingController();
+  String _selectedReason = '';
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kDebugMode) {
+      debugPrint('🚨 _CommentReportDialogState.initState が呼ばれました');
+    }
+    // 自分のコメントかどうかをチェック
+    _checkIfOwnComment();
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  /// エラーダイアログを表示（ダイアログ内から呼び出し用）
+  void _showErrorDialogInDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                color: Color(0xFFFF6B35),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 自分のコメントかどうかをチェック
+  void _checkIfOwnComment() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUserId = authProvider.currentUser?.id;
+      final commentUserId = widget.comment.userId?.toString().trim() ?? '';
+      final currentUserIdStr = currentUserId?.toString().trim() ?? '';
+
+      if (kDebugMode) {
+        debugPrint('🚨 コメント通報ダイアログ内チェック:');
+        debugPrint('  currentUserId: "$currentUserIdStr"');
+        debugPrint('  commentUserId: "$commentUserId"');
+        debugPrint('  一致: ${currentUserIdStr == commentUserId}');
+      }
+
+      if (currentUserIdStr.isNotEmpty &&
+          commentUserId.isNotEmpty &&
+          currentUserIdStr == commentUserId) {
+        Navigator.of(context).pop();
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _showErrorDialogInDialog(context, '自分のコメントは通報できません');
+          }
+        });
+      }
+    });
+  }
+
+  /// 通報理由の選択肢を構築
+  Widget _buildReasonOption(
+    String reason,
+    String selectedReason,
+    Function(String) onTap,
+  ) {
+    final isSelected = selectedReason == reason;
+    return GestureDetector(
+      onTap: () => onTap(reason),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFFF6B35).withOpacity(0.2)
+              : Colors.grey[900],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6B35) : Colors.grey[700]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? const Color(0xFFFF6B35) : Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                reason,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[300],
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kDebugMode) {
+      debugPrint('🚨 _CommentReportDialogState.build が呼ばれました');
+    }
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title: const Text(
+        'コメントを通報',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '通報理由を選択してください',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            _buildReasonOption(
+              '不適切なコンテンツ',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              '差別的または攻撃的なコメント',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              'スパムまたは詐欺',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            _buildReasonOption(
+              'その他',
+              _selectedReason,
+              (reason) {
+                if (mounted) {
+                  setState(() {
+                    _selectedReason = reason;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '詳細（任意）',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _reasonController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: '詳細な理由を入力してください',
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                ),
+                filled: true,
+                fillColor: Colors.grey[900],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting
+              ? null
+              : () {
+                  Navigator.of(context).pop();
+                },
+          child: const Text(
+            'キャンセル',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+        TextButton(
+          onPressed: _isSubmitting || _selectedReason.isEmpty
+              ? null
+              : () async {
+                  if (!mounted) return;
+
+                  // 自分のコメントかどうかを再度チェック
+                  final authProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  final currentUserId = authProvider.currentUser?.id;
+                  final commentUserId =
+                      widget.comment.userId?.toString().trim() ?? '';
+                  final currentUserIdStr =
+                      currentUserId?.toString().trim() ?? '';
+
+                  if (currentUserIdStr.isNotEmpty &&
+                      commentUserId.isNotEmpty &&
+                      currentUserIdStr == commentUserId) {
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
+                          _showErrorDialogInDialog(context, '自分のコメントは通報できません');
+                        }
+                      });
+                    }
+                    return;
+                  }
+
+                  final detailText = _reasonController.text.trim();
+
+                  setState(() {
+                    _isSubmitting = true;
+                  });
+
+                  if (!mounted) return;
+
+                  final reportCheckAuthProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  final reportCurrentUserId =
+                      reportCheckAuthProvider.currentUser?.id;
+
+                  final result = await ReportService.sendReport(
+                    type: 'comment',
+                    reason: _selectedReason,
+                    detail: detailText.isNotEmpty ? detailText : null,
+                    contentID: widget.post.id.toString(),
+                    commentID: widget.comment.commentID,
+                    currentUserId: reportCurrentUserId,
+                    commentUserId: widget.comment.userId,
+                  );
+
+                  if (!mounted) return;
+
+                  setState(() {
+                    _isSubmitting = false;
+                  });
+
+                  if (!mounted) return;
+
+                  if (result.success) {
+                    Navigator.of(context).pop(true);
+                  } else {
+                    if (mounted) {
+                      final errorMessage =
+                          result.errorMessage ?? '通報の送信に失敗しました';
+                      if (errorMessage.contains('自分の') ||
+                          errorMessage.contains('own') ||
+                          errorMessage.contains('self')) {
+                        Navigator.of(context).pop();
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) {
+                            _showErrorDialogInDialog(
+                                context, '自分のコメントは通報できません');
+                          }
+                        });
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(errorMessage),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    }
+                  }
+                },
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFFF6B35),
+                  ),
+                )
+              : const Text(
+                  '送信',
+                  style: TextStyle(color: Color(0xFFFF6B35)),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ReportDialogState extends State<_ReportDialog> {
   final _reasonController = TextEditingController();
   String _selectedReason = '';
@@ -361,9 +754,9 @@ class _ReportDialogState extends State<_ReportDialog> {
                     type: 'content',
                     reason: _selectedReason,
                     detail: detailText.isNotEmpty ? detailText : null,
-                    targetuidID: widget.post.userId,
                     contentID: widget.post.id.toString(),
                     currentUserId: reportCurrentUserId,
+                    postUserId: widget.post.userId,
                   );
 
                   if (!mounted) return;
@@ -620,7 +1013,10 @@ class _HomeScreenState extends State<HomeScreen>
   static const int _maxInitialRetries = 5; // 最大リトライ回数（初回ログイン後も確実に読み込むため増加）
 
   // 通報済みコンテンツID管理（同一ユーザーから同一コンテンツへの通報は1回まで）
-  final Set<String> _reportedContentIds = {};
+  final Set<String> _reportedContentIds = <String>{};
+  // 通報済みコメントID管理（同一ユーザーから同一コメントへの通報は1回まで）
+  // JavaScript変換時の問題を回避するため、finalで直接初期化
+  final Set<String> _reportedCommentIds = <String>{};
 
   @override
   void initState() {
@@ -3276,7 +3672,7 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint('  userIconUrl: ${post.userIconUrl}');
                 debugPrint('  userIconPath: ${post.userIconPath}');
               }
-              
+
               // userIdが空でも、usernameがあれば遷移を許可
               // UserProfileScreenでusernameから情報を取得する
               Navigator.push(
@@ -3319,7 +3715,8 @@ class _HomeScreenState extends State<HomeScreen>
                           if (kDebugMode) {
                             debugPrint('⚠️ ホーム画面アイコン読み込みエラー: ${post.username}');
                             debugPrint('  - userIconUrl: ${post.userIconUrl}');
-                            debugPrint('  - userIconPath: ${post.userIconPath}');
+                            debugPrint(
+                                '  - userIconPath: ${post.userIconPath}');
                             debugPrint('  - error: $error');
                           }
                           return Container();
@@ -3732,6 +4129,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       itemBuilder: (context, index) {
                                         return _buildCommentItem(
                                           comments[index],
+                                          post: _posts[_currentIndex],
                                           replyingToCommentId:
                                               replyingToCommentId,
                                           onReplyPressed: (commentId) {
@@ -4071,6 +4469,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildCommentItem(
     Comment comment, {
+    required Post post,
     int? replyingToCommentId,
     required Function(int) onReplyPressed,
     bool isReply = false,
@@ -4131,11 +4530,12 @@ class _HomeScreenState extends State<HomeScreen>
                         fontSize: 14,
                       ),
                     ),
-                    // 返信ボタンは親コメント（1階層目）のみ表示（2階層までに制限）
-                    if (!isReply) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
+                    // 返信ボタンと通報ボタン（親コメントのみ返信ボタンを表示、通報ボタンはすべてのコメントに表示）
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // 返信ボタンは親コメント（1階層目）のみ表示（2階層までに制限）
+                        if (!isReply) ...[
                           GestureDetector(
                             onTap: () {
                               onReplyPressed(comment.commentID);
@@ -4159,9 +4559,36 @@ class _HomeScreenState extends State<HomeScreen>
                               ],
                             ),
                           ),
+                          const SizedBox(width: 16),
                         ],
-                      ),
-                    ],
+                        // 通報ボタンはすべてのコメント（親コメントと返信コメント）に表示
+                        GestureDetector(
+                          onTap: () {
+                            if (mounted) {
+                              _showCommentReportDialog(comment, post);
+                            }
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.flag_outlined,
+                                color: Colors.grey[400],
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '通報',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -4176,6 +4603,7 @@ class _HomeScreenState extends State<HomeScreen>
                 children: comment.replies
                     .map((reply) => _buildCommentItem(
                           reply,
+                          post: post,
                           replyingToCommentId: replyingToCommentId,
                           onReplyPressed: onReplyPressed,
                           isReply: true,
@@ -4207,6 +4635,80 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (e) {
       return timestamp;
     }
+  }
+
+  /// コメント通報ダイアログを表示
+  void _showCommentReportDialog(Comment comment, Post post) {
+    if (!mounted) return;
+
+    // 自分のコメントかどうかをチェック
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.currentUser?.id;
+    final commentUserId = comment.userId?.toString().trim() ?? '';
+    final currentUserIdStr = currentUserId?.toString().trim() ?? '';
+
+    if (kDebugMode) {
+      debugPrint('🚨 コメント通報ダイアログ表示前チェック:');
+      debugPrint('  currentUserId: "$currentUserIdStr"');
+      debugPrint('  commentUserId: "$commentUserId"');
+      debugPrint('  一致: ${currentUserIdStr == commentUserId}');
+    }
+
+    if (currentUserIdStr.isNotEmpty &&
+        commentUserId.isNotEmpty &&
+        currentUserIdStr == commentUserId) {
+      // 自分のコメントの場合はエラーダイアログを表示
+      if (kDebugMode) {
+        debugPrint('🚨 自分のコメントへの通報をブロックしました');
+      }
+      _showErrorDialog('自分のコメントは通報できません');
+      return;
+    }
+
+    // 既に通報済みかどうかをチェック
+    final commentId = comment.commentID.toString();
+    if (_reportedCommentIds.contains(commentId)) {
+      if (kDebugMode) {
+        debugPrint('🚨 このコメントは既に通報済みです: $commentId');
+      }
+      _showErrorDialog('このコメントは既に通報済みです');
+      return;
+    }
+
+    if (!mounted) return;
+
+    if (kDebugMode) {
+      debugPrint('🚨 コメント通報ダイアログを表示します');
+      debugPrint('  commentID: ${comment.commentID}');
+      debugPrint('  postID: ${post.id}');
+    }
+
+    // commentIdを変数に保存（コールバック内で使用するため）
+    final savedCommentId = commentId;
+
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        if (kDebugMode) {
+          debugPrint('🚨 _CommentReportDialog ビルダーが呼ばれました');
+        }
+        return _CommentReportDialog(
+          comment: comment,
+          post: post,
+        );
+      },
+    ).then((success) {
+      if (success == true && mounted) {
+        // 通報成功時に通報済みリストに追加
+        _reportedCommentIds.add(savedCommentId);
+        if (kDebugMode) {
+          debugPrint('✅ コメント通報済みリストに追加: $savedCommentId');
+          debugPrint('   現在の通報済みコメント数: ${_reportedCommentIds.length}');
+        }
+        _showReportSuccessDialog();
+      }
+    });
   }
 
   /// プレイリスト追加ボタンの処理
@@ -4586,25 +5088,20 @@ class _HomeScreenState extends State<HomeScreen>
     // Selectorを使用して、currentUser.idのみを監視（依存関係の問題を回避）
     return Selector<AuthProvider, String?>(
       selector: (context, authProvider) => authProvider.currentUser?.id,
-      shouldRebuild: (prev, next) => prev != next,
+      shouldRebuild: (prev, next) {
+        // 値が実際に変わった時のみ再構築
+        if (prev == next) return false;
+        // 値がnullから非null、または非nullからnullに変わった場合も再構築
+        return true;
+      },
       builder: (context, currentUserId, child) {
         final postUserId = post.userId.toString().trim();
         final currentUserIdStr = currentUserId?.toString().trim() ?? '';
-
-        if (kDebugMode) {
-          debugPrint('🚨 通報ボタン表示チェック:');
-          debugPrint('  currentUserId: "$currentUserIdStr"');
-          debugPrint('  postUserId: "$postUserId"');
-          debugPrint('  一致: ${currentUserIdStr == postUserId}');
-        }
 
         // 自分の投稿の場合は非表示
         if (currentUserIdStr.isNotEmpty &&
             postUserId.isNotEmpty &&
             currentUserIdStr == postUserId) {
-          if (kDebugMode) {
-            debugPrint('🚨 通報ボタンを非表示にしました（自分の投稿）');
-          }
           return const SizedBox.shrink();
         }
 

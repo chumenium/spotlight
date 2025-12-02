@@ -19,7 +19,7 @@ class CommentService {
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/getcomments';
-      
+
       if (kDebugMode) {
         debugPrint('💬 コメント取得URL: $url, contentID: $contentId');
       }
@@ -35,15 +35,28 @@ class CommentService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (kDebugMode) {
           debugPrint('💬 コメント取得レスポンス: ${responseData.toString()}');
         }
 
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
           final List<dynamic> commentsJson = responseData['data'];
+
+          // デバッグ: 最初のコメントのフィールドを確認
+          if (kDebugMode && commentsJson.isNotEmpty) {
+            final firstComment = commentsJson[0] as Map<String, dynamic>;
+            debugPrint('💬 コメントデータのフィールド: ${firstComment.keys.toList()}');
+            debugPrint('💬 user_id: ${firstComment['user_id']}');
+            debugPrint('💬 userId: ${firstComment['userId']}');
+            debugPrint('💬 uid: ${firstComment['uid']}');
+            debugPrint('💬 firebase_uid: ${firstComment['firebase_uid']}');
+          }
+
           return commentsJson
-              .map((commentJson) => Comment.fromJson(commentJson as Map<String, dynamic>, AppConfig.backendUrl))
+              .map((commentJson) => Comment.fromJson(
+                  commentJson as Map<String, dynamic>, AppConfig.backendUrl))
               .toList();
         }
       } else {
@@ -73,7 +86,7 @@ class CommentService {
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/addcomment';
-      
+
       if (kDebugMode) {
         debugPrint('💬 コメント追加URL: $url, contentID: $contentId');
       }
@@ -84,7 +97,7 @@ class CommentService {
         'contentID': parsedContentId ?? contentId,
         'commenttext': commentText,
       };
-      
+
       if (parentCommentId != null) {
         requestBody['parentcommentID'] = parentCommentId;
       }
@@ -100,7 +113,7 @@ class CommentService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (kDebugMode) {
           debugPrint('💬 コメント追加レスポンス: ${responseData.toString()}');
         }
@@ -122,4 +135,3 @@ class CommentService {
     return false;
   }
 }
-
