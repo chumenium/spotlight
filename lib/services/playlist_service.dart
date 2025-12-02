@@ -344,10 +344,17 @@ class PlaylistService {
               }
             }
           } else {
+            // playlistidがレスポンスに含まれていない場合でも、statusがsuccessなら作成は成功している
+            // オートインクリメントで追加されるため、レスポンスに含まれなくても問題ない
             if (kDebugMode) {
-              debugPrint('⚠️ [プレイリスト作成] レスポンスにplaylistidが含まれていません');
+              debugPrint(
+                  '✅ [プレイリスト作成] 成功（playlistidはレスポンスに含まれていませんが、作成は成功しています）');
               debugPrint('   レスポンス全体: ${responseData.toString()}');
+              debugPrint('   オートインクリメントで追加されるため、playlistidは後で取得できます');
             }
+            // 成功を示す特殊な値（0）を返す（playlistidが取得できない場合）
+            // 呼び出し側で、0の場合は成功として扱い、プレイリスト一覧を再取得するなどで対応
+            return 0;
           }
         } else {
           if (kDebugMode) {
