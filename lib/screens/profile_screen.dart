@@ -426,45 +426,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // プロフィールヘッダー
-            _buildProfileHeader(),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 上部の余白を追加（端末によって見切れるのを防ぐ）
+              const SizedBox(height: 30),
+              // プロフィールヘッダー
+              _buildProfileHeader(),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // スポットライトセクション
-            _buildSpotlightSection(context),
+              // スポットライトセクション
+              _buildSpotlightSection(context),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // 履歴セクション
-            _buildHistorySection(context),
+              // 履歴セクション
+              _buildHistorySection(context),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // 再生リストセクション
-            _buildPlaylistSection(context),
+              // 再生リストセクション
+              _buildPlaylistSection(context),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // バッジセクション
-            _buildBadgeSection(),
+              // バッジセクション
+              _buildBadgeSection(),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // 統計・ヘルプセクション
-            _buildStatsAndHelpSection(context),
+              // 統計・ヘルプセクション
+              _buildStatsAndHelpSection(context),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // ログアウトボタン
-            _buildLogoutButton(context),
+              // ログアウトボタン
+              _buildLogoutButton(context),
 
-            const SizedBox(height: 100), // ボトムナビゲーション分の余白
-          ],
+              const SizedBox(height: 100), // ボトムナビゲーション分の余白
+            ],
+          ),
         ),
       ),
     );
@@ -648,23 +652,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, authProvider, _) {
         final isAdmin = authProvider.currentUser?.admin == true;
         final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
-        
+
         // 管理者バッジ（ID: 999）と開発者バッジ（ID: 777）を除外したリストを作成
-        final normalBadges = unlockedBadges.where((b) => b.id != 999 && b.id != 777).toList();
-        
+        final normalBadges =
+            unlockedBadges.where((b) => b.id != 999 && b.id != 777).toList();
+
         // 管理者ユーザーの場合、管理者バッジと通常の最大バッジの2つを表示
         if (isAdmin) {
           final adminBadge = BadgeManager.getBadgeById(999);
-          final maxNormalBadge = normalBadges.isNotEmpty 
-              ? normalBadges.last 
-              : null;
-          
+          final maxNormalBadge =
+              normalBadges.isNotEmpty ? normalBadges.last : null;
+
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // 管理者バッジ
-              if (adminBadge != null)
-                _buildBadgeIcon(adminBadge),
+              if (adminBadge != null) _buildBadgeIcon(adminBadge),
               // 通常の最大バッジ（存在する場合）
               if (maxNormalBadge != null) ...[
                 const SizedBox(width: 4),
@@ -1646,14 +1649,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, authProvider, _) {
         final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
         final allBadges = BadgeManager.allBadges;
-        
+
         // 管理者ユーザーの場合、管理者バッジを追加
         final displayBadges = List<Badge>.from(allBadges);
         final isAdmin = authProvider.currentUser?.admin == true;
-        
+
         // 管理者バッジがまだリストにない場合のみ追加
         final adminBadge = BadgeManager.getBadgeById(999);
-        if (isAdmin && adminBadge != null && !displayBadges.any((b) => b.id == 999)) {
+        if (isAdmin &&
+            adminBadge != null &&
+            !displayBadges.any((b) => b.id == 999)) {
           displayBadges.add(adminBadge);
         }
 
@@ -1694,72 +1699,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final badge = displayBadges[index];
                   // 管理者バッジの場合は常に解放されているとみなす
                   final isAdminBadge = badge.id == 999;
-                  final isUnlocked = isAdminBadge 
-                      ? isAdmin 
+                  final isUnlocked = isAdminBadge
+                      ? isAdmin
                       : unlockedBadges.any((b) => b.id == badge.id);
-                  final isNewlyUnlocked = _newlyUnlockedBadgeIds.contains(badge.id);
+                  final isNewlyUnlocked =
+                      _newlyUnlockedBadgeIds.contains(badge.id);
 
-              return Container(
-                width: 80,
-                margin: const EdgeInsets.only(right: 12),
-                child: Column(
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        gradient: isUnlocked
-                            ? LinearGradient(
-                                colors: SpotLightColors.getGradient(index),
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        color: isUnlocked ? null : Colors.grey[800],
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: isUnlocked
-                            ? [
-                                BoxShadow(
-                                  color: badge.badgeColor
-                                      .withOpacity(isNewlyUnlocked ? 0.6 : 0.3),
-                                  blurRadius: isNewlyUnlocked ? 12 : 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ]
-                            : null,
-                        border: isNewlyUnlocked
-                            ? Border.all(
-                                color: badge.badgeColor,
-                                width: 2,
-                              )
-                            : null,
-                      ),
-                      child: Center(
-                        child: Icon(
-                          isUnlocked ? badge.icon : Icons.lock,
-                          color: isUnlocked ? Colors.white : Colors.grey[600],
-                          size: 30,
+                  return Container(
+                    width: 80,
+                    margin: const EdgeInsets.only(right: 12),
+                    child: Column(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            gradient: isUnlocked
+                                ? LinearGradient(
+                                    colors: SpotLightColors.getGradient(index),
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  )
+                                : null,
+                            color: isUnlocked ? null : Colors.grey[800],
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: isUnlocked
+                                ? [
+                                    BoxShadow(
+                                      color: badge.badgeColor.withOpacity(
+                                          isNewlyUnlocked ? 0.6 : 0.3),
+                                      blurRadius: isNewlyUnlocked ? 12 : 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ]
+                                : null,
+                            border: isNewlyUnlocked
+                                ? Border.all(
+                                    color: badge.badgeColor,
+                                    width: 2,
+                                  )
+                                : null,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              isUnlocked ? badge.icon : Icons.lock,
+                              color:
+                                  isUnlocked ? Colors.white : Colors.grey[600],
+                              size: 30,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Text(
+                          badge.name,
+                          style: TextStyle(
+                            color: isUnlocked ? Colors.white : Colors.grey[600],
+                            fontSize: 10,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      badge.name,
-                      style: TextStyle(
-                        color: isUnlocked ? Colors.white : Colors.grey[600],
-                        fontSize: 10,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+                  );
+                },
+              ),
+            ),
           ],
         );
       },
