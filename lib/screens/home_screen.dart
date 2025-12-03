@@ -5699,7 +5699,14 @@ class _HomeScreenState extends State<HomeScreen>
                 cacheKey: imageUrl,
               ),
               context,
-            ).catchError((error) {
+            ).then((_) {
+              // プリロード成功時にRobustNetworkImageの読み込み状態を記録
+              // これにより、次回表示時に即座に画像が表示される
+              RobustNetworkImage.recordLoadedUrl(imageUrl);
+              if (kDebugMode) {
+                debugPrint('✅ 画像プリロード成功（読み込み状態を記録）: $imageUrl');
+              }
+            }).catchError((error) {
               // エラーは無視（プリロードなので失敗しても問題ない）
               if (kDebugMode) {
                 debugPrint('⚠️ 画像プリロードエラー: $imageUrl, error: $error');

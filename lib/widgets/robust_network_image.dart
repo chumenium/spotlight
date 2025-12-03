@@ -74,6 +74,12 @@ class RobustNetworkImage extends StatelessWidget {
     });
   }
 
+  /// 外部から読み込み成功を記録するための公開メソッド
+  /// プリロードなどで画像が読み込まれた場合に使用
+  static void recordLoadedUrl(String url) {
+    _recordLoadedUrl(url);
+  }
+
   /// 読み込み中のURLかチェック（重複読み込みを防ぐ）
   static bool _isLoading(String url) {
     // 既に読み込み成功したURLの場合は、読み込み中ではない
@@ -145,8 +151,10 @@ class RobustNetworkImage extends StatelessWidget {
         },
         fadeInDuration: const Duration(milliseconds: 150),
         fadeOutDuration: const Duration(milliseconds: 50),
-        placeholder:
-            placeholder != null ? (context, url) => placeholder! : null,
+        // 読み込み成功したURLの場合は、placeholderとprogressIndicatorBuilderを指定しない
+        // （キャッシュから即座に読み込まれるため）
+        placeholder: null, // 明示的にnullを設定
+        progressIndicatorBuilder: null, // 明示的にnullを設定
         errorWidget: errorWidget != null
             ? (context, url, error) => errorWidget!
             : (context, url, error) {
@@ -208,30 +216,17 @@ class RobustNetworkImage extends StatelessWidget {
       );
     }
 
-    // 読み込み中のURLの場合は、プレースホルダーを表示（重複読み込みを防ぐ）
-    // 注意: CachedNetworkImageは内部的にキャッシュを管理しているため、
-    // 同じURLの場合は自動的にキャッシュから読み込まれる
-    // ただし、複数のウィジェットが同時に同じURLを読み込もうとする場合、
-    // 読み込み中の記録により、重複読み込みを防ぐ
-    if (_isLoading(imageUrl)) {
-      if (_shouldLog(imageUrl)) {
-        debugPrint('⏳ RobustNetworkImage: 読み込み中のため、プレースホルダーを表示: $imageUrl');
-      }
-      if (placeholder != null) return placeholder!;
-      return const SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFFFF6B35),
-            strokeWidth: 3,
-          ),
-        ),
-      );
-    }
+    // 読み込み中のURLチェックを削除
+    // CachedNetworkImageは内部的にキャッシュを管理しており、
+    // キャッシュから読み込まれた場合は即座に表示される
+    // _isLoadingチェックを削除することで、キャッシュから読み込まれた画像が
+    // 即座に表示されるようになる
 
     // 新規読み込み開始の場合のみ、読み込み開始を記録
-    _recordLoadingStart(imageUrl);
+    // ただし、既に読み込み成功している場合は記録しない
+    if (!_loadedUrls.containsKey(imageUrl)) {
+      _recordLoadingStart(imageUrl);
+    }
 
     if (_shouldLog(imageUrl)) {
       debugPrint('🖼️ RobustNetworkImage: 画像読み込み開始: $imageUrl');
@@ -240,12 +235,16 @@ class RobustNetworkImage extends StatelessWidget {
     // CachedNetworkImageを使用して、キャッシュから読み込む
     // 同じURLの場合は再取得されない
     // maxCacheAgeを1時間に設定して、AWS使用量を削減
-    // 読み込み成功の記録は、fadeInDurationの後に非同期で行う
-    // imageBuilderを使用すると制約エラーが発生する可能性があるため、使用しない
+    // キャッシュから読み込まれた場合は、placeholderが表示されずに即座に画像が表示される
+    // そのため、次のフレームで読み込み成功を記録する
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // fadeInDurationの後に読み込み成功を記録
-      Future.delayed(const Duration(milliseconds: 250), () {
-        _recordLoadedUrl(imageUrl);
+      // キャッシュから読み込まれた場合、placeholderが表示されないため、
+      // 次のフレームで読み込み成功を記録する
+      Future.delayed(const Duration(milliseconds: 50), () {
+        // まだ記録されていない場合のみ記録
+        if (!_loadedUrls.containsKey(imageUrl)) {
+          _recordLoadedUrl(imageUrl);
+        }
       });
     });
 
@@ -268,10 +267,19 @@ class RobustNetworkImage extends StatelessWidget {
       },
       fadeInDuration: const Duration(milliseconds: 150), // フェードイン時間を短縮
       fadeOutDuration: const Duration(milliseconds: 50), // フェードアウト時間を短縮
-      placeholder: (context, url) {
-        if (_shouldLog(url, minInterval: const Duration(seconds: 60))) {
-          debugPrint('⏳ 画像読み込み中: $url');
+      // placeholderとprogressIndicatorBuilderは同時に指定できないため、
+      // placeholderを明示的にnullに設定し、progressIndicatorBuilderのみを使用する
+      placeholder: null, // 明示的にnullを設定（progressIndicatorBuilderと競合しないように）
+      progressIndicatorBuilder: (context, url, downloadProgress) {
+        // 読み込みが完了した場合（progress == 1.0）に読み込み成功を記録
+        if (downloadProgress.progress == 1.0) {
+          // 読み込み完了を即座に記録（同期的に実行）
+          _recordLoadedUrl(imageUrl);
+          if (_shouldLog(imageUrl)) {
+            debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
+          }
         }
+        // プログレスインジケーターを表示（読み込み中の場合）
         if (placeholder != null) return placeholder!;
         return const SizedBox(
           width: 40,
