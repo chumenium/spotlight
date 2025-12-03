@@ -1,0 +1,22 @@
+# リリース用キーストア設定ファイル
+# このファイルをコピーしてkey.propertiesとして保存し、実際の値を設定してください
+# 
+# セットアップ手順:
+# 1. このファイルをコピー: cp key.properties.example key.properties
+# 2. key.propertiesを編集して、実際のパスワードを設定
+# 3. キーストアファイル（spotlight-release-key.jks）をandroid/app/ディレクトリに配置
+#
+# 注意: key.propertiesとキーストアファイルは機密情報のため、Gitにコミットしないでください
+
+# キーストアのパスワード
+storePassword=your_keystore_password_here
+
+# キーのパスワード（通常はキーストアのパスワードと同じ）
+keyPassword=your_key_password_here
+
+# キーエイリアス名
+keyAlias=spotlight
+
+# キーストアファイルのパス（build.gradle.ktsからの相対パス、android/app/ディレクトリ内）
+storeFile=spotlight-release-key.jks
+
