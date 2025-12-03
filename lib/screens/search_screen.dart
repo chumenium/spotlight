@@ -19,14 +19,14 @@ class _SearchScreenState extends State<SearchScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
   bool _isLoadingHistory = false;
-  
+
   // バックエンドから取得
   List<SearchHistory> _searchHistory = [];
   final List<SearchSuggestion> _allSuggestions = [];
   List<SearchSuggestion> _filteredSuggestions = [];
   List<Post> _searchResults = [];
   String? _searchQuery;
-  
+
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
   int? _lastNavigationIndex; // 最後に処理したナビゲーションインデックス
@@ -36,7 +36,7 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _filteredSuggestions = _allSuggestions;
     _searchController.addListener(_onSearchChanged);
-    
+
     // バックエンドから検索履歴を取得
     _fetchSearchHistory();
   }
@@ -49,7 +49,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     try {
       final history = await SearchService.fetchSearchHistory();
-      
+
       if (!_isDisposed && mounted) {
         setState(() {
           _searchHistory = history;
@@ -60,7 +60,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (kDebugMode) {
         debugPrint('🔍 検索履歴取得エラー: $e');
       }
-      
+
       if (!_isDisposed && mounted) {
         setState(() {
           _isLoadingHistory = false;
@@ -86,7 +86,7 @@ class _SearchScreenState extends State<SearchScreen> {
         } else {
           // 検索履歴から候補を生成
           final historySuggestions = _searchHistory
-              .where((history) => 
+              .where((history) =>
                   history.query.toLowerCase().contains(query.toLowerCase()))
               .map((history) => SearchSuggestion(
                     id: 'history_${history.id}',
@@ -95,13 +95,13 @@ class _SearchScreenState extends State<SearchScreen> {
                     isTrending: false,
                   ))
               .toList();
-          
+
           // おすすめ検索から候補を生成
           final suggestionMatches = _allSuggestions
-              .where((suggestion) => 
+              .where((suggestion) =>
                   suggestion.query.toLowerCase().contains(query.toLowerCase()))
               .toList();
-          
+
           // 検索履歴とおすすめを結合（重複を除去）
           final allSuggestions = <String, SearchSuggestion>{};
           for (final suggestion in historySuggestions) {
@@ -110,7 +110,7 @@ class _SearchScreenState extends State<SearchScreen> {
           for (final suggestion in suggestionMatches) {
             allSuggestions[suggestion.query] = suggestion;
           }
-          
+
           _filteredSuggestions = allSuggestions.values.toList();
         }
       });
@@ -119,24 +119,24 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _performSearch(String query) async {
     if (query.trim().isEmpty) return;
-    
+
     if (!_isDisposed && mounted) {
       setState(() {
         _isSearching = true;
         _searchQuery = query;
       });
     }
-    
+
     try {
       final results = await SearchService.searchPosts(query);
-      
+
       if (kDebugMode) {
         debugPrint('🔍 検索結果取得: ${results.length}件');
         for (final post in results) {
           debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
         }
       }
-      
+
       if (!_isDisposed && mounted) {
         setState(() {
           // 検索結果を完全に置き換える（新しい検索の場合は既存の結果をクリア）
@@ -148,7 +148,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (kDebugMode) {
         debugPrint('🔍 検索エラー: $e');
       }
-      
+
       if (!_isDisposed && mounted) {
         setState(() {
           _isSearching = false;
@@ -163,7 +163,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return Consumer<NavigationProvider>(
       builder: (context, navigationProvider, _) {
         final currentIndex = navigationProvider.currentIndex;
-        
+
         // 検索画面が表示されている場合、かつ前回と異なる場合に再取得
         if (currentIndex == 1 && _lastNavigationIndex != 1) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -177,24 +177,24 @@ class _SearchScreenState extends State<SearchScreen> {
         } else if (currentIndex != 1) {
           _lastNavigationIndex = currentIndex;
         }
-        
+
         return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 検索バー
-            _buildSearchBar(),
-            
-            // 検索結果または検索履歴・おすすめ
-            Expanded(
-              child: _searchResults.isNotEmpty || _isSearching
-                  ? _buildSearchResults()
-                  : _buildSearchContent(),
+          backgroundColor: const Color(0xFF121212),
+          body: SafeArea(
+            child: Column(
+              children: [
+                // 検索バー
+                _buildSearchBar(),
+
+                // 検索結果または検索履歴・おすすめ
+                Expanded(
+                  child: _searchResults.isNotEmpty || _isSearching
+                      ? _buildSearchResults()
+                      : _buildSearchContent(),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         );
       },
     );
@@ -262,7 +262,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     final query = _searchController.text.trim();
-    
+
     // 検索入力中は候補を表示
     if (query.isNotEmpty && _filteredSuggestions.isNotEmpty) {
       return _buildSearchSuggestions();
@@ -278,17 +278,22 @@ class _SearchScreenState extends State<SearchScreen> {
             _buildSearchHistoryChips(),
             const SizedBox(height: 20),
           ],
-          
+
           // おすすめ検索
           _buildSectionHeader('おすすめ検索'),
           if (_allSuggestions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'おすすめ検索がありません',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
+            Padding(
+              // 左詰めで固定（左端の余白を8pxに設定）
+              padding:
+                  const EdgeInsets.only(left: 8, top: 8, bottom: 8, right: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: const Text(
+                  'おすすめ検索がありません',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             )
@@ -298,7 +303,7 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
   }
-  
+
   /// 検索候補を表示（入力中）
   Widget _buildSearchSuggestions() {
     return ListView.builder(
@@ -332,7 +337,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       );
     }
-    
+
     if (_searchResults.isEmpty) {
       return Center(
         child: Column(
@@ -356,7 +361,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       );
     }
-    
+
     // TikTok風のタイル表示（グリッドレイアウト）
     return GridView.builder(
       padding: const EdgeInsets.all(2),
@@ -377,7 +382,7 @@ class _SearchScreenState extends State<SearchScreen> {
   /// TikTok風のタイル表示
   Widget _buildSearchResultTile(Post post) {
     final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
-    
+
     return GestureDetector(
       onTap: () {
         // ホーム画面に遷移して投稿を再生
@@ -426,7 +431,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
               ),
-            
+
             // グラデーションオーバーレイ（下部）
             Positioned(
               bottom: 0,
@@ -505,16 +510,17 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
   }
-  
+
   /// ホーム画面に遷移して投稿を再生
   void _navigateToPost(Post post) {
-    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
-    
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
+
     if (kDebugMode) {
       debugPrint('🔍 ホーム画面に遷移: 投稿ID=${post.id}, contentID=${post.id}');
       debugPrint('🔍 投稿タイトル: ${post.title}');
     }
-    
+
     // 投稿IDが空の場合はエラー
     if (post.id.isEmpty) {
       if (kDebugMode) {
@@ -522,25 +528,31 @@ class _SearchScreenState extends State<SearchScreen> {
       }
       return;
     }
-    
+
     // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
     navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
-    
+
     if (kDebugMode) {
-      debugPrint('✅ NavigationProviderに投稿IDを設定: ${navigationProvider.targetPostId}');
-      debugPrint('✅ NavigationProviderに投稿タイトルを設定: ${navigationProvider.targetPostTitle}');
+      debugPrint(
+          '✅ NavigationProviderに投稿IDを設定: ${navigationProvider.targetPostId}');
+      debugPrint(
+          '✅ NavigationProviderに投稿タイトルを設定: ${navigationProvider.targetPostTitle}');
     }
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
+      // 左詰めで固定（左端の余白を8pxに設定）
+      padding: const EdgeInsets.only(left: 8, top: 8, bottom: 8, right: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -627,13 +639,12 @@ class _SearchScreenState extends State<SearchScreen> {
       label: Text(
         suggestion.query,
         style: TextStyle(
-          color: suggestion.isTrending 
+          color: suggestion.isTrending
               ? SpotLightColors.getSpotlightColor(0)
               : Colors.white,
           fontSize: 14,
-          fontWeight: suggestion.isTrending 
-              ? FontWeight.w600
-              : FontWeight.normal,
+          fontWeight:
+              suggestion.isTrending ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
       backgroundColor: Colors.grey[800],
@@ -680,5 +691,4 @@ class _SearchScreenState extends State<SearchScreen> {
       },
     );
   }
-
 }
