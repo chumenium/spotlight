@@ -81,7 +81,7 @@ flutter:
 # アイコン画像を assets/icon/icon.png に配置してください（1024x1024px推奨）
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
   image_path: "assets/icon/icon.png"
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/icon.png"
