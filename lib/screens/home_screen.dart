@@ -3108,7 +3108,7 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  /// 音声用シークバーを構築（ナビゲーションバーの真上に表示）
+  /// 音声用シークバーを構築（画面の一番下に表示）
   Widget _buildAudioSeekBar(AudioPlayer player) {
     return StreamBuilder<Duration>(
       stream: player.positionStream,
@@ -3130,9 +3130,12 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
 
-        // ナビゲーションバーの高さを考慮（約80px）
+        // 画面の一番下に配置（SafeAreaの下部パディングを考慮し、さらに下に配置）
+        final mediaQuery = MediaQuery.of(context);
+        final bottomPadding = mediaQuery.padding.bottom; // 安全領域の下部パディング
+
         return Positioned(
-          bottom: 80,
+          bottom: bottomPadding - 20, // さらに下に配置
           left: 0,
           right: 0,
           child: Container(
@@ -3151,9 +3154,9 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // 時間表示（画面右のシークバーの上）
+                // 時間表示（画面右のシークバーの上、少し下に配置）
                 Padding(
-                  padding: const EdgeInsets.only(right: 0, bottom: 8),
+                  padding: const EdgeInsets.only(right: 0, bottom: 16),
                   child: Text(
                     '${_formatDuration(position)} / ${_formatDuration(duration)}',
                     style: const TextStyle(
@@ -3214,12 +3217,12 @@ class _HomeScreenState extends State<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Stack(
                           children: [
-                            // 背景バー
+                            // 背景バー（透明にして隠す）
                             Container(
                               width: double.infinity,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.transparent,
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
@@ -3272,7 +3275,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// シークバーを構築（ナビゲーションバーの真上に表示）
+  /// シークバーを構築（画面の一番下に表示）
   Widget _buildSeekBar(VideoPlayerController controller) {
     if (!controller.value.isInitialized) {
       return const SizedBox.shrink();
@@ -3295,9 +3298,12 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
 
-    // ナビゲーションバーの高さを考慮（約80px）
+    // 画面の一番下に配置（SafeAreaの下部パディングを考慮し、さらに下に配置）
+    final mediaQuery = MediaQuery.of(context);
+    final bottomPadding = mediaQuery.padding.bottom; // 安全領域の下部パディング
+
     return Positioned(
-      bottom: 80,
+      bottom: bottomPadding - 20, // さらに下に配置
       left: 0,
       right: 0,
       child: Container(
@@ -3316,9 +3322,9 @@ class _HomeScreenState extends State<HomeScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 時間表示（画面右のシークバーの上）
+            // 時間表示（画面右のシークバーの上、少し下に配置）
             Padding(
-              padding: const EdgeInsets.only(right: 0, bottom: 8),
+              padding: const EdgeInsets.only(right: 0, bottom: 16),
               child: Text(
                 '${_formatDuration(position)} / ${_formatDuration(duration)}',
                 style: const TextStyle(
@@ -3375,16 +3381,16 @@ class _HomeScreenState extends State<HomeScreen>
                   final progressWidth = containerWidth * safeProgress;
                   return Container(
                     width: double.infinity,
-                    height: 20, // タップ領域を広げる
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    height: 40, // タップ領域を広げる（スライド操作を直感的に）
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Stack(
                       children: [
-                        // 背景バー
+                        // 背景バー（透明にして隠す）
                         Container(
                           width: double.infinity,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.transparent,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),

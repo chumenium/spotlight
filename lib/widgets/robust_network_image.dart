@@ -225,7 +225,7 @@ class RobustNetworkImage extends StatelessWidget {
     // 新規読み込み開始の場合のみ、読み込み開始を記録
     // ただし、既に読み込み成功している場合は記録しない
     if (!_loadedUrls.containsKey(imageUrl)) {
-      _recordLoadingStart(imageUrl);
+    _recordLoadingStart(imageUrl);
     }
 
     if (_shouldLog(imageUrl)) {
@@ -243,7 +243,7 @@ class RobustNetworkImage extends StatelessWidget {
       Future.delayed(const Duration(milliseconds: 50), () {
         // まだ記録されていない場合のみ記録
         if (!_loadedUrls.containsKey(imageUrl)) {
-          _recordLoadedUrl(imageUrl);
+        _recordLoadedUrl(imageUrl);
         }
       });
     });
@@ -277,7 +277,7 @@ class RobustNetworkImage extends StatelessWidget {
           _recordLoadedUrl(imageUrl);
           if (_shouldLog(imageUrl)) {
             debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
-          }
+        }
         }
         // プログレスインジケーターを表示（読み込み中の場合）
         if (placeholder != null) return placeholder!;
