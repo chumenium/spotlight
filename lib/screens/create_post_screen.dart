@@ -156,8 +156,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _postContent() async {
+    // 投稿ボタンを押した時点で即座にキーボードを閉じる
+    // （特に動画コンテンツなど投稿に時間がかかる場合に重要）
+    FocusScope.of(context).unfocus();
+
     final titleText = _titleController.text.trim();
+    // タグは空文字列の場合はnullを送信（バックエンド側のNoneTypeエラーを防ぐため）
     final tagText = _tagController.text.trim();
+    final tagValue = tagText.isEmpty ? null : tagText;
 
     // タイトルチェック
     if (titleText.isEmpty) {
@@ -302,13 +308,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
 
       try {
+        // タグはオプショナル（nullでも投稿可能）
         final result = await PostService.createPost(
           type: type,
           title: titleText,
           fileBase64: fileBase64,
           thumbnailBase64: thumbBase64,
           link: link,
-          tag: tagText.isEmpty ? null : tagText,
+          tag: tagValue, // タグが空の場合はnullを送信（バックエンド側のNoneTypeエラーを防ぐため）
         );
 
         if (mounted) {
@@ -592,9 +599,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           Text(
                             '${_titleController.text.length}/$_titleMaxLength',
                             style: TextStyle(
-                              color: _titleController.text.length > _titleMaxLength
-                                  ? Colors.red
-                                  : Colors.grey,
+                              color:
+                                  _titleController.text.length > _titleMaxLength
+                                      ? Colors.red
+                                      : Colors.grey,
                               fontSize: 12,
                             ),
                           ),
@@ -644,9 +652,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           Text(
                             '${_tagController.text.length}/$_titleMaxLength',
                             style: TextStyle(
-                              color: _tagController.text.length > _titleMaxLength
-                                  ? Colors.red
-                                  : Colors.grey,
+                              color:
+                                  _tagController.text.length > _titleMaxLength
+                                      ? Colors.red
+                                      : Colors.grey,
                               fontSize: 12,
                             ),
                           ),

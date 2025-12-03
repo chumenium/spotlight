@@ -4101,6 +4101,9 @@ class _HomeScreenState extends State<HomeScreen>
               minChildSize: 0.5,
               maxChildSize: 0.9,
               builder: (context, scrollController) {
+                // キーボードの高さを取得
+                final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
                 return Container(
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.85),
@@ -4113,7 +4116,12 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                   child: Container(
-                    padding: const EdgeInsets.all(20),
+                    padding: EdgeInsets.only(
+                      top: 20,
+                      left: 20,
+                      right: 20,
+                      bottom: 20 + keyboardHeight, // キーボードの高さを追加
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -4130,7 +4138,20 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                             IconButton(
-                              onPressed: () => Navigator.pop(context),
+                              onPressed: () async {
+                                // キーボードが表示されている場合、まずキーボードを閉じる
+                                // これにより、TextFieldのフォーカスが適切にクリーンアップされる
+                                FocusScope.of(context).unfocus();
+
+                                // キーボードが閉じるのを少し待つ
+                                await Future.delayed(
+                                    const Duration(milliseconds: 100));
+
+                                // その後、モーダルを閉じる
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
                               icon:
                                   const Icon(Icons.close, color: Colors.white),
                             ),

@@ -1294,11 +1294,24 @@ class PostService {
         'title': title,
       };
 
-      if (link != null && link.isNotEmpty) {
-        body['link'] = link;
+      // linkはオプショナル（nullまたは空の場合はリクエストボディに含めない）
+      // バックエンド側でNoneTypeエラーを防ぐため、明示的に含めない
+      if (link != null && link.trim().isNotEmpty) {
+        body['link'] = link.trim();
       }
-      if (tag != null && tag.isNotEmpty) {
-        body['tag'] = tag;
+
+      // タグはオプショナル（nullまたは空の場合はリクエストボディに含めない）
+      // バックエンド側でNoneTypeエラーを防ぐため、明示的に含めない
+      if (tag != null && tag.trim().isNotEmpty) {
+        body['tag'] = tag.trim();
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 リクエストボディのキー: ${body.keys.toList()}');
+        debugPrint(
+            '📝 linkの状態: ${link == null ? "null" : (link.isEmpty ? "空文字列" : "値あり: $link")}');
+        debugPrint(
+            '📝 タグの状態: ${tag == null ? "null" : (tag.isEmpty ? "空文字列" : "値あり: $tag")}');
       }
 
       if (type == 'text') {
@@ -1325,6 +1338,20 @@ class PostService {
       }
 
       // リクエストボディをJSONエンコード
+      // デバッグ: リクエストボディの内容を確認（tagとlinkが含まれていないことを確認）
+      if (kDebugMode) {
+        debugPrint('📝 リクエストボディ（JSONエンコード前）:');
+        debugPrint('   - すべてのキー: ${body.keys.toList()}');
+        debugPrint('   - linkフィールドの存在: ${body.containsKey('link')}');
+        if (body.containsKey('link')) {
+          debugPrint('   - linkの値: ${body['link']}');
+        }
+        debugPrint('   - tagフィールドの存在: ${body.containsKey('tag')}');
+        if (body.containsKey('tag')) {
+          debugPrint('   - tagの値: ${body['tag']}');
+        }
+      }
+
       final jsonBody = jsonEncode(body);
       final requestBodySize = jsonBody.length;
 
