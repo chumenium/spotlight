@@ -141,6 +141,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
               ),
+              // 左端の余白を半分に減らす（8px）
+              labelPadding: const EdgeInsets.symmetric(horizontal: 13),
+              tabAlignment: TabAlignment.start,
+              padding: const EdgeInsets.only(left: 8),
               tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
             ),
           ),
@@ -337,7 +341,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           );
         },
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          // 左端の余白を半分に減らす（8px）
+          padding: const EdgeInsets.only(
+            left: 8,
+            top: 16,
+            right: 16,
+            bottom: 16,
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
