@@ -92,7 +92,7 @@ SpotLight（以下「本アプリ」）は、ユーザーのプライバシー�
 本アプリは、以下の情報を収集する場合があります：
 
 【認証情報】
-• Firebase Authentication経由で取得する情報（Google、Twitter/Xアカウント情報）
+• Firebase Authentication経由で取得する情報（Googleアカウント情報）
 • メールアドレス、表示名、プロフィール画像URL
 • Firebase UID（一意のユーザー識別子）
 
@@ -144,7 +144,6 @@ SpotLight（以下「本アプリ」）は、ユーザーのプライバシー�
 • Firebase Authentication（Google LLC）
 • Firebase Cloud Messaging（Google LLC）
 • Google Sign-In（Google LLC）
-• Twitter/X Sign-In（Twitter, Inc.）
 • CloudFront（Amazon Web Services, Inc.）
 • S3（Amazon Web Services, Inc.）
 ''',

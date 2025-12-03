@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:twitter_login/twitter_login.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/firebase_config.dart';
@@ -80,12 +79,11 @@ class User {
 /// 認証状態を管理するProvider
 ///
 /// Firebase Authenticationと連携してユーザーの認証状態を管理します
-/// ソーシャルログイン（Google、Apple、Twitter）専用
+/// ソーシャルログイン（Google、Apple）専用
 ///
 /// 主な機能:
 /// - Google Sign-In
 /// - Apple Sign-In（iOS）
-/// - Twitter Sign-In
 /// - 認証状態の監視
 /// - ログアウト
 class AuthProvider extends ChangeNotifier {
@@ -136,10 +134,6 @@ class AuthProvider extends ChangeNotifier {
               '185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com',
         );
 
-  /// Twitter Sign-Inのインスタンス
-  /// Twitter Developer Portalで取得したAPIキーで初期化されます
-  TwitterLogin? _twitterLogin;
-
   // ==========================================================================
   // 状態管理
   // ==========================================================================
@@ -175,9 +169,6 @@ class AuthProvider extends ChangeNotifier {
   /// Google Sign-Inが利用可能か
   bool get canUseGoogle => FirebaseConfig.enableGoogleSignIn;
 
-  /// Twitter Sign-Inが利用可能か（X）
-  bool get canUseTwitter => FirebaseConfig.enableTwitterSignIn;
-
   // ==========================================================================
   // 初期化
   // ==========================================================================
@@ -202,25 +193,6 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('🔐 Webプラットフォームで実行中');
       }
     }
-  }
-
-  /// TwitterLoginインスタンスを取得（遅延初期化）
-  TwitterLogin? get _getTwitterLogin {
-    if (_twitterLogin == null) {
-      try {
-        _twitterLogin = TwitterLogin(
-          apiKey: AuthConfig.twitterApiKey,
-          apiSecretKey: AuthConfig.twitterApiSecretKey,
-          redirectURI: AuthConfig.twitterRedirectUri,
-        );
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('❌ Twitter Login初期化エラー: $e');
-        }
-        return null;
-      }
-    }
-    return _twitterLogin;
   }
 
   /// 認証状態が変化したときの処理
@@ -366,14 +338,21 @@ class AuthProvider extends ChangeNotifier {
         } catch (e) {
           debugPrint('  - Google Sign-In状態確認エラー: $e');
         }
+      }
 
-        // Google Play Servicesの状態確認
-        try {
-          final isAvailable = await _googleSignIn.isSignedIn();
-          debugPrint('  - Google Play Services利用可能: $isAvailable');
-        } catch (e) {
-          debugPrint('  - Google Play Services確認エラー: $e');
+      // Google Play Servicesの状態を事前にチェック
+      // エミュレータでGoogle Play Servicesが利用できない場合、エラーを早期に検出
+      try {
+        // isSignedIn()はGoogle Play Servicesの可用性をチェックするために使用
+        // ただし、これはサインイン状態をチェックするメソッドなので、
+        // 実際の可用性チェックには別の方法が必要
+        await _googleSignIn.signInSilently();
+      } catch (e) {
+        // Google Play Servicesが利用できない場合のエラーハンドリング
+        if (kDebugMode) {
+          debugPrint('⚠️ [Google] Google Play Servicesが利用できない可能性があります: $e');
         }
+        // エラーを続行して、実際のsignIn()でエラーをキャッチする
       }
 
       // STEP 1: Googleサインインフローを開始
@@ -473,9 +452,18 @@ class AuthProvider extends ChangeNotifier {
           }
 
           errorMessage =
-              'Google Play Servicesが利用できません。デバイスの設定でGoogle Play Servicesを更新してください。';
+              'Google Play Servicesが利用できません。\n'
+              'エミュレータを使用している場合:\n'
+              '1. Google Play Services対応のエミュレータを使用しているか確認してください\n'
+              '2. エミュレータの設定でGoogle Play Servicesが有効になっているか確認してください\n'
+              '3. エミュレータを再起動してください\n\n'
+              '実機を使用している場合:\n'
+              '1. 設定アプリ → アプリ → Google Play Services → 更新\n'
+              '2. Google Play ストアからGoogle Play Servicesを更新\n'
+              '3. デバイスを再起動';
           if (kDebugMode) {
             debugPrint('🔐 [Google] Google Play Servicesの更新が必要です');
+            debugPrint('🔐 [Google] エミュレータを使用している場合は、Google Play Services対応のエミュレータを使用してください');
           }
           break;
         case 'network_error':
@@ -514,139 +502,6 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // ==========================================================================
-  // Twitter Sign-In（X）
-  // ==========================================================================
-
-  /// Twitter Sign-Inでログイン（X経由、Firebase Authentication使用）
-  ///
-  /// Twitter（X）認証フローを使用してFirebase経由でログインします
-  ///
-  /// 処理の流れ:
-  /// 1. Twitterサインインフローを開始（ブラウザまたはアプリ内WebViewが開く）
-  /// 2. ユーザーがTwitterアカウントでログイン
-  /// 3. アプリの権限を許可
-  /// 4. Twitter認証情報（accessToken、secret）を取得
-  /// 5. **Firebase Authenticationに認証情報を送信** ← Firebase経由
-  /// 6. **Firebase UIDが自動的に生成される**（新規ユーザーの場合）
-  /// 7. authStateChangesリスナーが発火し、ユーザー情報が更新される
-  ///
-  /// 戻り値:
-  /// - true: ログイン成功
-  /// - false: ログイン失敗またはキャンセル
-  ///
-  /// 取得される情報:
-  /// - Firebase UID（自動生成、変更されない一意のID）
-  /// - ユーザー名
-  /// - プロフィール画像URL
-  /// - メールアドレス（API設定により取得可能）
-  ///
-  /// 注意:
-  /// - Twitter Developer PortalでAPI KeyとAPI Secret Keyの設定が必要
-  /// - カスタムURLスキーム（spotlight://）の設定が必要
-  /// - **すべてFirebase Authentication経由で処理されます**
-  Future<bool> loginWithTwitter() async {
-    // 設定で無効化されている場合はエラー
-    if (!FirebaseConfig.enableTwitterSignIn) {
-      _errorMessage = 'Twitter Sign-Inは現在無効になっています';
-      return false;
-    }
-
-    // TwitterLoginが初期化されていない場合はエラー
-    final twitterLogin = _getTwitterLogin;
-    if (twitterLogin == null) {
-      _errorMessage = 'Twitter Sign-Inの初期化に失敗しました';
-      return false;
-    }
-
-    try {
-      // ローディング開始
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Twitter] Sign-In開始');
-      }
-
-      // STEP 1: Twitterサインインフローを開始
-      // ブラウザまたはアプリ内WebViewでTwitterログイン画面が表示されます
-      final authResult = await twitterLogin.login();
-
-      if (authResult.status == TwitterLoginStatus.loggedIn) {
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Twitter] 認証成功');
-        }
-
-        // STEP 2: Twitter認証情報を取得
-        final twitterAuthCredential =
-            firebase_auth.TwitterAuthProvider.credential(
-          accessToken: authResult.authToken!,
-          secret: authResult.authTokenSecret!,
-        );
-
-        // STEP 3: Firebase Authenticationにサインイン（Firebase経由）
-        final auth = _firebaseAuth;
-        if (auth == null) {
-          if (kDebugMode) {
-            debugPrint('❌ [Twitter] FirebaseAuthが初期化されていません');
-          }
-          _isLoading = false;
-          notifyListeners();
-          return false;
-        }
-
-        // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
-        // すべての認証処理はFirebase Authentication経由で行われます
-        // authStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-        await auth.signInWithCredential(twitterAuthCredential);
-
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Twitter] Sign-In成功');
-        }
-
-        _isLoading = false;
-        notifyListeners();
-        return true;
-      } else if (authResult.status == TwitterLoginStatus.cancelledByUser) {
-        // ユーザーがサインインをキャンセルした場合
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Twitter] ユーザーがキャンセル');
-        }
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      } else {
-        // その他のエラー
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Twitter] ログインエラー: ${authResult.errorMessage}');
-        }
-        _isLoading = false;
-        _errorMessage = authResult.errorMessage ?? 'Twitter Sign-Inに失敗しました';
-        notifyListeners();
-        return false;
-      }
-    } on firebase_auth.FirebaseAuthException catch (e) {
-      // Firebase認証エラー
-      _isLoading = false;
-      _errorMessage = AuthService.getAuthErrorMessage(e);
-      if (kDebugMode) {
-        debugPrint('🔐 [Twitter] Firebaseエラー: ${e.code} - ${e.message}');
-      }
-      notifyListeners();
-      return false;
-    } catch (e) {
-      // その他のエラー
-      _isLoading = false;
-      _errorMessage = 'Twitter Sign-Inに失敗しました';
-      if (kDebugMode) {
-        debugPrint('🔐 [Twitter] 予期しないエラー: $e');
-      }
       notifyListeners();
       return false;
     }
@@ -959,7 +814,6 @@ class AuthProvider extends ChangeNotifier {
   /// 5. notifyListeners()で画面を更新
   ///
   /// 注意:
-  /// - Twitter Sign-Inはサインアウト処理不要（自動処理）
   /// - ゲストモードの場合はFirebase認証を使わないため、直接クリア
   Future<void> logout() async {
     if (kDebugMode && AuthConfig.enableAuthDebugLog) {
@@ -984,9 +838,6 @@ class AuthProvider extends ChangeNotifier {
       // Google Sign-Inからサインアウト
       // 次回のログイン時にアカウント選択画面が表示されます
       await _googleSignIn.signOut();
-
-      // Twitter Sign-Inは明示的なサインアウト処理不要
-      // Firebase Authenticationのサインアウトで十分です
     }
 
     // ユーザー情報をクリア

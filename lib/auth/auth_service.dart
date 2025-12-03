@@ -4,7 +4,7 @@ import '../config/firebase_config.dart';
 /// 認証関連のユーティリティ機能を提供
 /// 
 /// Firebase Authenticationとの連携をサポートするヘルパークラス
-/// ソーシャルログイン専用（Google、Apple、Twitter）
+/// ソーシャルログイン専用（Google、Apple）
 class AuthService {
   // コンストラクタを私有化（ユーティリティクラスのため）
   AuthService._();
@@ -95,7 +95,6 @@ class AuthService {
   /// 
   /// 注意:
   /// - Apple Sign-Inの場合、ユーザーがメールを隠すことを選択できます
-  /// - Twitterの場合、メールアドレスが提供されないことがあります
   static String? getCurrentUserEmail() {
     return FirebaseAuth.instance.currentUser?.email;
   }
@@ -139,7 +138,7 @@ class AuthService {
   /// 特定のプロバイダーでログインしているか確認
   /// 
   /// パラメータ:
-  /// - providerId: プロバイダーID（'google.com', 'apple.com', 'twitter.com'）
+  /// - providerId: プロバイダーID（'google.com', 'apple.com'）
   /// 
   /// 戻り値:
   /// - true: 指定したプロバイダーでログインしている

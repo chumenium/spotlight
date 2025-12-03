@@ -6,51 +6,6 @@ class AuthConfig {
   AuthConfig._();
 
   // ==========================================================================
-  // Twitter（X）API設定
-  // ==========================================================================
-  
-  /// Twitter API Key（Firebase Authentication経由で使用）
-  /// 
-  /// Twitter Developer Portalで取得したAPI Keyを設定してください
-  /// https://developer.twitter.com/
-  /// 
-  /// Firebase経由の認証フロー:
-  /// 1. Twitter認証情報を取得
-  /// 2. Firebase Authenticationに送信
-  /// 3. Firebase UIDが自動生成される
-  /// 
-  /// セキュリティ注意:
-  /// - 本番環境では環境変数から読み込んでください
-  /// - このファイルをGitにコミットする前に、実際のキーを削除してください
-  /// - .gitignoreに追加することを推奨します
-  static const String twitterApiKey = String.fromEnvironment(
-    'TWITTER_API_KEY',
-    defaultValue: 'S9UAZafuVnVYtrm63kKNZCjyx', // ← 実際のAPI Keyを直接記載（開発用）
-  );
-
-  /// Twitter API Secret Key（Firebase Authentication経由で使用）
-  /// 
-  /// Twitter Developer Portalで取得したAPI Secret Keyを設定してください
-  /// 
-  /// セキュリティ注意:
-  /// - 絶対に公開しないでください
-  /// - 本番環境では環境変数から読み込んでください
-  static const String twitterApiSecretKey = String.fromEnvironment(
-    'TWITTER_API_SECRET_KEY',
-    defaultValue: 'Z1hLwKToAOiqtPMduAy8e4HF4CsdkTF2tlPrfQ2tIeXcbeYlCp', // ← 実際のSecret Keyを記載
-  );
-
-  /// Twitter OAuth Callback URL
-  /// 
-  /// Twitter認証後にアプリに戻るためのカスタムURLスキーム
-  /// 
-  /// 設定場所:
-  /// - Android: AndroidManifest.xmlのintent-filter
-  /// - iOS: Info.plistのCFBundleURLSchemes
-  /// - Twitter Developer Portal: Callback URLs
-  static const String twitterRedirectUri = 'spotlight://';
-
-  // ==========================================================================
   // ユーザーID管理
   // ==========================================================================
   
@@ -84,12 +39,6 @@ class AuthConfig {
   /// - Firebase UID (必須)
   /// - メールアドレス (ユーザーが隠すことも可能)
   /// - 名前 (初回ログイン時のみ)
-  /// 
-  /// Twitter Sign-In:
-  /// - Firebase UID (必須)
-  /// - ユーザー名
-  /// - プロフィール画像URL
-  /// - メールアドレス (API設定により取得可能)
   
   /// Google Sign-Inで要求するスコープ
   /// 
