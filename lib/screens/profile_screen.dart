@@ -1705,63 +1705,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final isNewlyUnlocked =
                       _newlyUnlockedBadgeIds.contains(badge.id);
 
-                  return Container(
-                    width: 80,
-                    margin: const EdgeInsets.only(right: 12),
-                    child: Column(
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            gradient: isUnlocked
-                                ? LinearGradient(
-                                    colors: SpotLightColors.getGradient(index),
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                : null,
-                            color: isUnlocked ? null : Colors.grey[800],
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: isUnlocked
-                                ? [
-                                    BoxShadow(
-                                      color: badge.badgeColor.withOpacity(
-                                          isNewlyUnlocked ? 0.6 : 0.3),
-                                      blurRadius: isNewlyUnlocked ? 12 : 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ]
-                                : null,
-                            border: isNewlyUnlocked
-                                ? Border.all(
-                                    color: badge.badgeColor,
-                                    width: 2,
-                                  )
-                                : null,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              isUnlocked ? badge.icon : Icons.lock,
-                              color:
-                                  isUnlocked ? Colors.white : Colors.grey[600],
-                              size: 30,
+                  return GestureDetector(
+                    // 獲得済みのバッジのみタップ可能
+                    onTap: isUnlocked
+                        ? () => _showBadgeDialog(context, badge)
+                        : null,
+                    child: Container(
+                      width: 80,
+                      margin: const EdgeInsets.only(right: 12),
+                      child: Column(
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              gradient: isUnlocked
+                                  ? LinearGradient(
+                                      colors:
+                                          SpotLightColors.getGradient(index),
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                              color: isUnlocked ? null : Colors.grey[800],
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: isUnlocked
+                                  ? [
+                                      BoxShadow(
+                                        color: badge.badgeColor.withOpacity(
+                                            isNewlyUnlocked ? 0.6 : 0.3),
+                                        blurRadius: isNewlyUnlocked ? 12 : 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ]
+                                  : null,
+                              border: isNewlyUnlocked
+                                  ? Border.all(
+                                      color: badge.badgeColor,
+                                      width: 2,
+                                    )
+                                  : null,
+                            ),
+                            child: Center(
+                              child: Icon(
+                                isUnlocked ? badge.icon : Icons.lock,
+                                color: isUnlocked
+                                    ? Colors.white
+                                    : Colors.grey[600],
+                                size: 30,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          badge.name,
-                          style: TextStyle(
-                            color: isUnlocked ? Colors.white : Colors.grey[600],
-                            fontSize: 10,
+                          const SizedBox(height: 8),
+                          Text(
+                            badge.name,
+                            style: TextStyle(
+                              color:
+                                  isUnlocked ? Colors.white : Colors.grey[600],
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -1770,6 +1779,118 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// バッジの詳細ダイアログを表示（獲得済みのバッジのみ）
+  void _showBadgeDialog(BuildContext context, Badge badge) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // バッジのイラスト（大きなアイコン）
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: SpotLightColors.getGradient(badge.id),
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(60),
+                  boxShadow: [
+                    BoxShadow(
+                      color: badge.badgeColor.withOpacity(0.5),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  badge.icon,
+                  color: Colors.white,
+                  size: 60,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // バッジ名
+              Text(
+                badge.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // 獲得条件（管理者バッジの場合は特別な表示）
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      '獲得条件',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      badge.id == 999
+                          ? '管理者権限を持つユーザー'
+                          : '${badge.requiredSpotlights}個のスポットライトを獲得',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // 閉じるボタン
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: badge.badgeColor,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    '閉じる',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
