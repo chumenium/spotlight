@@ -17,66 +17,66 @@ class CustomBottomNavigationBar extends StatelessWidget {
       height: 80,
       child: Container(
         decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: Offset(0, -5),
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
           ),
-        ],
-      ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 10,
+              offset: Offset(0, -5),
+            ),
+          ],
+        ),
         child: SafeArea(
           top: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: _buildNavItem(
-                  icon: Icons.flashlight_on_outlined,
-                  activeIcon: Icons.flashlight_on,
-                  index: 0,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.flashlight_on_outlined,
+                    activeIcon: Icons.flashlight_on,
+                    index: 0,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  icon: Icons.search_outlined,
-                  activeIcon: Icons.search,
-                  index: 1,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.search_outlined,
+                    activeIcon: Icons.search,
+                    index: 1,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  icon: Icons.add_outlined,
-                  activeIcon: Icons.add_circle_sharp,
-                  index: 2,
-                  isCenter: true,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.add_outlined,
+                    activeIcon: Icons.add_circle_sharp,
+                    index: 2,
+                    isCenter: true,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  icon: Icons.notifications_outlined,
-                  activeIcon: Icons.notifications,
-                  index: 3,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.notifications_outlined,
+                    activeIcon: Icons.notifications,
+                    index: 3,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  icon: Icons.person_outline,
-                  activeIcon: Icons.person,
-                  index: 4,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.person_outline,
+                    activeIcon: Icons.person,
+                    index: 4,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -88,7 +88,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
     bool isCenter = false,
   }) {
     final isSelected = currentIndex == index;
-    
+
     return GestureDetector(
       onTap: () => onTap(index),
       child: Container(
@@ -97,11 +97,11 @@ class CustomBottomNavigationBar extends StatelessWidget {
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: isCenter 
+        child: isCenter
             ? Center(
                 child: Icon(
                   isSelected ? activeIcon : icon,
-                  color: isSelected 
+                  color: isSelected
                       ? SpotLightColors.getSpotlightColor(index)
                       : Colors.grey[400],
                   size: 32,
@@ -113,7 +113,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 children: [
                   Icon(
                     isSelected ? activeIcon : icon,
-                    color: isSelected 
+                    color: isSelected
                         ? SpotLightColors.getSpotlightColor(index)
                         : Colors.grey[400],
                     size: 22,
@@ -122,7 +122,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                   Text(
                     _getLabelText(index),
                     style: TextStyle(
-                      color: isSelected 
+                      color: isSelected
                           ? SpotLightColors.getSpotlightColor(index)
                           : Colors.grey[400],
                       fontSize: 9,

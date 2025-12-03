@@ -5665,14 +5665,50 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     } else if (newPost.postType == PostType.image) {
-      // 画像は表示時に直接読み込む（事前読み込みなし）
-      // _preloadImagesAround(newIndex);
-      // _releaseDistantResources(newIndex);
-
       // 画像の場合は表示時に視聴履歴を記録（画像は即座に表示される）
       _recordPlayHistory(newPost);
+
+      // 次の画像を事前読み込み
+      _preloadImagesAround(newIndex);
     }
     // 動画と音声の場合は、読み込み完了時に視聴履歴を記録（上記の初期化処理内で実行）
+  }
+
+  /// 画像のプリロード（現在のページの前後2件ずつ）
+  void _preloadImagesAround(int currentIndex) {
+    if (_posts.isEmpty || !mounted) return;
+
+    // 前後2件ずつプリロード（優先度: 次の画像 > 前の画像）
+    final preloadIndices = [1, 2, -1, -2]; // 次の画像を優先的にプリロード
+
+    for (final offset in preloadIndices) {
+      final targetIndex = currentIndex + offset;
+      if (targetIndex >= 0 && targetIndex < _posts.length) {
+        final post = _posts[targetIndex];
+        if (post.postType == PostType.image) {
+          final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            // バックグラウンドで画像をプリロード（キャッシュから読み込む）
+            precacheImage(
+              CachedNetworkImageProvider(
+                imageUrl,
+                headers: const {
+                  'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                  'User-Agent': 'Flutter-Spotlight/1.0',
+                },
+                cacheKey: imageUrl,
+              ),
+              context,
+            ).catchError((error) {
+              // エラーは無視（プリロードなので失敗しても問題ない）
+              if (kDebugMode) {
+                debugPrint('⚠️ 画像プリロードエラー: $imageUrl, error: $error');
+              }
+            });
+          }
+        }
+      }
+    }
   }
 
   /// 視聴履歴を記録

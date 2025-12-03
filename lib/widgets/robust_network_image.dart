@@ -136,14 +136,15 @@ class RobustNetworkImage extends StatelessWidget {
         fit: fit,
         memCacheWidth: maxWidth,
         memCacheHeight: maxHeight,
-        maxHeightDiskCache: 1000,
-        maxWidthDiskCache: 1000,
+        maxHeightDiskCache:
+            maxHeight != null ? ((maxHeight! * 2).round()) : 2000,
+        maxWidthDiskCache: maxWidth != null ? ((maxWidth! * 2).round()) : 2000,
         httpHeaders: const {
           'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
           'User-Agent': 'Flutter-Spotlight/1.0',
         },
-        fadeInDuration: const Duration(milliseconds: 200),
-        fadeOutDuration: const Duration(milliseconds: 100),
+        fadeInDuration: const Duration(milliseconds: 150),
+        fadeOutDuration: const Duration(milliseconds: 50),
         placeholder:
             placeholder != null ? (context, url) => placeholder! : null,
         errorWidget: errorWidget != null
@@ -255,14 +256,18 @@ class RobustNetworkImage extends StatelessWidget {
       fit: fit,
       memCacheWidth: maxWidth,
       memCacheHeight: maxHeight,
-      maxHeightDiskCache: 1000, // ディスクキャッシュの最大高さ
-      maxWidthDiskCache: 1000, // ディスクキャッシュの最大幅
+      maxHeightDiskCache: maxHeight != null
+          ? ((maxHeight! * 2).round())
+          : 2000, // ディスクキャッシュの最大高さ（2倍に拡大）
+      maxWidthDiskCache: maxWidth != null
+          ? ((maxWidth! * 2).round())
+          : 2000, // ディスクキャッシュの最大幅（2倍に拡大）
       httpHeaders: const {
         'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
         'User-Agent': 'Flutter-Spotlight/1.0',
       },
-      fadeInDuration: const Duration(milliseconds: 200),
-      fadeOutDuration: const Duration(milliseconds: 100),
+      fadeInDuration: const Duration(milliseconds: 150), // フェードイン時間を短縮
+      fadeOutDuration: const Duration(milliseconds: 50), // フェードアウト時間を短縮
       placeholder: (context, url) {
         if (_shouldLog(url, minInterval: const Duration(seconds: 60))) {
           debugPrint('⏳ 画像読み込み中: $url');
