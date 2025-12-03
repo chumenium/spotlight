@@ -24,10 +24,26 @@ android {
     // 署名設定
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
-            storePassword = keystoreProperties["storePassword"] as String?
+            val storeFileStr = keystoreProperties["storeFile"] as String?
+            if (storeFileStr != null) {
+                val keystoreFile = file(storeFileStr)
+                if (keystoreFile.exists()) {
+                    keyAlias = keystoreProperties["keyAlias"] as String?
+                    keyPassword = keystoreProperties["keyPassword"] as String?
+                    storeFile = keystoreFile
+                    storePassword = keystoreProperties["storePassword"] as String?
+                } else {
+                    throw GradleException(
+                        "リリース用キーストアファイルが見つかりません: ${keystoreFile.absolutePath}\n" +
+                        "android/app/spotlight-release-key.jksファイルが存在することを確認してください。"
+                    )
+                }
+            } else {
+                throw GradleException(
+                    "key.propertiesにstoreFileが設定されていません。\n" +
+                    "android/key.propertiesファイルにstoreFile=spotlight-release-key.jksを設定してください。"
+                )
+            }
         }
     }
 
@@ -53,12 +69,29 @@ android {
 
     buildTypes {
         release {
-            // リリース用署名設定を使用
-            signingConfig = signingConfigs.getByName("release")
+            // リリース用署名設定を使用（key.propertiesが必須）
+            if (keystorePropertiesFile.exists() && keystoreProperties["storeFile"] != null) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                throw GradleException(
+                    "リリースビルドにはkey.propertiesファイルが必要です。\n" +
+                    "android/key.propertiesファイルを作成し、リリース用キーストアの情報を設定してください。\n" +
+                    "詳細はRELEASE_KEYSTORE_SETUP.mdを参照してください。"
+                )
+            }
         }
         debug {
-            // デバッグビルドでもリリース用署名を使用（開発時にGoogle認証をテストするため）
-            signingConfig = signingConfigs.getByName("release")
+            // デバッグビルドでもリリース用署名を使用（統一されたフィンガープリントのため）
+            // すべての端末で同じフィンガープリントを使用するため、リリース用キーストアを使用
+            if (keystorePropertiesFile.exists() && keystoreProperties["storeFile"] != null) {
+                // リリース用キーストアを使用（統一されたフィンガープリントのため）
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // key.propertiesが存在しない場合、デフォルトのデバッグキーストアを使用
+                // リリース段階ではkey.propertiesの設定を推奨
+                println("警告: key.propertiesが存在しないため、デフォルトのデバッグキーストアを使用します。")
+                println("リリース段階では、統一されたフィンガープリントのためkey.propertiesを設定してください。")
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
+import 'user_management_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -105,11 +106,10 @@ class AdminScreen extends StatelessWidget {
             title: 'ユーザー管理',
             subtitle: 'ユーザーのアカウント管理',
             onTap: () {
-              // TODO: ユーザー管理画面を実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('ユーザー管理機能は今後実装予定です'),
-                  backgroundColor: Colors.orange,
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UserManagementScreen(),
                 ),
               );
             },
