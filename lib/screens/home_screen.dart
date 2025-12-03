@@ -5521,11 +5521,20 @@ class _HomeScreenState extends State<HomeScreen>
           '🔄 メディアページ変更: インデックス $newIndex, 投稿ID=${newPost.id}, type=${newPost.type}');
     }
 
-    // 前の動画を停止
+    // 前の動画を完全に停止
     if (_currentPlayingVideo != null) {
-      final prevController = _videoControllers[_currentPlayingVideo];
+      final prevIndex = _currentPlayingVideo!;
+      final prevController = _videoControllers[prevIndex];
       if (prevController != null && prevController.value.isInitialized) {
+        // リスナーを削除
+        prevController.removeListener(_onVideoPositionChanged);
+        // 動画を停止
         prevController.pause();
+        // 再生位置を先頭にリセット
+        prevController.seekTo(Duration.zero);
+        if (kDebugMode) {
+          debugPrint('🛑 前の動画を停止: インデックス $prevIndex');
+        }
       }
       _currentPlayingVideo = null;
     }
@@ -5539,14 +5548,30 @@ class _HomeScreenState extends State<HomeScreen>
       _seekPosition = null;
     });
 
-    // 前の音声を停止
+    // 前の音声を完全に停止
     if (_currentPlayingAudio != null) {
-      final prevPlayer = _audioPlayers[_currentPlayingAudio];
+      final prevAudioIndex = _currentPlayingAudio!;
+      final prevPlayer = _audioPlayers[prevAudioIndex];
       if (prevPlayer != null) {
+        // 音声を停止
         prevPlayer.pause();
+        // 再生位置を先頭にリセット
+        prevPlayer.seek(Duration.zero);
+        if (kDebugMode) {
+          debugPrint('🛑 前の音声を停止: インデックス $prevAudioIndex');
+        }
       }
       _currentPlayingAudio = null;
     }
+
+    // 音声シークバー更新タイマーを停止
+    _seekBarUpdateTimerAudio?.cancel();
+
+    // 音声シーク状態をリセット
+    setState(() {
+      _isSeekingAudio = false;
+      _seekPositionAudio = null;
+    });
 
     // 新しいページが動画投稿の場合
     if (newPost.postType == PostType.video) {
@@ -5566,10 +5591,12 @@ class _HomeScreenState extends State<HomeScreen>
       // 動画コントローラーが初期化されていない場合は初期化
       if (!_initializedVideos.contains(newIndex)) {
         _initializeVideoController(newIndex).then((_) {
-          if (!_isDisposed && mounted) {
-            // 初期化完了後に自動再生
+          if (!_isDisposed && mounted && _currentIndex == newIndex) {
+            // 初期化完了後に自動再生（ページが変わっていない場合のみ）
             final controller = _videoControllers[newIndex];
             if (controller != null && controller.value.isInitialized) {
+              // 再生位置を先頭にリセット
+              controller.seekTo(Duration.zero);
               controller.play();
               controller.setLooping(true);
 
@@ -5582,6 +5609,8 @@ class _HomeScreenState extends State<HomeScreen>
         // 既に初期化済みの場合は即座に再生
         final controller = _videoControllers[newIndex];
         if (controller != null && controller.value.isInitialized) {
+          // 再生位置を先頭にリセット
+          controller.seekTo(Duration.zero);
           controller.play();
           controller.setLooping(true);
 
@@ -5604,10 +5633,12 @@ class _HomeScreenState extends State<HomeScreen>
       // 音声プレイヤーが初期化されていない場合は初期化
       if (!_initializedAudios.contains(newIndex)) {
         _initializeAudioPlayer(newIndex).then((_) {
-          if (!_isDisposed && mounted) {
-            // 初期化完了後に自動再生
+          if (!_isDisposed && mounted && _currentIndex == newIndex) {
+            // 初期化完了後に自動再生（ページが変わっていない場合のみ）
             final player = _audioPlayers[newIndex];
             if (player != null) {
+              // 再生位置を先頭にリセット
+              player.seek(Duration.zero);
               player.setLoopMode(LoopMode.one);
               player.play();
               // シークバー更新タイマーを開始
@@ -5622,6 +5653,8 @@ class _HomeScreenState extends State<HomeScreen>
         // 既に初期化済みの場合は即座に再生
         final player = _audioPlayers[newIndex];
         if (player != null) {
+          // 再生位置を先頭にリセット
+          player.seek(Duration.zero);
           player.setLoopMode(LoopMode.one);
           player.play();
           // シークバー更新タイマーを開始

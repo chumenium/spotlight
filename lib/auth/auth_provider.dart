@@ -13,6 +13,7 @@ import 'auth_service.dart';
 import '../services/jwt_service.dart';
 import '../services/fcm_service.dart';
 import '../services/user_service.dart';
+import '../services/firebase_service.dart';
 
 /// アプリ内で使用するユーザーモデル
 ///
@@ -94,17 +95,28 @@ class AuthProvider extends ChangeNotifier {
 
   /// Firebase Authenticationのインスタンス
   /// すべての認証処理はこのインスタンスを通じて行われます
-  /// Webプラットフォームではnullになる可能性があります
+  /// Firebaseが初期化されていない場合はnullを返します
   firebase_auth.FirebaseAuth? get _firebaseAuth {
-    if (kIsWeb) {
-      // WebではFirebaseが初期化されていない可能性があるため、nullを返す
-      try {
-        return firebase_auth.FirebaseAuth.instance;
-      } catch (e) {
+    // Firebaseが初期化されているか確認
+    try {
+      // FirebaseServiceが初期化されているか確認
+      final firebaseService = FirebaseService.instance;
+      if (!firebaseService.isInitialized) {
+        if (kDebugMode) {
+          debugPrint('⚠️ Firebaseが初期化されていないため、FirebaseAuthは使用できません');
+        }
         return null;
       }
+
+      // Firebaseが初期化されている場合のみ、FirebaseAuthインスタンスを返す
+      return firebase_auth.FirebaseAuth.instance;
+    } catch (e) {
+      // Firebaseが初期化されていない場合、エラーをキャッチしてnullを返す
+      if (kDebugMode) {
+        debugPrint('⚠️ FirebaseAuth取得エラー: $e');
+      }
+      return null;
     }
-    return firebase_auth.FirebaseAuth.instance;
   }
 
   /// Google Sign-Inのインスタンス
@@ -868,7 +880,8 @@ class AuthProvider extends ChangeNotifier {
           // iconPathがnullでも空文字列でもない場合のみ処理
           if (iconPath != null && iconPath.trim().isNotEmpty) {
             // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
-            if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+            if (iconPath.startsWith('http://') ||
+                iconPath.startsWith('https://')) {
               fullIconUrl = iconPath;
             } else {
               // 相対パスの場合はbackendUrlと結合
@@ -880,8 +893,8 @@ class AuthProvider extends ChangeNotifier {
           }
 
           // iconPathが空文字列の場合はnullに変換（既存のアイコンを保持するため）
-          final finalIconPath = (iconPath != null && iconPath.trim().isNotEmpty) 
-              ? iconPath 
+          final finalIconPath = (iconPath != null && iconPath.trim().isNotEmpty)
+              ? iconPath
               : _currentUser!.iconPath;
 
           _currentUser = User(
@@ -893,14 +906,14 @@ class AuthProvider extends ChangeNotifier {
             iconPath: finalIconPath,
             admin: admin,
           );
-          
+
           if (kDebugMode && AuthConfig.enableAuthDebugLog) {
             debugPrint('🔐 ユーザー情報更新完了:');
             debugPrint('  backendUsername: ${_currentUser!.backendUsername}');
             debugPrint('  iconPath: ${_currentUser!.iconPath}');
             debugPrint('  admin: ${_currentUser!.admin}');
           }
-          
+
           notifyListeners();
         } else {
           if (kDebugMode && AuthConfig.enableAuthDebugLog) {

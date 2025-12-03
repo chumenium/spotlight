@@ -6,14 +6,14 @@ import 'fcm_service.dart';
 class FirebaseService {
   static FirebaseService? _instance;
   static FirebaseService get instance => _instance ??= FirebaseService._();
-  
+
   FirebaseService._();
 
   bool _initialized = false;
   bool get isInitialized => _initialized;
 
   /// Firebaseを初期化
-  /// 
+  ///
   /// アプリ起動時に一度だけ呼び出す必要があります。
   /// main()関数から呼び出してください。
   /// FCMトークンの初期化も含まれます。
@@ -29,16 +29,17 @@ class FirebaseService {
       final options = _getFirebaseOptions();
       if (options == null) {
         if (kDebugMode) {
-          debugPrint('⚠️ FirebaseOptionsがnullのため、google-services.jsonから自動読み込みを試みます');
+          debugPrint(
+              '⚠️ FirebaseOptionsがnullのため、google-services.jsonから自動読み込みを試みます');
         }
         // Android/iOSではgoogle-services.jsonから自動読み込み
         await Firebase.initializeApp();
       } else {
         await Firebase.initializeApp(options: options);
       }
-      
+
       _initialized = true;
-      
+
       if (kDebugMode) {
         debugPrint('✅ Firebase initialized successfully');
       }
@@ -47,17 +48,19 @@ class FirebaseService {
       if (!kIsWeb) {
         await _initializeFcm();
       }
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Firebase initialization failed: $e');
+        debugPrint('⚠️ Firebase機能は使用できませんが、アプリは起動します');
       }
-      rethrow;
+      // エラーを再スローせず、初期化失敗状態を保持
+      // これにより、Firebaseが使用できない場合でもアプリを起動できる
+      _initialized = false;
     }
   }
 
   /// FCMトークンを初期化
-  /// 
+  ///
   /// Firebase初期化後に自動的に呼び出されます。
   Future<void> _initializeFcm() async {
     try {
@@ -79,7 +82,7 @@ class FirebaseService {
   }
 
   /// プラットフォーム別のFirebaseオプションを取得
-  /// 
+  ///
   /// Firebase CLIで自動生成される場合は、
   /// firebase_options.dart をインポートして使用してください。
   FirebaseOptions? _getFirebaseOptions() {
@@ -95,7 +98,7 @@ class FirebaseService {
         measurementId: 'G-7VWTB0N3VL', // Firebase Analytics
       );
     }
-    
+
     // Android/iOSではgoogle-services.json / GoogleService-Info.plist
     // から自動的に読み込まれるため、null を返す
     return null;
@@ -107,7 +110,7 @@ class FirebaseService {
 
     debugPrint('=== Firebase Debug Info ===');
     debugPrint('Initialized: $_initialized');
-    
+
     if (_initialized) {
       final app = Firebase.app();
       debugPrint('App Name: ${app.name}');
@@ -116,4 +119,3 @@ class FirebaseService {
     debugPrint('=========================');
   }
 }
-

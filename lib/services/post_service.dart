@@ -1045,11 +1045,11 @@ class PostService {
         debugPrint('📝 [視聴履歴] 例外: $e');
         debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
       }
-    return [];
+      return [];
+    }
   }
-}
 
-/// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
+  /// 自分自身のアカウントから投稿されたコンテンツ一覧を取得
   static Future<List<Post>> getUserContents() async {
     try {
       final jwtToken = await JwtService.getJwtToken();
