@@ -218,5 +218,170 @@ class AdminService {
 
     return false;
   }
+
+  /// 通報一覧を取得
+  ///
+  /// パラメータ:
+  /// - offset: 取得開始位置（デフォルト: 0）
+  /// - status: フィルタリング（"pending", "resolved", "all"）
+  ///
+  /// 戻り値:
+  /// - List<Map<String, dynamic>>?: 通報データのリスト、失敗時はnull
+  static Future<List<Map<String, dynamic>>?> getReports({
+    int offset = 0,
+    String status = 'all',
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/admin/getreports';
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: 通報取得URL: $url');
+        debugPrint('📋 管理者API: offset: $offset, status: $status');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'offset': offset,
+          'status': status,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('📋 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📋 管理者API: レスポンスデータ: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['reports'] != null) {
+          final List<dynamic> reports = responseData['reports'];
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: ${reports.length}件の通報データを取得');
+          }
+          return reports
+              .map((report) => report as Map<String, dynamic>)
+              .toList();
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: レスポンス形式が不正');
+            debugPrint('  status: ${responseData['status']}');
+            debugPrint('  message: ${responseData['message'] ?? 'なし'}');
+            debugPrint('  reports存在: ${responseData['reports'] != null}');
+          }
+        }
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エンドポイントが見つかりません (404)');
+          debugPrint('  通報管理APIエンドポイントが実装されていない可能性があります');
+        }
+        // 404の場合はnullを返して、画面側でエラーメッセージを表示
+        return null;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return null;
+  }
+
+  /// 通報を処理済みにする
+  ///
+  /// パラメータ:
+  /// - reportID: 処理する通報のID
+  /// - action: 処理アクション（"resolve", "reject"など）
+  ///
+  /// 戻り値:
+  /// - bool: 成功時true、失敗時false
+  static Future<bool> resolveReport({
+    required String reportID,
+    String action = 'resolve',
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/admin/resolvereport';
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: 通報処理URL: $url');
+        debugPrint('📋 管理者API: reportID: $reportID, action: $action');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'reportID': reportID,
+          'action': action,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('📋 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: 通報を処理しました');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: ${responseData['message'] ?? 'エラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return false;
+  }
 }
 
