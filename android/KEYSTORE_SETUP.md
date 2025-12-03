@@ -65,13 +65,26 @@ cd android
 
 出力で、リリース用キーストアのSHA-1が表示されることを確認してください：
 
+**重要**: `signingReport`の出力では、`Variant: release`と表示されていても、`Config: debug`と表示される場合があります。
+これは、デバッグビルドでもリリース用キーストアを使用する設定のためです。
+
+正しく設定されている場合の出力例：
+
 ```
 Variant: release
-Config: release
-Store: [キーストアファイルのパス]
+Config: debug  ← これは正常です（デバッグビルドでもリリース用キーストアを使用）
+Store: [キーストアファイルのパス（spotlight-release-key.jks）]
 Alias: spotlight
 SHA1: 0E:4C:83:FC:B5:6E:DE:C5:A8:B5:B0:4A:E8:C3:D9:39:BB:0C:84:93
 ```
+
+**確認ポイント**:
+- `Store:`に`spotlight-release-key.jks`のパスが表示されている
+- `Alias:`が`spotlight`になっている
+- `SHA1:`が`0E:4C:83:FC:B5:6E:DE:C5:A8:B5:B0:4A:E8:C3:D9:39:BB:0C:84:93`になっている
+
+もし`Store:`に`debug.keystore`が表示されている場合は、キーストアファイルが正しく読み込まれていません。
+`key.properties`の設定とキーストアファイルの配置を確認してください。
 
 ### 6. ビルドとテスト
 
