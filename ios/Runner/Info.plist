@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSBonjourServices</key>
 	<array/>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>通知を送信します。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>マイクを使用します。</string>
 	<key>NSCameraUsageDescription</key>
@@ -56,7 +58,7 @@
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UIStatusBarHidden</key>
-	<true/>
+	<false/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
