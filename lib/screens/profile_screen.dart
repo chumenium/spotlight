@@ -1916,20 +1916,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: double.infinity,
             height: 56,
             decoration: BoxDecoration(
+              // より洗練されたグラデーション
               gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [
-                  Colors.red.shade600,
+                  Colors.red.shade500,
                   Colors.red.shade700,
+                  Colors.red.shade800,
                 ],
+                stops: const [0.0, 0.5, 1.0],
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
+              // より洗練された影の効果
               boxShadow: [
                 BoxShadow(
-                  color: Colors.red.withOpacity(0.3),
+                  color: Colors.red.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                  spreadRadius: 0,
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
                   blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
+                  spreadRadius: -2,
                 ),
               ],
+              // ボーダーを追加（より洗練された見た目）
+              border: Border.all(
+                color: Colors.red.shade300.withOpacity(0.3),
+                width: 1,
+              ),
             ),
             child: Material(
               color: Colors.transparent,
@@ -1987,23 +2005,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   }
                 },
-                borderRadius: BorderRadius.circular(12),
-                child: Center(
+                borderRadius: BorderRadius.circular(16),
+                // リップル効果をカスタマイズ
+                splashColor: Colors.white.withOpacity(0.2),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        isGuest ? Icons.exit_to_app : Icons.logout,
-                        color: Colors.white,
-                        size: 20,
+                      // より大きく、洗練されたアイコン
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isGuest ? Icons.exit_to_app : Icons.logout_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       Text(
                         isGuest ? 'ログイン画面へ戻る' : 'ログアウト',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
