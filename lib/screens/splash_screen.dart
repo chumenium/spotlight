@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../providers/navigation_provider.dart';
@@ -28,8 +29,37 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
+    // スプラッシュ画像を事前に読み込む（フルサイズで表示されるように）
+    _precacheSplashImage();
+
     // アプリ起動時に認証状態をチェックしてから画面遷移
     _initializeAndNavigate();
+  }
+
+  /// スプラッシュ画像を事前に読み込む
+  Future<void> _precacheSplashImage() async {
+    try {
+      // BuildContextが利用可能になるまで待つ
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (mounted) {
+          try {
+            final imageProvider = AssetImage('assets/splash/splash.png');
+            await precacheImage(imageProvider, context);
+            if (kDebugMode) {
+              debugPrint('✅ スプラッシュ画像を事前読み込みしました');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ スプラッシュ画像の事前読み込みエラー: $e');
+            }
+          }
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ スプラッシュ画像の事前読み込み初期化エラー: $e');
+      }
+    }
   }
 
   /// 認証状態をチェックしてから画面遷移
@@ -208,21 +238,36 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 画面サイズを取得してフルサイズで表示
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      body: SizedBox.expand(
+      body: SizedBox(
+        width: size.width,
+        height: size.height,
         child: Image.asset(
           'assets/splash/splash.png',
+          width: size.width,
+          height: size.height,
           fit: BoxFit.cover,
+          // 画像の読み込みを最適化
+          cacheWidth: size.width.toInt(),
+          cacheHeight: size.height.toInt(),
           errorBuilder: (context, error, stackTrace) {
             // 画像が見つからない場合のフォールバック
-            return const Center(
-              child: Text(
-                'SpotLight',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+            return Container(
+              width: size.width,
+              height: size.height,
+              color: const Color(0xFF121212),
+              child: const Center(
+                child: Text(
+                  'SpotLight',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             );
