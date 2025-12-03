@@ -462,13 +462,32 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
               final success = await PostService.deletePost(post.id.toString());
               if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('投稿を削除しました'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                _fetchUserContents();
+                // 削除が成功したら、リストを再取得して実際に削除されたかを確認
+                await _fetchUserContents();
+
+                // 再取得後、投稿がまだ存在するか確認
+                final stillExists = _posts.any((p) => p.id == post.id);
+                if (stillExists) {
+                  // 削除APIは成功したが、実際には削除されていない（外部キー制約など）
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            '投稿の削除に失敗しました。この投稿は他のデータ（通報など）と関連付けられているため削除できません。'),
+                        duration: Duration(seconds: 5),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } else {
+                  // 削除が成功した
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('投稿を削除しました'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(

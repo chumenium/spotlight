@@ -1004,6 +1004,7 @@ class _HomeScreenState extends State<HomeScreen>
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
   String? _lastTargetPostId; // 最後に処理したターゲット投稿ID
+  int? _lastNavigationIndex; // 最後のナビゲーションインデックス（動画停止判定用）
 
   // 視聴履歴記録管理
   String? _lastRecordedPostId; // 最後に記録した投稿ID（重複防止用）
@@ -2417,6 +2418,32 @@ class _HomeScreenState extends State<HomeScreen>
     // NavigationProviderのtargetPostIdを監視
     return Consumer<NavigationProvider>(
       builder: (context, navigationProvider, child) {
+        // ナビゲーションインデックスを初期化（初回のみ）
+        if (_lastNavigationIndex == null) {
+          _lastNavigationIndex = navigationProvider.currentIndex;
+        }
+
+        // ナビゲーションインデックスが変更された場合、動画/音声の再生を制御
+        final currentNavIndex = navigationProvider.currentIndex;
+        if (_lastNavigationIndex != currentNavIndex && mounted) {
+          final previousIndex = _lastNavigationIndex;
+          _lastNavigationIndex = currentNavIndex;
+
+          // 次のフレームで実行（build中にsetStateを呼ばないように）
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted &&
+                _lastNavigationIndex == navigationProvider.currentIndex) {
+              if (currentNavIndex == 0) {
+                // HomeScreenが表示された場合、現在のコンテンツを再生
+                _resumeCurrentMedia();
+              } else if (previousIndex == 0) {
+                // HomeScreenから他の画面に遷移した場合、動画/音声を停止
+                _pauseAllMedia();
+              }
+            }
+          });
+        }
+
         // targetPostIdが変更された場合、ジャンプ処理を実行
         final targetPostId = navigationProvider.targetPostId;
         if (targetPostId != null &&
@@ -5959,6 +5986,73 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() {
           // シークバーの更新をトリガー
         });
+      }
+    }
+  }
+
+  /// すべてのメディア（動画・音声）を一時停止
+  void _pauseAllMedia() {
+    if (kDebugMode) {
+      debugPrint('⏸️ [画面遷移] すべてのメディアを一時停止');
+    }
+
+    // 動画を一時停止
+    if (_currentPlayingVideo != null) {
+      final controller = _videoControllers[_currentPlayingVideo];
+      if (controller != null && controller.value.isInitialized) {
+        controller.pause();
+        if (kDebugMode) {
+          debugPrint('⏸️ [画面遷移] 動画を一時停止: インデックス $_currentPlayingVideo');
+        }
+      }
+    }
+
+    // 音声を一時停止
+    if (_currentPlayingAudio != null) {
+      final player = _audioPlayers[_currentPlayingAudio];
+      if (player != null) {
+        player.pause();
+        if (kDebugMode) {
+          debugPrint('⏸️ [画面遷移] 音声を一時停止: インデックス $_currentPlayingAudio');
+        }
+      }
+    }
+  }
+
+  /// 現在のメディア（動画・音声）を再開
+  void _resumeCurrentMedia() {
+    if (kDebugMode) {
+      debugPrint('▶️ [画面遷移] HomeScreenに戻ったため、メディアを再開');
+    }
+
+    // 現在のインデックスのコンテンツを確認
+    if (_posts.isEmpty || _currentIndex >= _posts.length) {
+      return;
+    }
+
+    final currentPost = _posts[_currentIndex];
+
+    // 動画の場合
+    if (currentPost.postType == PostType.video &&
+        _currentPlayingVideo == _currentIndex) {
+      final controller = _videoControllers[_currentPlayingVideo];
+      if (controller != null && controller.value.isInitialized) {
+        controller.play();
+        if (kDebugMode) {
+          debugPrint('▶️ [画面遷移] 動画を再開: インデックス $_currentPlayingVideo');
+        }
+      }
+    }
+
+    // 音声の場合
+    if (currentPost.postType == PostType.audio &&
+        _currentPlayingAudio == _currentIndex) {
+      final player = _audioPlayers[_currentPlayingAudio];
+      if (player != null) {
+        player.play();
+        if (kDebugMode) {
+          debugPrint('▶️ [画面遷移] 音声を再開: インデックス $_currentPlayingAudio');
+        }
       }
     }
   }
