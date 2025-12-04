@@ -241,7 +241,7 @@ class AdminService {
         return null;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/getreports';
+      final url = '${AppConfig.apiBaseUrl}/admin/report';
 
       if (kDebugMode) {
         debugPrint('📋 管理者API: 通報取得URL: $url');
@@ -362,6 +362,142 @@ class AdminService {
         if (responseData['status'] == 'success') {
           if (kDebugMode) {
             debugPrint('✅ 管理者API: 通報を処理しました');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: ${responseData['message'] ?? 'エラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return false;
+  }
+
+  /// コンテンツを削除（管理者用）
+  ///
+  /// パラメータ:
+  /// - contentID: 削除するコンテンツのID
+  ///
+  /// 戻り値:
+  /// - bool: 成功時true、失敗時false
+  static Future<bool> deleteContent(String contentID) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/admin/deletecontent';
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 管理者API: コンテンツ削除URL: $url');
+        debugPrint('🗑️ 管理者API: contentID: $contentID');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'contentID': contentID}),
+      );
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('🗑️ 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: コンテンツを削除しました');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: ${responseData['message'] ?? 'エラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return false;
+  }
+
+  /// コメントを削除（管理者用）
+  ///
+  /// パラメータ:
+  /// - contentID: コメントが属するコンテンツのID
+  /// - commentID: 削除するコメントのID
+  ///
+  /// 戻り値:
+  /// - bool: 成功時true、失敗時false
+  static Future<bool> deleteComment(String contentID, String commentID) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/admin/deletecomment';
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 管理者API: コメント削除URL: $url');
+        debugPrint('🗑️ 管理者API: contentID: $contentID, commentID: $commentID');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'contentID': contentID,
+          'commentID': commentID,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('🗑️ 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('🗑️ 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: コメントを削除しました');
           }
           return true;
         } else {
