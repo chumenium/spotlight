@@ -470,7 +470,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3G3TFS423L;
 				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = Runner/Release.xcconfig;
+				FLUTTER_BUILD_NAME = 0.0.1;
+				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spotlight;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
@@ -658,7 +659,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3G3TFS423L;
 				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = Runner/Debug.xcconfig;
+				FLUTTER_BUILD_NAME = 0.0.1;
+				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spotlight;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
@@ -687,7 +689,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3G3TFS423L;
 				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = Runner/Profile.xcconfig;
+				FLUTTER_BUILD_NAME = 0.0.1;
+				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spotlight;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
