@@ -188,13 +188,19 @@ class _SearchScreenState extends State<SearchScreen> {
             leading: SizedBox(
               height: 45,
               width: 160,
-              child: Image.asset(
-                'assets/images/logo.png',
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  // ロゴ画像が見つからない場合は何も表示しない
-                  return const SizedBox.shrink();
-                },
+              child: RepaintBoundary(
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  isAntiAlias: true,
+                  cacheWidth: (160 * MediaQuery.of(context).devicePixelRatio).round(),
+                  cacheHeight: (45 * MediaQuery.of(context).devicePixelRatio).round(),
+                  errorBuilder: (context, error, stackTrace) {
+                    // ロゴ画像が見つからない場合は何も表示しない
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
             ),
           ),

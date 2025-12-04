@@ -36,6 +36,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     try {
       final reports = await AdminService.getReports(
+        offset: 0,
         status: _selectedStatus,
       );
 
@@ -72,7 +73,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
     // タイプでフィルタリング
     if (_selectedType != 'all') {
       filtered = filtered.where((report) {
-        final type = (report['type'] ?? '').toString();
+        final type = (report['reporttype'] ?? report['type'] ?? '').toString();
         return type == _selectedType;
       }).toList();
     }
@@ -246,6 +247,155 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('通報の処理に失敗しました'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 投稿を削除
+  Future<void> _deleteContent(Map<String, dynamic> report) async {
+    // 通報データからcontentIDを取得（複数のフィールド名を試す）
+    final contentID = report['contentID']?.toString() ?? 
+                      report['content_id']?.toString() ?? 
+                      report['targetID']?.toString() ?? 
+                      report['target_id']?.toString() ?? '';
+    
+    if (contentID.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('投稿IDが取得できませんでした'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '投稿を削除しますか？',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'この操作は取り消せません。通報された投稿を削除します。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await AdminService.deleteContent(contentID);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('投稿を削除しました'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _fetchReports();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('投稿の削除に失敗しました'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// コメントを削除
+  Future<void> _deleteComment(Map<String, dynamic> report) async {
+    // 通報データからcontentIDとcommentIDを取得
+    // コメント通報の場合、comCTIDがコンテンツID、comCMIDがコメントID
+    final contentID = report['comCTID']?.toString() ?? 
+                      report['contentID']?.toString() ?? 
+                      report['content_id']?.toString() ?? 
+                      report['targetID']?.toString() ?? 
+                      report['target_id']?.toString() ?? '';
+    final commentID = report['comCMID']?.toString() ?? 
+                     report['commentID']?.toString() ?? 
+                     report['comment_id']?.toString() ?? '';
+    
+    if (contentID.isEmpty || commentID.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('投稿IDまたはコメントIDが取得できませんでした'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'コメントを削除しますか？',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'この操作は取り消せません。通報されたコメントを削除します。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('削除する'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await AdminService.deleteComment(contentID, commentID);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('コメントを削除しました'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _fetchReports();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('コメントの削除に失敗しました'),
             backgroundColor: Colors.red,
           ),
         );
@@ -647,7 +797,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
   /// 通報カードを構築
   Widget _buildReportCard(Map<String, dynamic> report) {
     final reportID = report['reportID']?.toString() ?? '不明';
-    final type = _getTypeLabel((report['type'] ?? '').toString());
+    final type = _getTypeLabel((report['reporttype'] ?? report['type'] ?? '').toString());
     final reason = _getReasonLabel((report['reason'] ?? '').toString());
     final detail = (report['detail'] ?? '').toString();
     final status = (report['status'] ?? 'pending').toString();
@@ -822,6 +972,44 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // 投稿削除ボタン（通報タイプがcontentの場合）
+                  if ((report['reporttype'] ?? report['type'] ?? '').toString() == 'content')
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ElevatedButton(
+                        onPressed: () => _deleteContent(report),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 8,
+                          ),
+                        ),
+                        child: const Text(
+                          '投稿を削除',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ),
+                  // コメント削除ボタン（通報タイプがcommentの場合）
+                  if ((report['reporttype'] ?? report['type'] ?? '').toString() == 'comment')
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ElevatedButton(
+                        onPressed: () => _deleteComment(report),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 8,
+                          ),
+                        ),
+                        child: const Text(
+                          'コメントを削除',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ),
                   ElevatedButton(
                     onPressed: () => _resolveReport(report),
                     style: ElevatedButton.styleFrom(
