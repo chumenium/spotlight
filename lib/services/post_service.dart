@@ -173,8 +173,51 @@ class PostService {
             // コンテンツIDを追加
             data['contentID'] = contentId;
 
+            // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
+            if (kDebugMode) {
+              final hasUsername = data.containsKey('username') &&
+                  data['username'] != null &&
+                  (data['username'] as String).isNotEmpty;
+              final hasUserId = (data.containsKey('user_id') &&
+                      data['user_id'] != null &&
+                      (data['user_id'] as String).isNotEmpty) ||
+                  (data.containsKey('firebase_uid') &&
+                      data['firebase_uid'] != null &&
+                      (data['firebase_uid'] as String).isNotEmpty);
+
+              if (!hasUsername) {
+                debugPrint(
+                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: usernameが含まれていません');
+                debugPrint('   - contentID: $contentId');
+                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
+              }
+              if (!hasUserId) {
+                debugPrint(
+                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: user_id/firebase_uidが含まれていません');
+                debugPrint('   - contentID: $contentId');
+                debugPrint('   - username: ${data['username']}');
+                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
+              }
+            }
+
             // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
             final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+
+            // 変換後のデータの整合性を確認
+            if (kDebugMode) {
+              if (post.id.isEmpty) {
+                debugPrint('⚠️ [fetchPosts] Post変換後[試行$attemptCount]: IDが空です');
+              }
+              if (post.username.isEmpty) {
+                debugPrint(
+                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: usernameが空です (postId: ${post.id})');
+              }
+              if (post.userId.isEmpty) {
+                debugPrint(
+                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+              }
+            }
+
             posts.add(post);
 
             if (kDebugMode) {
@@ -183,6 +226,8 @@ class PostService {
               debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
               debugPrint('  userIconUrl: ${post.userIconUrl}');
               debugPrint('  type: ${post.type}');
+              debugPrint('  username: ${post.username}');
+              debugPrint('  userId: ${post.userId}');
             }
           } else {
             // コンテンツが存在しない場合はスキップ
@@ -1581,51 +1626,101 @@ class PostService {
           final List<Post> posts = [];
           for (int i = 0; i < contentsJson.length; i++) {
             final contentJson = contentsJson[i] as Map<String, dynamic>;
-            
+
             if (kDebugMode) {
-              debugPrint('📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
+              debugPrint(
+                  '📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
               debugPrint('📝 [getcontents] コンテンツ[$i]の内容: $contentJson');
             }
-            
+
             // contentIDがレスポンスに含まれていない場合の警告
-            if (!contentJson.containsKey('contentID') && 
-                !contentJson.containsKey('contentid') && 
+            if (!contentJson.containsKey('contentID') &&
+                !contentJson.containsKey('contentid') &&
                 !contentJson.containsKey('id')) {
               if (kDebugMode) {
                 debugPrint('⚠️ [getcontents] ⚠️⚠️⚠️ バックエンドの不具合 ⚠️⚠️⚠️');
-                debugPrint('⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
-                debugPrint('⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
-                debugPrint('⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
-                debugPrint('⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
+                debugPrint(
+                    '⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
+                debugPrint(
+                    '⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
+                debugPrint(
+                    '⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
+                debugPrint(
+                    '⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
               }
               // バックエンドの不具合のため、このコンテンツはスキップ
               continue;
             }
 
             // contentID/contentid/idのいずれかを使用
-            final contentId = contentJson['contentID']?.toString() ?? 
-                             contentJson['contentid']?.toString() ?? 
-                             contentJson['id']?.toString() ?? '';
-            
+            final contentId = contentJson['contentID']?.toString() ??
+                contentJson['contentid']?.toString() ??
+                contentJson['id']?.toString() ??
+                '';
+
             if (contentId.isEmpty) {
               if (kDebugMode) {
                 debugPrint('⚠️ [getcontents] contentIDが空です: インデックス $i');
               }
               continue;
             }
-            
+
             // idとして設定（Post.fromJsonで使用される）
             contentJson['id'] = contentId;
             contentJson['contentID'] = contentId; // 念のため両方設定
-            
+
             // Post.fromJsonを使用してPostオブジェクトに変換
             try {
-              final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
-              posts.add(post);
-              
+              // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
               if (kDebugMode) {
-                debugPrint('✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}');
+                final hasUsername = contentJson.containsKey('username') &&
+                    contentJson['username'] != null &&
+                    (contentJson['username'] as String).isNotEmpty;
+                final hasUserId = (contentJson.containsKey('user_id') &&
+                        contentJson['user_id'] != null &&
+                        (contentJson['user_id'] as String).isNotEmpty) ||
+                    (contentJson.containsKey('firebase_uid') &&
+                        contentJson['firebase_uid'] != null &&
+                        (contentJson['firebase_uid'] as String).isNotEmpty);
+
+                if (!hasUsername) {
+                  debugPrint(
+                      '⚠️ [getcontents] データ整合性警告[$i]: usernameが含まれていません');
+                  debugPrint(
+                      '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
+                  debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
+                }
+                if (!hasUserId) {
+                  debugPrint(
+                      '⚠️ [getcontents] データ整合性警告[$i]: user_id/firebase_uidが含まれていません');
+                  debugPrint(
+                      '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
+                  debugPrint('   - username: ${contentJson['username']}');
+                  debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
+                }
               }
+
+              final post =
+                  Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
+
+              // 変換後のデータの整合性を確認
+              if (kDebugMode) {
+                if (post.id.isEmpty) {
+                  debugPrint('⚠️ [getcontents] Post変換後[$i]: IDが空です');
+                }
+                if (post.username.isEmpty) {
+                  debugPrint(
+                      '⚠️ [getcontents] Post変換後[$i]: usernameが空です (postId: ${post.id})');
+                }
+                if (post.userId.isEmpty) {
+                  debugPrint(
+                      '⚠️ [getcontents] Post変換後[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+                }
+                debugPrint(
+                    '✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}, username=${post.username}, userId=${post.userId}');
+              }
+
+              posts.add(post);
             } catch (e, stackTrace) {
               if (kDebugMode) {
                 debugPrint('⚠️ [getcontents] Post変換エラー: $e, インデックス $i');
@@ -1642,7 +1737,8 @@ class PostService {
           return posts;
         } else {
           if (kDebugMode) {
-            debugPrint('📝 [getcontents] APIレスポンスエラー: ${responseData['status']}');
+            debugPrint(
+                '📝 [getcontents] APIレスポンスエラー: ${responseData['status']}');
           }
         }
       } else {
@@ -1718,25 +1814,29 @@ class PostService {
 
           // 最初の要素を取得（1件のみのはず）
           final contentJson = contentsJson[0] as Map<String, dynamic>;
-          
+
           // contentIDがレスポンスに含まれていない場合、パラメータのcontentIdを使用
           if (!contentJson.containsKey('contentID')) {
             if (kDebugMode) {
-              debugPrint('⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
+              debugPrint(
+                  '⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
             }
             contentJson['contentID'] = contentId;
           }
 
           // contentIDをidとして設定
-          final responseContentId = contentJson['contentID']?.toString() ?? contentId;
+          final responseContentId =
+              contentJson['contentID']?.toString() ?? contentId;
           contentJson['id'] = responseContentId;
 
           // Post.fromJsonを使用してPostオブジェクトに変換
           try {
-            final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
-            
+            final post =
+                Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
+
             if (kDebugMode) {
-              debugPrint('📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
+              debugPrint(
+                  '📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
             }
 
             return post;
@@ -1748,7 +1848,8 @@ class PostService {
           }
         } else {
           if (kDebugMode) {
-            debugPrint('📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
+            debugPrint(
+                '📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
           }
         }
       } else {
