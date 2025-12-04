@@ -948,6 +948,7 @@ class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  String? _currentDisplayedPostId; // 実際に表示されている投稿のID（整合性チェック用）
   List<Post> _posts = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -1196,6 +1197,15 @@ class _HomeScreenState extends State<HomeScreen>
             _fetchedContentIds.add(post.id);
             if (kDebugMode) {
               debugPrint('📝 取得済みIDを記録: ${post.id}');
+            }
+          }
+
+          // 初回読み込み時は、最初の投稿のIDを_currentDisplayedPostIdに設定
+          if (posts.isNotEmpty && _currentIndex < posts.length) {
+            _currentDisplayedPostId = posts[_currentIndex].id;
+            if (kDebugMode) {
+              debugPrint(
+                  '📝 初回読み込み: _currentDisplayedPostId=${_currentDisplayedPostId}');
             }
           }
         });
@@ -2038,14 +2048,15 @@ class _HomeScreenState extends State<HomeScreen>
             .toList();
 
         if (newPosts.isNotEmpty) {
-          // 新しいコンテンツがある場合、先頭に追加
+          // 新しいコンテンツがある場合、現在の位置の後ろに追加（自動スクロールしない）
           if (kDebugMode) {
             debugPrint('✅ 新しいコンテンツを発見: ${newPosts.length}件');
           }
 
           setState(() {
-            // 新しいコンテンツを先頭に追加
-            _posts.insertAll(0, newPosts);
+            // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
+            final insertIndex = _currentIndex + 1;
+            _posts.insertAll(insertIndex, newPosts);
             _noMoreContent = false;
             _hasMorePosts = true;
 
@@ -2058,22 +2069,12 @@ class _HomeScreenState extends State<HomeScreen>
               _fetchedContentIds.add(post.id);
             }
 
-            // 現在のインデックスを調整（新しいコンテンツが追加されたため）
-            _currentIndex = newPosts.length - 1;
+            // 現在のインデックスは変更しない（現在の位置を維持）
           });
-
-          // 新しいコンテンツの先頭にスクロール
-          if (_pageController.hasClients) {
-            await _pageController.animateToPage(
-              newPosts.length - 1,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          }
 
           if (kDebugMode) {
             debugPrint(
-                '✅ リセット完了: 新しいコンテンツ${newPosts.length}件を先頭に追加（合計: ${_posts.length}件）');
+                '✅ リセット完了: 新しいコンテンツ${newPosts.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
           }
         } else {
           // 新しいコンテンツがない場合、視聴履歴から最後に視聴したコンテンツを取得
@@ -2126,17 +2127,18 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         if (availablePosts.isNotEmpty) {
-          // ランダムに選択（最大5件）
-          availablePosts.shuffle();
+          // 視聴履歴順に選択（過去に表示したコンテンツ順）
+          // ランダムではなく、視聴履歴の順序を保持
           final selectedPosts = availablePosts.take(_initialLoadCount).toList();
 
           if (kDebugMode) {
-            debugPrint('✅ 視聴履歴から${selectedPosts.length}件を選択しました');
+            debugPrint('✅ 視聴履歴から${selectedPosts.length}件を選択しました（視聴履歴順）');
           }
 
           setState(() {
-            // 選択したコンテンツを先頭に追加
-            _posts.insertAll(0, selectedPosts);
+            // 現在の位置の後ろに選択したコンテンツを追加（現在の位置を維持）
+            final insertIndex = _currentIndex + 1;
+            _posts.insertAll(insertIndex, selectedPosts);
             _noMoreContent = false;
             _hasMorePosts = true;
 
@@ -2149,17 +2151,12 @@ class _HomeScreenState extends State<HomeScreen>
               _fetchedContentIds.add(post.id);
             }
 
-            // 現在のインデックスを調整
-            _currentIndex = selectedPosts.length - 1;
+            // 現在のインデックスは変更しない（現在の位置を維持）
           });
 
-          // 選択したコンテンツの先頭にスクロール
-          if (_pageController.hasClients) {
-            await _pageController.animateToPage(
-              selectedPosts.length - 1,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
+          if (kDebugMode) {
+            debugPrint(
+                '✅ 視聴履歴から読み込み完了: ${selectedPosts.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
           }
 
           if (kDebugMode) {
@@ -2239,7 +2236,7 @@ class _HomeScreenState extends State<HomeScreen>
               newContentIds.any((id) => !existingIds.contains(id));
 
           if (hasNewContent) {
-            // 新しいコンテンツがある場合は先頭に追加
+            // 新しいコンテンツがある場合は現在の位置の後ろに追加（自動スクロールしない）
             final newPostsToAdd = newPosts
                 .where((p) => !existingIds.contains(p.id.toString()))
                 .toList();
@@ -2249,8 +2246,9 @@ class _HomeScreenState extends State<HomeScreen>
             }
 
             setState(() {
-              // 新しいコンテンツを先頭に追加
-              _posts.insertAll(0, newPostsToAdd);
+              // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
+              final insertIndex = _currentIndex + 1;
+              _posts.insertAll(insertIndex, newPostsToAdd);
               _noMoreContent = false;
               _hasMorePosts = true;
 
@@ -2260,23 +2258,18 @@ class _HomeScreenState extends State<HomeScreen>
               }
             });
 
-            // 新しいコンテンツの最初のページに自動的にスクロール
-            if (newPostsToAdd.isNotEmpty && _pageController.hasClients) {
-              await _pageController.animateToPage(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
+            if (kDebugMode) {
+              debugPrint(
+                  '✅ 新しいコンテンツ${newPostsToAdd.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
             }
           } else {
-            // 新しいコンテンツがない場合
+            // 新しいコンテンツがない場合、視聴履歴から読み込む
             if (kDebugMode) {
-              debugPrint('⚠️ 新しいコンテンツはありません');
+              debugPrint('⚠️ 新しいコンテンツはありません。視聴履歴から取得します...');
             }
-            setState(() {
-              _noMoreContent = true;
-              _hasMorePosts = false;
-            });
+
+            // 視聴履歴から現在の位置の後ろに追加
+            await _loadFromPlayHistory();
           }
         }
       }
@@ -3030,31 +3023,102 @@ class _HomeScreenState extends State<HomeScreen>
                                     // 大量コンテンツ対応：ビューポート範囲を制限
                                     allowImplicitScrolling: false,
                                     onPageChanged: (index) {
+                                      // インデックスの範囲チェック
+                                      if (index < 0 || index >= _posts.length) {
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ onPageChanged: 無効なインデックス: $index, _posts.length=${_posts.length}');
+                                        }
+                                        return;
+                                      }
+
+                                      final displayedPost = _posts[index];
+
                                       if (kDebugMode) {
                                         debugPrint(
                                             '📄 onPageChanged: インデックス $index, 投稿数=${_posts.length}');
-                                        if (index < _posts.length) {
+                                        debugPrint(
+                                            '  - 投稿ID: ${displayedPost.id}');
+                                        debugPrint(
+                                            '  - タイトル: ${displayedPost.title}');
+                                        debugPrint(
+                                            '  - 投稿者: ${displayedPost.username}');
+                                        debugPrint(
+                                            '  - タイプ: ${displayedPost.type}');
+                                        debugPrint(
+                                            '  - userId: ${displayedPost.userId}');
+                                        debugPrint(
+                                            '  - comments: ${displayedPost.comments}');
+
+                                        // データの整合性を確認
+                                        if (displayedPost.id.isEmpty) {
                                           debugPrint(
-                                              '  - 投稿ID: ${_posts[index].id}');
+                                              '⚠️ onPageChanged: 表示される投稿のIDが空です');
+                                        }
+                                        if (displayedPost.username.isEmpty) {
                                           debugPrint(
-                                              '  - タイトル: ${_posts[index].title}');
-                                          debugPrint(
-                                              '  - 投稿者: ${_posts[index].username}');
-                                          debugPrint(
-                                              '  - タイプ: ${_posts[index].type}');
+                                              '⚠️ onPageChanged: 表示される投稿のusernameが空です (postId: ${displayedPost.id})');
                                         }
                                       }
 
+                                      // _currentIndexを更新する前に、実際に表示されている投稿のIDを保存
+                                      // これにより、_buildBottomControlsなどで使用している_posts[_currentIndex]が正しい投稿を参照することを保証
                                       setState(() {
                                         _currentIndex = index;
+                                        _currentDisplayedPostId = displayedPost
+                                            .id; // 実際に表示されている投稿のIDを保存
                                         _resetSpotlightState();
+
+                                        // データの整合性を再確認（_currentIndexが更新された後の_posts[_currentIndex]と、表示されている投稿が一致していることを確認）
+                                        if (_currentIndex >= 0 &&
+                                            _currentIndex < _posts.length) {
+                                          final currentPost =
+                                              _posts[_currentIndex];
+                                          if (currentPost.id !=
+                                              displayedPost.id) {
+                                            if (kDebugMode) {
+                                              debugPrint(
+                                                  '⚠️ onPageChanged: データの不一致を検出');
+                                              debugPrint(
+                                                  '  - 表示される投稿ID: ${displayedPost.id}');
+                                              debugPrint(
+                                                  '  - _posts[_currentIndex]の投稿ID: ${currentPost.id}');
+                                              debugPrint(
+                                                  '  - 表示される投稿username: ${displayedPost.username}');
+                                              debugPrint(
+                                                  '  - _posts[_currentIndex]の投稿username: ${currentPost.username}');
+                                            }
+                                            // データの不一致を修正（表示されている投稿のIDと一致する投稿を検索）
+                                            final correctIndex =
+                                                _posts.indexWhere((p) =>
+                                                    p.id == displayedPost.id);
+                                            if (correctIndex >= 0 &&
+                                                correctIndex < _posts.length) {
+                                              if (kDebugMode) {
+                                                debugPrint(
+                                                    '✅ 正しい投稿を検索: インデックス $correctIndex');
+                                              }
+                                              // 正しいインデックスに更新
+                                              _currentIndex = correctIndex;
+                                            } else {
+                                              if (kDebugMode) {
+                                                debugPrint(
+                                                    '⚠️ 正しい投稿が見つかりませんでした。表示されている投稿のデータを使用します。');
+                                              }
+                                            }
+                                          }
+                                        }
+
                                         // 外部画面からの遷移時は再生を開始しない
                                         if (!_isExternalNavigation) {
-                                          _handleMediaPageChange(index);
+                                          _handleMediaPageChange(_currentIndex);
+
+                                          // 次のページのメディアを事前に初期化（読み込みを高速化）
+                                          _preloadNextPageMedia(_currentIndex);
                                         } else {
                                           if (kDebugMode) {
                                             debugPrint(
-                                                '⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $index');
+                                                '⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $_currentIndex');
                                           }
                                           // フラグをリセット（次回の通常スクロール時は再生を開始する）
                                           _isExternalNavigation = false;
@@ -3257,15 +3321,42 @@ class _HomeScreenState extends State<HomeScreen>
                               _currentIndex < _posts.length)
                             Builder(
                               builder: (context) {
-                                final currentPost = _posts[_currentIndex];
+                                // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+                                Post? currentPost;
+                                if (_currentDisplayedPostId != null &&
+                                    _currentDisplayedPostId!.isNotEmpty) {
+                                  currentPost = _posts.firstWhere(
+                                    (p) => p.id == _currentDisplayedPostId,
+                                    orElse: () => _posts[_currentIndex],
+                                  );
+                                } else {
+                                  currentPost = _posts[_currentIndex];
+                                }
+
                                 // データの整合性を確認
                                 if (currentPost.id.isEmpty) {
                                   if (kDebugMode) {
                                     debugPrint(
-                                        '⚠️ _buildBottomControls: 投稿IDが空です: index=$_currentIndex');
+                                        '⚠️ _buildBottomControls: 投稿IDが空です: index=$_currentIndex, displayedPostId=$_currentDisplayedPostId');
                                   }
                                   return const SizedBox.shrink();
                                 }
+
+                                // データの整合性を再確認（_currentDisplayedPostIdと一致していることを確認）
+                                if (_currentDisplayedPostId != null &&
+                                    currentPost.id != _currentDisplayedPostId) {
+                                  if (kDebugMode) {
+                                    debugPrint(
+                                        '⚠️ _buildBottomControls: データの不一致を検出');
+                                    debugPrint(
+                                        '  - _currentDisplayedPostId: $_currentDisplayedPostId');
+                                    debugPrint(
+                                        '  - currentPost.id: ${currentPost.id}');
+                                    debugPrint(
+                                        '  - currentPost.username: ${currentPost.username}');
+                                  }
+                                }
+
                                 return Positioned(
                                   bottom: 0,
                                   left: 0,
@@ -3281,15 +3372,27 @@ class _HomeScreenState extends State<HomeScreen>
                               _currentIndex < _posts.length)
                             Builder(
                               builder: (context) {
-                                final currentPost = _posts[_currentIndex];
+                                // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+                                Post? currentPost;
+                                if (_currentDisplayedPostId != null &&
+                                    _currentDisplayedPostId!.isNotEmpty) {
+                                  currentPost = _posts.firstWhere(
+                                    (p) => p.id == _currentDisplayedPostId,
+                                    orElse: () => _posts[_currentIndex],
+                                  );
+                                } else {
+                                  currentPost = _posts[_currentIndex];
+                                }
+
                                 // データの整合性を確認
                                 if (currentPost.id.isEmpty) {
                                   if (kDebugMode) {
                                     debugPrint(
-                                        '⚠️ _buildRightBottomControls: 投稿IDが空です: index=$_currentIndex');
+                                        '⚠️ _buildRightBottomControls: 投稿IDが空です: index=$_currentIndex, displayedPostId=$_currentDisplayedPostId');
                                   }
                                   return const SizedBox.shrink();
                                 }
+
                                 return Positioned(
                                   bottom: 120,
                                   right: 20,
@@ -4650,19 +4753,51 @@ class _HomeScreenState extends State<HomeScreen>
 
   // スポットライト実行（共通処理）
   Future<void> _executeSpotlight() async {
-    // インデックスの範囲チェックとデータの整合性確認
-    if (_currentIndex < 0 || _currentIndex >= _posts.length) {
+    // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+    Post? currentPost;
+    if (_currentDisplayedPostId != null &&
+        _currentDisplayedPostId!.isNotEmpty) {
+      try {
+        currentPost = _posts.firstWhere(
+          (p) => p.id == _currentDisplayedPostId,
+        );
+      } catch (e) {
+        // 見つからない場合は、_currentIndexを使用
+        if (_currentIndex >= 0 && _currentIndex < _posts.length) {
+          currentPost = _posts[_currentIndex];
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ _executeSpotlight: 投稿が見つかりません: _currentDisplayedPostId=$_currentDisplayedPostId, _currentIndex=$_currentIndex');
+          }
+          return;
+        }
+      }
+    } else {
+      // _currentDisplayedPostIdが設定されていない場合は、_currentIndexを使用
+      if (_currentIndex < 0 || _currentIndex >= _posts.length) {
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ _executeSpotlight: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+        }
+        return;
+      }
+      currentPost = _posts[_currentIndex];
+    }
+
+    // nullチェック
+    if (currentPost == null) {
       if (kDebugMode) {
-        debugPrint(
-            '⚠️ _executeSpotlight: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+        debugPrint('⚠️ _executeSpotlight: currentPostがnullです');
       }
       return;
     }
 
-    final currentPost = _posts[_currentIndex];
+    // currentPostがnullでないことを確認したので、非null型として使用
+    final post = currentPost;
 
     // データの整合性を確認
-    if (currentPost.id.isEmpty) {
+    if (post.id.isEmpty) {
       if (kDebugMode) {
         debugPrint('⚠️ _executeSpotlight: 投稿IDが空です: index=$_currentIndex');
       }
@@ -4672,18 +4807,18 @@ class _HomeScreenState extends State<HomeScreen>
     // デバッグログ（データの整合性を確認）
     if (kDebugMode) {
       debugPrint('📝 [スポットライト] 投稿データ確認:');
-      debugPrint('  - postId: ${currentPost.id}');
-      debugPrint('  - username: ${currentPost.username}');
-      debugPrint('  - userId: ${currentPost.userId}');
-      debugPrint('  - title: ${currentPost.title}');
+      debugPrint('  - postId: ${post.id}');
+      debugPrint('  - username: ${post.username}');
+      debugPrint('  - userId: ${post.userId}');
+      debugPrint('  - title: ${post.title}');
     }
 
-    final isCurrentlySpotlighted = currentPost.isSpotlighted;
+    final isCurrentlySpotlighted = post.isSpotlighted;
 
     // バックエンドAPIを呼び出し
     final success = isCurrentlySpotlighted
-        ? await PostService.spotlightOff(currentPost.id)
-        : await PostService.spotlightOn(currentPost.id);
+        ? await PostService.spotlightOff(post.id)
+        : await PostService.spotlightOn(post.id);
 
     if (!success) {
       if (kDebugMode) {
@@ -4692,30 +4827,36 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    // 投稿のスポットライト状態を更新
-    _posts[_currentIndex] = Post(
-      id: currentPost.id,
-      userId: currentPost.userId,
-      username: currentPost.username,
-      userIconPath: currentPost.userIconPath,
-      userIconUrl: currentPost.userIconUrl,
-      title: currentPost.title,
-      content: currentPost.content,
-      contentPath: currentPost.contentPath,
-      type: currentPost.type,
-      mediaUrl: currentPost.mediaUrl,
-      thumbnailUrl: currentPost.thumbnailUrl,
-      likes: isCurrentlySpotlighted
-          ? currentPost.likes - 1
-          : currentPost.likes + 1,
-      playNum: currentPost.playNum,
-      link: currentPost.link,
-      comments: currentPost.comments,
-      shares: currentPost.shares,
+    // 投稿のスポットライト状態を更新（実際に表示されている投稿のIDを使用してインデックスを検索）
+    final postIndex = _posts.indexWhere((p) => p.id == post.id);
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _executeSpotlight: 投稿が見つかりません: postId=${post.id}');
+      }
+      return;
+    }
+
+    _posts[postIndex] = Post(
+      id: post.id,
+      userId: post.userId,
+      username: post.username,
+      userIconPath: post.userIconPath,
+      userIconUrl: post.userIconUrl,
+      title: post.title,
+      content: post.content,
+      contentPath: post.contentPath,
+      type: post.type,
+      mediaUrl: post.mediaUrl,
+      thumbnailUrl: post.thumbnailUrl,
+      likes: isCurrentlySpotlighted ? post.likes - 1 : post.likes + 1,
+      playNum: post.playNum,
+      link: post.link,
+      comments: post.comments,
+      shares: post.shares,
       isSpotlighted: !isCurrentlySpotlighted,
-      isText: currentPost.isText,
-      nextContentId: currentPost.nextContentId,
-      createdAt: currentPost.createdAt,
+      isText: post.isText,
+      nextContentId: post.nextContentId,
+      createdAt: post.createdAt,
     );
 
     if (!isCurrentlySpotlighted) {
@@ -6484,8 +6625,9 @@ class _HomeScreenState extends State<HomeScreen>
       // シークバー更新タイマーを開始
       _startSeekBarUpdateTimer();
 
-      // 動画コントローラーが初期化されていない場合は初期化
+      // 動画コントローラーが初期化されていない場合は優先的に初期化
       if (!_initializedVideos.contains(newIndex)) {
+        // 現在のページの動画を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeVideoController(newIndex).then((_) {
           if (!_isDisposed && mounted && _currentIndex == newIndex) {
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
@@ -6498,7 +6640,15 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 動画読み込み完了時に視聴履歴を記録
               _recordPlayHistory(newPost);
+
+              if (kDebugMode) {
+                debugPrint('✅ 動画初期化完了・再生開始: index=$newIndex');
+              }
             }
+          }
+        }).catchError((error) {
+          if (kDebugMode) {
+            debugPrint('❌ 動画初期化エラー: index=$newIndex, error: $error');
           }
         });
       } else {
@@ -6512,6 +6662,10 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 既に初期化済みの場合も視聴履歴を記録（動画が読み込まれている）
           _recordPlayHistory(newPost);
+
+          if (kDebugMode) {
+            debugPrint('✅ 動画即座に再生（既に初期化済み）: index=$newIndex');
+          }
         }
       }
     } else if (newPost.postType == PostType.audio) {
@@ -6526,8 +6680,9 @@ class _HomeScreenState extends State<HomeScreen>
 
       _currentPlayingAudio = newIndex;
 
-      // 音声プレイヤーが初期化されていない場合は初期化
+      // 音声プレイヤーが初期化されていない場合は優先的に初期化
       if (!_initializedAudios.contains(newIndex)) {
+        // 現在のページの音声を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeAudioPlayer(newIndex).then((_) {
           if (!_isDisposed && mounted && _currentIndex == newIndex) {
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
@@ -6542,7 +6697,15 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 音声読み込み完了時に視聴履歴を記録
               _recordPlayHistory(newPost);
+
+              if (kDebugMode) {
+                debugPrint('✅ 音声初期化完了・再生開始: index=$newIndex');
+              }
             }
+          }
+        }).catchError((error) {
+          if (kDebugMode) {
+            debugPrint('❌ 音声初期化エラー: index=$newIndex, error: $error');
           }
         });
       } else {
@@ -6558,29 +6721,36 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 既に初期化済みの場合も視聴履歴を記録（音声が読み込まれている）
           _recordPlayHistory(newPost);
+
+          if (kDebugMode) {
+            debugPrint('✅ 音声即座に再生（既に初期化済み）: index=$newIndex');
+          }
         }
       }
     } else if (newPost.postType == PostType.image) {
       // 画像の場合は表示時に視聴履歴を記録（画像は即座に表示される）
       _recordPlayHistory(newPost);
 
-      // 次の画像を事前読み込み
-      _preloadImagesAround(newIndex);
+      // 次のメディア（画像・動画・音声）を事前読み込み
+      _preloadMediaAround(newIndex);
     }
     // 動画と音声の場合は、読み込み完了時に視聴履歴を記録（上記の初期化処理内で実行）
   }
 
-  /// 画像のプリロード（現在のページの前後2件ずつ）
-  void _preloadImagesAround(int currentIndex) {
+  /// メディア（画像・動画・音声）のプリロード（現在のページの前後3件ずつ）
+  void _preloadMediaAround(int currentIndex) {
     if (_posts.isEmpty || !mounted) return;
 
-    // 前後2件ずつプリロード（優先度: 次の画像 > 前の画像）
-    final preloadIndices = [1, 2, -1, -2]; // 次の画像を優先的にプリロード
+    // 前後3件ずつプリロード（優先度: 次のメディア > 前のメディア）
+    // 次のメディアを優先的にプリロード（1, 2, 3, -1, -2, -3）
+    final preloadIndices = [1, 2, 3, -1, -2, -3];
 
     for (final offset in preloadIndices) {
       final targetIndex = currentIndex + offset;
       if (targetIndex >= 0 && targetIndex < _posts.length) {
         final post = _posts[targetIndex];
+
+        // 画像のプリロード
         if (post.postType == PostType.image) {
           final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
           if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -6608,6 +6778,78 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint('⚠️ 画像プリロードエラー: $imageUrl, error: $error');
               }
             });
+          }
+        }
+        // 動画のプリロード（初期化のみ、再生はしない）
+        else if (post.postType == PostType.video) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            // まだ初期化されていない場合のみプリロード
+            if (!_initializedVideos.contains(targetIndex)) {
+              _initializeVideoController(targetIndex).catchError((error) {
+                // エラーは無視（プリロードなので失敗しても問題ない）
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 動画プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+        // 音声のプリロード（初期化のみ、再生はしない）
+        else if (post.postType == PostType.audio) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            // まだ初期化されていない場合のみプリロード
+            if (!_initializedAudios.contains(targetIndex)) {
+              _initializeAudioPlayer(targetIndex).catchError((error) {
+                // エラーは無視（プリロードなので失敗しても問題ない）
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 音声プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// 次のページのメディアを事前に初期化（読み込みを高速化）
+  void _preloadNextPageMedia(int currentIndex) {
+    if (_posts.isEmpty || !mounted) return;
+
+    // 次の1-2ページのメディアを事前に初期化（優先度: +1 > +2）
+    final preloadIndices = [1, 2];
+
+    for (final offset in preloadIndices) {
+      final targetIndex = currentIndex + offset;
+      if (targetIndex >= 0 && targetIndex < _posts.length) {
+        final post = _posts[targetIndex];
+
+        // 動画の事前初期化
+        if (post.postType == PostType.video) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            if (!_initializedVideos.contains(targetIndex)) {
+              _initializeVideoController(targetIndex).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 次のページ動画プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+        // 音声の事前初期化
+        else if (post.postType == PostType.audio) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            if (!_initializedAudios.contains(targetIndex)) {
+              _initializeAudioPlayer(targetIndex).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 次のページ音声プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
           }
         }
       }

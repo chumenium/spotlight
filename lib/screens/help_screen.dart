@@ -77,7 +77,8 @@ class HelpScreen extends StatelessWidget {
           _buildHelpCard(
             icon: Icons.flashlight_on,
             title: 'スポットライトとは？',
-            description: 'お気に入りの投稿に光を当てて、ユーザーに賞賛を送れます。スポットライトした投稿は、プロフィール画面から簡単にアクセスできます。',
+            description:
+                'お気に入りの投稿に光を当てて、ユーザーに賞賛を送れます。スポットライトした投稿は、プロフィール画面から簡単にアクセスできます。',
           ),
           _buildHelpCard(
             icon: Icons.search,
@@ -105,7 +106,6 @@ class HelpScreen extends StatelessWidget {
             title: 'アイコンの編集',
             description: 'マイページのアイコンをタップすると好きな画像をアイコンに設定できます。また画像の削除もできます。',
           ),
- ß
           _buildHelpCard(
             icon: Icons.logout,
             title: 'ログアウト方法',
@@ -119,7 +119,8 @@ class HelpScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildFAQCard(
             question: '投稿を削除するには？',
-            answer: 'プロフィール画面の自分の投稿一覧から該当する動画のメニューアイコンをタップし、「投稿を削除」を選択してください。削除した投稿は復元できません。',
+            answer:
+                'プロフィール画面の自分の投稿一覧から該当する動画のメニューアイコンをタップし、「投稿を削除」を選択してください。削除した投稿は復元できません。',
           ),
           _buildFAQCard(
             question: 'バッジの獲得方法は？',
@@ -127,9 +128,9 @@ class HelpScreen extends StatelessWidget {
           ),
           _buildFAQCard(
             question: '再生リストの作成方法は？',
-            answer: '再生リストに追加したい投稿の画面左下にある再生リストアイコンを押して、新しい再生リストを作成するか、既存のリストに追加できます。',
+            answer:
+                '再生リストに追加したい投稿の画面左下にある再生リストアイコンを押して、新しい再生リストを作成するか、既存のリストに追加できます。',
           ),
-          
 
           const SizedBox(height: 24),
 
@@ -346,5 +347,3 @@ class HelpScreen extends StatelessWidget {
     );
   }
 }
-
-
