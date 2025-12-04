@@ -1,0 +1,25 @@
+name: Discord通知（push検知）
+
+on:
+  push:
+    branches:
+      - main  # 通知したいブランチ名
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Discordへ通知を送信
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # Discordに送るJSONメッセージを作成
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{
+              \"username\": \"GitHub 通知ボット\",
+              \"avatar_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\",
+              \"content\": \":rocket: **mainブランチにプッシュがありました！**\\n👤 ユーザー名: **${{ github.event.head_commit.author.name }}**\\n📝 コミットメッセージ: **${{ github.event.head_commit.message }}**\\n🔗 [コミットを確認する](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\"
+            }" \
+            $DISCORD_WEBHOOK

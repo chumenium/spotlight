@@ -1,0 +1,98 @@
+name: spotlight
+description: SpotLight - 隠れた才能発見プラットフォーム
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  
+  # 状態管理
+  provider: ^6.1.1
+  
+  # ルーティング
+  go_router: ^12.1.1
+  
+  # SVG画像表示
+  flutter_svg: ^2.0.9
+  
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  firebase_messaging: ^15.1.3
+  google_sign_in: ^6.2.1
+  
+  # HTTP通信
+  http: ^1.1.0
+  
+  # ローカルストレージ
+  shared_preferences: ^2.2.2
+  
+  # 動画再生
+  video_player: ^2.8.1
+  
+  # 動画からサムネイルを抽出
+  video_thumbnail: ^0.5.3
+  
+  # 動画圧縮
+  
+  # 画像・動画選択
+  image_picker: ^1.0.5
+  
+  # 画像処理（JPEGエンコード/縮小/描画）
+  image: ^4.1.7
+  
+  # キャッシュ付き画像読み込み
+  cached_network_image: ^3.3.0
+  fast_cached_network_image: ^1.2.9
+  flutter_cache_manager: ^3.3.1
+  
+  # ファイル選択
+  file_picker: ^8.2.4
+  
+  # 音声再生
+  just_audio: ^0.9.36
+  audio_session: ^0.1.18
+  
+  # アニメーション
+  lottie: ^3.1.0
+  video_compress: ^3.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.10
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/splash/
+
+# アプリアイコンの設定
+# アイコン画像を assets/icon/icon.png に配置してください（1024x1024px推奨）
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+
+# スプラッシュスクリーン（起動アニメーション）の設定
+# スプラッシュ画像を assets/splash/splash.png に配置してください（1084x1920px推奨）
+# 画像がない場合は、image行をコメントアウトして背景色のみで動作します
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
+  android: true
+  ios: true
+  android_12:
+    image: "assets/splash/splash.png"  # 画像を配置したらコメントを外してください
+    color: "#FFFFFF"
