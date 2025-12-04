@@ -2456,6 +2456,9 @@ class _HomeScreenState extends State<HomeScreen>
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         // アプリがバックグラウンドに行った時は音声/動画を一時停止
+        if (kDebugMode) {
+          debugPrint('📱 [ライフサイクル] アプリがバックグラウンドに移動');
+        }
         if (_currentPlayingVideo != null) {
           final controller = _videoControllers[_currentPlayingVideo];
           if (controller != null && controller.value.isInitialized) {
@@ -2472,29 +2475,59 @@ class _HomeScreenState extends State<HomeScreen>
         _updateTimer?.cancel();
         break;
       case AppLifecycleState.resumed:
-        // アプリがフォアグラウンドに戻った時は再生
-        if (_posts.isNotEmpty &&
-            _currentIndex < _posts.length &&
-            _posts[_currentIndex].postType == PostType.video &&
-            _currentPlayingVideo != null) {
-          final controller = _videoControllers[_currentPlayingVideo];
-          if (controller != null && controller.value.isInitialized) {
-            controller.play();
-          }
+        // アプリがフォアグラウンドに戻った時
+        if (kDebugMode) {
+          debugPrint('📱 [ライフサイクル] アプリがフォアグラウンドに戻った');
         }
-        if (_posts.isNotEmpty &&
-            _currentIndex < _posts.length &&
-            _posts[_currentIndex].postType == PostType.audio &&
-            _currentPlayingAudio != null) {
-          final player = _audioPlayers[_currentPlayingAudio];
-          if (player != null) {
-            player.play();
-          }
+
+        // 現在のナビゲーションインデックスを確認
+        // NavigationProviderを使用して現在の画面を確認
+        final navigationProvider =
+            Provider.of<NavigationProvider>(context, listen: false);
+        final currentNavIndex = navigationProvider.currentIndex;
+
+        if (kDebugMode) {
+          debugPrint('📱 [ライフサイクル] 現在のナビゲーションインデックス: $currentNavIndex');
         }
-        // リアルタイム更新を再開
-        _startAutoUpdate();
-        // 即座に更新を実行
-        _updatePostsInBackground();
+
+        if (currentNavIndex == 0) {
+          // HomeScreenが表示されている場合のみ再生
+          if (kDebugMode) {
+            debugPrint('📱 [ライフサイクル] HomeScreenが表示されているため、メディアを再開');
+          }
+          if (_posts.isNotEmpty &&
+              _currentIndex < _posts.length &&
+              _posts[_currentIndex].postType == PostType.video &&
+              _currentPlayingVideo != null) {
+            final controller = _videoControllers[_currentPlayingVideo];
+            if (controller != null && controller.value.isInitialized) {
+              controller.play();
+            }
+          }
+          if (_posts.isNotEmpty &&
+              _currentIndex < _posts.length &&
+              _posts[_currentIndex].postType == PostType.audio &&
+              _currentPlayingAudio != null) {
+            final player = _audioPlayers[_currentPlayingAudio];
+            if (player != null) {
+              player.play();
+            }
+          }
+          // リアルタイム更新を再開
+          _startAutoUpdate();
+          // 即座に更新を実行
+          _updatePostsInBackground();
+        } else {
+          // HomeScreen以外が表示されている場合は、メディアを停止
+          if (kDebugMode) {
+            debugPrint('📱 [ライフサイクル] HomeScreen以外が表示されているため、メディアを停止');
+          }
+          _pauseAllMedia();
+          // リアルタイム更新は再開（他の画面でも更新は必要）
+          _startAutoUpdate();
+          // 即座に更新を実行
+          _updatePostsInBackground();
+        }
         break;
       case AppLifecycleState.hidden:
         // 何もしない

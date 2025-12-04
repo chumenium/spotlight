@@ -180,6 +180,24 @@ class _SearchScreenState extends State<SearchScreen> {
 
         return Scaffold(
           backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF121212),
+            elevation: 0,
+            toolbarHeight: 60,
+            leadingWidth: 160,
+            leading: SizedBox(
+              height: 45,
+              width: 160,
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  // ロゴ画像が見つからない場合は何も表示しない
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ),
           body: SafeArea(
             child: Column(
               children: [

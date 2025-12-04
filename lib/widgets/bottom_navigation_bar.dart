@@ -104,7 +104,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                   color: isSelected
                       ? SpotLightColors.getSpotlightColor(index)
                       : Colors.grey[400],
-                  size: 32,
+                  size: 36,
                 ),
               )
             : Column(
@@ -116,7 +116,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                     color: isSelected
                         ? SpotLightColors.getSpotlightColor(index)
                         : Colors.grey[400],
-                    size: 22,
+                    size: 26,
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -125,7 +125,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                       color: isSelected
                           ? SpotLightColors.getSpotlightColor(index)
                           : Colors.grey[400],
-                      fontSize: 9,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,

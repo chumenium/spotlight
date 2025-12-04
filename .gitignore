@@ -13,8 +13,7 @@
 migrate_working_dir/
 .cursor/
 .mdc
-.png
-.svg
+
 
 # IntelliJ related
 *.iml
