@@ -957,8 +957,9 @@ class _HomeScreenState extends State<HomeScreen>
   bool _hasMorePosts = true;
   bool _isCheckingNewContent = false; // 最新コンテンツチェック中フラグ
   bool _noMoreContent = false; // これ以上コンテンツがないフラグ
-  static const int _initialLoadCount = 3; // 初回読み込み件数
-  static const int _preloadAheadCount = 3; // 現在のページから先読み込みする件数
+  bool _isExternalNavigation = false; // 外部画面からの遷移中フラグ（再生を開始しない）
+  static const int _initialLoadCount = 5; // 初回読み込み件数
+  static const int _preloadAheadCount = 5; // 現在のページから先読み込みする件数
 
   // ジェスチャー関連
   double _swipeOffset = 0.0;
@@ -1110,15 +1111,14 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _fetchPosts() async {
     try {
       if (kDebugMode) {
-        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件、startId=1）...');
+        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件）...');
         if (_initialRetryCount > 0) {
           debugPrint('🔄 リトライ試行: $_initialRetryCount回目');
         }
       }
 
-      // 初回読み込みは必ずID=1から開始
-      final posts =
-          await PostService.fetchPosts(limit: _initialLoadCount, startId: 1);
+      // 初回読み込みは /api/content/getcontents を使用して5件取得
+      final posts = await PostService.fetchContents();
 
       if (!_isDisposed && mounted) {
         // 投稿が空の場合でも、初回起動時は自動リトライを続ける
@@ -1253,6 +1253,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
     _lastTargetPostId = targetPostId;
+    
+    // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
+    _isExternalNavigation = true;
 
     if (kDebugMode) {
       debugPrint('🎯 ターゲット投稿ID: $targetPostId');
@@ -1280,8 +1283,8 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('  - 既存の投稿のmediaUrl: ${_posts[index].mediaUrl}');
       }
 
-      // 完全なデータを再取得
-      final updatedPost = await PostService.fetchPostDetail(targetPostId);
+      // 完全なデータを再取得（外部画面からの遷移時は /api/content/getcontent を使用）
+      final updatedPost = await PostService.fetchContentById(targetPostId);
       final expectedTitle = navigationProvider.targetPostTitle;
 
       // 検索結果のタイトルと取得した投稿のタイトルを比較
@@ -1510,8 +1513,11 @@ class _HomeScreenState extends State<HomeScreen>
         return false;
       }
 
-      // その投稿を直接取得（PostService.fetchPostDetailを使用）
-      final post = await PostService.fetchPostDetail(postId);
+      // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
+      _isExternalNavigation = true;
+      
+      // その投稿を直接取得（外部画面からの遷移時は /api/content/getcontent を使用）
+      final post = await PostService.fetchContentById(postId);
 
       if (kDebugMode) {
         if (post != null) {
@@ -1584,7 +1590,8 @@ class _HomeScreenState extends State<HomeScreen>
                     setState(() {
                       _currentIndex = finalIndex;
                     });
-                    _handleMediaPageChange(finalIndex);
+                    // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
+                    // _handleMediaPageChange(finalIndex);
                   }
 
                   if (kDebugMode) {
@@ -1633,7 +1640,8 @@ class _HomeScreenState extends State<HomeScreen>
                   setState(() {
                     _currentIndex = existingIndex;
                   });
-                  _handleMediaPageChange(existingIndex);
+                  // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
+                  // _handleMediaPageChange(existingIndex);
                 }
 
                 if (kDebugMode) {
@@ -1797,6 +1805,87 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+  /// 無限スクロール用：追加のコンテンツを取得（/api/content/getcontentsを使用）
+  Future<void> _loadMoreContents() async {
+    if (_isLoadingMore || !_hasMorePosts || _noMoreContent) {
+      if (kDebugMode) {
+        debugPrint('⏭️ 追加読み込みをスキップ: _isLoadingMore=$_isLoadingMore, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
+      }
+      return;
+    }
+
+    _isLoadingMore = true;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('📝 追加コンテンツ取得開始（無限スクロール）...');
+      }
+
+      // /api/content/getcontentsを使用して5件取得
+      final newPosts = await PostService.fetchContents();
+
+      if (!_isDisposed && mounted) {
+        if (newPosts.isEmpty) {
+          // 追加のコンテンツがない場合
+          if (kDebugMode) {
+            debugPrint('⚠️ 追加のコンテンツがありません');
+          }
+          setState(() {
+            _hasMorePosts = false;
+            _noMoreContent = true;
+          });
+        } else {
+          // 重複を防ぐために、既に取得済みの投稿を除外
+          final uniqueNewPosts = newPosts
+              .where((post) => !_fetchedContentIds.contains(post.id))
+              .toList();
+
+          if (uniqueNewPosts.isEmpty) {
+            // 全て重複していた場合
+            if (kDebugMode) {
+              debugPrint('⚠️ 全て重複していたため、これ以上コンテンツがないと判断');
+            }
+            setState(() {
+              _hasMorePosts = false;
+              _noMoreContent = true;
+            });
+          } else {
+            // 新しいコンテンツがある場合
+            setState(() {
+              _posts.addAll(uniqueNewPosts);
+              _noMoreContent = false;
+              // 5件取得できた場合は、まだコンテンツがある可能性がある
+              _hasMorePosts = uniqueNewPosts.length >= _initialLoadCount;
+
+              // 取得済みコンテンツIDを記録
+              for (final post in uniqueNewPosts) {
+                _fetchedContentIds.add(post.id);
+                if (kDebugMode) {
+                  debugPrint('📝 取得済みIDを記録: ${post.id}');
+                }
+              }
+            });
+
+            if (kDebugMode) {
+              debugPrint('✅ 追加読み込み完了: ${uniqueNewPosts.length}件追加（合計: ${_posts.length}件）');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 追加読み込みエラー: $e');
+      }
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _hasMorePosts = false;
+        });
+      }
+    } finally {
+      _isLoadingMore = false;
+    }
   }
 
   /// 最新のコンテンツをチェックして先頭に追加
@@ -2639,8 +2728,24 @@ class _HomeScreenState extends State<HomeScreen>
                                       setState(() {
                                         _currentIndex = index;
                                         _resetSpotlightState();
-                                        _handleMediaPageChange(index);
+                                        // 外部画面からの遷移時は再生を開始しない
+                                        if (!_isExternalNavigation) {
+                                          _handleMediaPageChange(index);
+                                        } else {
+                                          if (kDebugMode) {
+                                            debugPrint('⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $index');
+                                          }
+                                          // フラグをリセット（次回の通常スクロール時は再生を開始する）
+                                          _isExternalNavigation = false;
+                                        }
                                       });
+
+                                      // 最後から2番目のコンテンツが表示された時に追加取得（無限スクロール）
+                                      if (index >= _posts.length - 2 &&
+                                          !_noMoreContent &&
+                                          !_isLoadingMore) {
+                                        _loadMoreContents();
+                                      }
 
                                       // 最後のページに到達した場合は最新コンテンツをチェック
                                       if (index >= _posts.length - 1 &&
@@ -2648,7 +2753,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         _checkForNewContent();
                                       }
 
-                                      // 現在のページから3つ先までを事前読み込み
+                                      // 現在のページから5つ先までを事前読み込み
                                       _preloadNextPosts(index);
                                     },
                                     itemCount: _hasMorePosts && !_noMoreContent

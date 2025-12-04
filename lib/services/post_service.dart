@@ -1533,4 +1533,237 @@ class PostService {
 
     return [];
   }
+
+  /// /api/content/getcontents APIを使用して5件のコンテンツを取得
+  /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
+  static Future<List<Post>> fetchContents() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [getcontents] JWTトークンが取得できません');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/getcontents';
+
+      if (kDebugMode) {
+        debugPrint('📝 [getcontents] API呼び出し: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📝 [getcontents] レスポンス: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> contentsJson = responseData['data'] as List;
+
+          if (kDebugMode) {
+            debugPrint('📝 [getcontents] 取得件数: ${contentsJson.length}件');
+          }
+
+          // レスポンスデータをPostオブジェクトに変換
+          final List<Post> posts = [];
+          for (int i = 0; i < contentsJson.length; i++) {
+            final contentJson = contentsJson[i] as Map<String, dynamic>;
+            
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
+              debugPrint('📝 [getcontents] コンテンツ[$i]の内容: $contentJson');
+            }
+            
+            // contentIDがレスポンスに含まれていない場合の警告
+            if (!contentJson.containsKey('contentID') && 
+                !contentJson.containsKey('contentid') && 
+                !contentJson.containsKey('id')) {
+              if (kDebugMode) {
+                debugPrint('⚠️ [getcontents] ⚠️⚠️⚠️ バックエンドの不具合 ⚠️⚠️⚠️');
+                debugPrint('⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
+                debugPrint('⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
+                debugPrint('⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
+                debugPrint('⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
+              }
+              // バックエンドの不具合のため、このコンテンツはスキップ
+              continue;
+            }
+
+            // contentID/contentid/idのいずれかを使用
+            final contentId = contentJson['contentID']?.toString() ?? 
+                             contentJson['contentid']?.toString() ?? 
+                             contentJson['id']?.toString() ?? '';
+            
+            if (contentId.isEmpty) {
+              if (kDebugMode) {
+                debugPrint('⚠️ [getcontents] contentIDが空です: インデックス $i');
+              }
+              continue;
+            }
+            
+            // idとして設定（Post.fromJsonで使用される）
+            contentJson['id'] = contentId;
+            contentJson['contentID'] = contentId; // 念のため両方設定
+            
+            // Post.fromJsonを使用してPostオブジェクトに変換
+            try {
+              final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
+              posts.add(post);
+              
+              if (kDebugMode) {
+                debugPrint('✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}');
+              }
+            } catch (e, stackTrace) {
+              if (kDebugMode) {
+                debugPrint('⚠️ [getcontents] Post変換エラー: $e, インデックス $i');
+                debugPrint('⚠️ [getcontents] スタックトレース: $stackTrace');
+                debugPrint('⚠️ [getcontents] コンテンツJSON: $contentJson');
+              }
+            }
+          }
+
+          if (kDebugMode) {
+            debugPrint('📝 [getcontents] 変換完了: ${posts.length}件');
+          }
+
+          return posts;
+        } else {
+          if (kDebugMode) {
+            debugPrint('📝 [getcontents] APIレスポンスエラー: ${responseData['status']}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 [getcontents] HTTPエラー: ${response.statusCode}');
+          debugPrint('📝 [getcontents] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [getcontents] 例外: $e');
+        debugPrint('📝 [getcontents] スタックトレース: $stackTrace');
+      }
+    }
+
+    return [];
+  }
+
+  /// /api/content/getcontent APIを使用して1件のコンテンツを取得
+  /// 外部画面からホームの特定コンテンツに遷移する際に使用
+  /// 戻り値: 成功時はPost、失敗時はnull
+  static Future<Post?> fetchContentById(String contentId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [getcontent] JWTトークンが取得できません: contentID=$contentId');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/getcontent';
+      final contentIdInt = int.tryParse(contentId) ?? 0;
+
+      if (contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('📝 [getcontent] 無効なcontentID: $contentId');
+        }
+        return null;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [getcontent] API呼び出し: $url, contentID=$contentId');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({'contentID': contentIdInt}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📝 [getcontent] レスポンス: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> contentsJson = responseData['data'] as List;
+
+          if (contentsJson.isEmpty) {
+            if (kDebugMode) {
+              debugPrint('📝 [getcontent] データが空です: contentID=$contentId');
+            }
+            return null;
+          }
+
+          // 最初の要素を取得（1件のみのはず）
+          final contentJson = contentsJson[0] as Map<String, dynamic>;
+          
+          // contentIDがレスポンスに含まれていない場合、パラメータのcontentIdを使用
+          if (!contentJson.containsKey('contentID')) {
+            if (kDebugMode) {
+              debugPrint('⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
+            }
+            contentJson['contentID'] = contentId;
+          }
+
+          // contentIDをidとして設定
+          final responseContentId = contentJson['contentID']?.toString() ?? contentId;
+          contentJson['id'] = responseContentId;
+
+          // Post.fromJsonを使用してPostオブジェクトに変換
+          try {
+            final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
+            
+            if (kDebugMode) {
+              debugPrint('📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
+            }
+
+            return post;
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ [getcontent] Post変換エラー: $e, contentID=$contentId');
+            }
+            return null;
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 [getcontent] HTTPエラー: ${response.statusCode}');
+          debugPrint('📝 [getcontent] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [getcontent] 例外: $e');
+        debugPrint('📝 [getcontent] スタックトレース: $stackTrace');
+      }
+    }
+
+    return null;
+  }
 }
