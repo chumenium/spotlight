@@ -106,6 +106,7 @@ class HelpScreen extends StatelessWidget {
             title: 'アイコンの編集',
             description: 'マイページのアイコンをタップすると好きな画像をアイコンに設定できます。また画像の削除もできます。',
           ),
+
           _buildHelpCard(
             icon: Icons.logout,
             title: 'ログアウト方法',
