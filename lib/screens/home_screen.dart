@@ -1023,8 +1023,19 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    // ステータスバーを非表示にする
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+    // ステータスバーを表示（edgeToEdgeモードで表示）
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: [SystemUiOverlay.top],
+    );
+    // ステータスバーのスタイルを設定
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+    );
 
     // アニメーションコントローラー初期化
     _ambientAnimationController = AnimationController(
