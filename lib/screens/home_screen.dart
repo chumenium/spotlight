@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/icon_update_service.dart';
+import '../services/jwt_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
@@ -973,6 +974,11 @@ class _HomeScreenState extends State<HomeScreen>
   int? _currentPlayingVideo;
   final Set<int> _initializedVideos = {};
 
+  // コンテンツの最後に表示された時刻を記録（再生位置リセット判定用）
+  // 注意: スクロールされるたびに新しいものとして認識するため、常に先頭から再生する
+  // _contentLastDisplayedTimeは現在使用していないが、将来的な拡張のために保持
+  final Map<String, DateTime> _contentLastDisplayedTime = {};
+
   // シークバー関連（動画用）
   bool _isSeeking = false;
   double? _seekPosition; // シーク中の位置（0.0-1.0）
@@ -1002,6 +1008,36 @@ class _HomeScreenState extends State<HomeScreen>
   static const Duration _updateInterval =
       Duration(seconds: 30); // 30秒ごとに更新（頻度を下げる）
   final Set<String> _fetchedContentIds = {}; // 取得済みのコンテンツID
+  static const int _maxFetchedContentIds = 100; // 取得済みIDの最大保持数
+
+  /// 取得済みIDを追加し、最大数を超えた場合は古いものを削除
+  void _addFetchedContentId(String id) {
+    _fetchedContentIds.add(id);
+
+    // 最大数を超えた場合、古いものを削除（Setは順序が保証されないため、リストに変換してから削除）
+    if (_fetchedContentIds.length > _maxFetchedContentIds) {
+      final idsList = _fetchedContentIds.toList();
+      // 最新の_maxFetchedContentIds件のみ保持
+      _fetchedContentIds.clear();
+      _fetchedContentIds
+          .addAll(idsList.skip(idsList.length - _maxFetchedContentIds));
+
+      if (kDebugMode) {
+        debugPrint('📝 取得済みIDが最大数($_maxFetchedContentIds件)を超えたため、古いものを削除しました');
+      }
+    }
+  }
+
+  /// 直近の取得済みIDのみを取得（ランダム取得時の重複チェック用）
+  /// 最新のN件のみを返すことで、ランダム取得で多様なコンテンツを表示できるようにする
+  Set<String> _getRecentFetchedContentIds({int limit = 20}) {
+    final idsList = _fetchedContentIds.toList();
+    if (idsList.length <= limit) {
+      return _fetchedContentIds;
+    }
+    // 最新のlimit件のみを返す
+    return idsList.skip(idsList.length - limit).toSet();
+  }
 
   // ウィジェットの破棄状態を管理
   bool _isDisposed = false;
@@ -1130,7 +1166,23 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       // 初回読み込みは /api/content/getcontents を使用して5件取得
-      final posts = await PostService.fetchContents();
+      List<Post> posts = await PostService.fetchContents();
+
+      // 投稿が空の場合、ランダム取得をフォールバックとして使用
+      if (posts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📝 通常の投稿取得が空でした。ランダム取得を試みます...');
+        }
+        posts = await PostService.fetchRandomPosts(limit: _initialLoadCount);
+
+        if (kDebugMode) {
+          if (posts.isNotEmpty) {
+            debugPrint('🎲 ランダム取得成功: ${posts.length}件');
+          } else {
+            debugPrint('⚠️ ランダム取得も空でした');
+          }
+        }
+      }
 
       if (!_isDisposed && mounted) {
         // 投稿が空の場合でも、初回起動時は自動リトライを続ける
@@ -1181,11 +1233,22 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
 
+        // 投稿が空の場合、JWTトークンを確認してエラーメッセージを設定
+        String? errorMsg;
+        if (posts.isEmpty) {
+          final jwtToken = await JwtService.getJwtToken();
+          if (jwtToken == null) {
+            errorMsg = '認証が必要です\nログインしてください';
+          } else {
+            errorMsg = '投稿がありません';
+          }
+        }
+
         setState(() {
           _posts = posts;
           _isLoading = false;
-          // 投稿が空で、リトライ回数が上限に達した場合のみ「投稿がありません」と表示
-          _errorMessage = posts.isEmpty ? '投稿がありません' : null;
+          // 投稿が空で、リトライ回数が上限に達した場合のみエラーメッセージを表示
+          _errorMessage = errorMsg;
           _initialRetryCount = 0; // 成功したらリトライカウントをリセット
 
           // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
@@ -1194,7 +1257,7 @@ class _HomeScreenState extends State<HomeScreen>
           // 取得済みコンテンツIDを記録
           _fetchedContentIds.clear();
           for (final post in posts) {
-            _fetchedContentIds.add(post.id);
+            _addFetchedContentId(post.id);
             if (kDebugMode) {
               debugPrint('📝 取得済みIDを記録: ${post.id}');
             }
@@ -1236,7 +1299,28 @@ class _HomeScreenState extends State<HomeScreen>
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('📝 投稿取得エラー: $e');
+        debugPrint('❌ 投稿取得エラー: $e');
+        debugPrint('❌ エラータイプ: ${e.runtimeType}');
+      }
+
+      // エラーの種類に応じてメッセージを設定
+      String errorMessage = '投稿の取得に失敗しました';
+      final errorString = e.toString().toLowerCase();
+
+      if (errorString.contains('timeout') || errorString.contains('タイムアウト')) {
+        errorMessage = '接続がタイムアウトしました\nネットワーク接続を確認してください';
+      } else if (errorString.contains('socket') ||
+          errorString.contains('connection') ||
+          errorString.contains('ネットワーク')) {
+        errorMessage = 'ネットワークエラーが発生しました\nインターネット接続を確認してください';
+      } else if (errorString.contains('jwt') ||
+          errorString.contains('認証') ||
+          errorString.contains('unauthorized')) {
+        errorMessage = '認証エラーが発生しました\n再度ログインしてください';
+      } else if (errorString.contains('server') ||
+          errorString.contains('500') ||
+          errorString.contains('サーバー')) {
+        errorMessage = 'サーバーエラーが発生しました\nしばらく待ってから再試行してください';
       }
 
       // 初回起動時の自動リトライ（最大3回まで）
@@ -1267,7 +1351,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (!_isDisposed && mounted) {
           setState(() {
             _isLoading = false;
-            _errorMessage = '投稿の取得に失敗しました';
+            _errorMessage = errorMessage;
             _initialRetryCount = 0; // リトライカウントをリセット
           });
         }
@@ -1642,7 +1726,7 @@ class _HomeScreenState extends State<HomeScreen>
             _posts.add(targetPost);
 
             // 取得済みコンテンツIDを記録
-            _fetchedContentIds.add(postId);
+            _addFetchedContentId(postId);
 
             if (kDebugMode) {
               debugPrint(
@@ -1797,10 +1881,27 @@ class _HomeScreenState extends State<HomeScreen>
       final nextStartId = lastId + 1;
 
       // 次のコンテンツを取得（3件）
-      final morePosts = await PostService.fetchPosts(
+      List<Post> morePosts = await PostService.fetchPosts(
         limit: _preloadAheadCount,
         startId: nextStartId,
       );
+
+      // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
+      if (morePosts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📝 通常の再読み込みが空でした。ランダム取得を試みます...');
+        }
+        morePosts =
+            await PostService.fetchRandomPosts(limit: _preloadAheadCount);
+
+        if (kDebugMode) {
+          if (morePosts.isNotEmpty) {
+            debugPrint('🎲 ランダム再読み込み成功: ${morePosts.length}件');
+          } else {
+            debugPrint('⚠️ ランダム再読み込みも空でした');
+          }
+        }
+      }
 
       if (!_isDisposed && mounted) {
         if (morePosts.isEmpty) {
@@ -1810,7 +1911,7 @@ class _HomeScreenState extends State<HomeScreen>
           }
           _showAllContentViewedDialog();
         } else {
-          // 重複を防ぐために、既に取得済みの投稿を除外
+          // 通常の取得時は、全ての取得済みIDを除外
           final newPosts = morePosts
               .where((post) => !_fetchedContentIds.contains(post.id))
               .toList();
@@ -1822,29 +1923,52 @@ class _HomeScreenState extends State<HomeScreen>
             }
             // 次のIDから再試行
             final nextNextStartId = nextStartId + _preloadAheadCount;
-            final retryPosts = await PostService.fetchPosts(
+            List<Post> retryPosts = await PostService.fetchPosts(
               limit: _preloadAheadCount,
               startId: nextNextStartId,
             );
 
+            // 再試行も空の場合、ランダム取得をフォールバックとして使用
+            if (retryPosts.isEmpty) {
+              if (kDebugMode) {
+                debugPrint('📝 再試行も空でした。ランダム取得を試みます...');
+              }
+              retryPosts =
+                  await PostService.fetchRandomPosts(limit: _preloadAheadCount);
+
+              if (kDebugMode) {
+                if (retryPosts.isNotEmpty) {
+                  debugPrint('🎲 ランダム再試行成功: ${retryPosts.length}件');
+                } else {
+                  debugPrint('⚠️ ランダム再試行も空でした');
+                }
+              }
+            }
+
             if (retryPosts.isEmpty) {
               _showAllContentViewedDialog();
             } else {
+              // ランダム取得時は、直近の20件のみを除外（多様なコンテンツを表示するため）
+              final recentFetchedIds = _getRecentFetchedContentIds(limit: 20);
               final retryNewPosts = retryPosts
-                  .where((post) => !_fetchedContentIds.contains(post.id))
+                  .where((post) => !recentFetchedIds.contains(post.id))
                   .toList();
 
-              if (retryNewPosts.isEmpty) {
+              // それでも全て重複していた場合は、除外せずに全て追加（ランダム取得の目的を優先）
+              final finalRetryPosts =
+                  retryNewPosts.isNotEmpty ? retryNewPosts : retryPosts;
+
+              if (finalRetryPosts.isEmpty) {
                 _showAllContentViewedDialog();
               } else {
                 setState(() {
-                  _posts.addAll(retryNewPosts);
+                  _posts.addAll(finalRetryPosts);
                   _noMoreContent = false;
-                  _hasMorePosts = retryNewPosts.length >= _preloadAheadCount;
+                  _hasMorePosts = finalRetryPosts.length >= _preloadAheadCount;
 
                   // 取得済みコンテンツIDを記録
-                  for (final post in retryNewPosts) {
-                    _fetchedContentIds.add(post.id);
+                  for (final post in finalRetryPosts) {
+                    _addFetchedContentId(post.id);
                   }
                 });
 
@@ -1862,7 +1986,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 取得済みコンテンツIDを記録
               for (final post in newPosts) {
-                _fetchedContentIds.add(post.id);
+                _addFetchedContentId(post.id);
               }
             });
 
@@ -1975,7 +2099,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 取得済みコンテンツIDを記録
               for (final post in uniqueNewPosts) {
-                _fetchedContentIds.add(post.id);
+                _addFetchedContentId(post.id);
                 if (kDebugMode) {
                   debugPrint('📝 取得済みIDを記録: ${post.id}');
                 }
@@ -2036,10 +2160,27 @@ class _HomeScreenState extends State<HomeScreen>
       _fetchedContentIds.clear();
 
       // 最新のコンテンツを取得（startId=1から最新順に取得）
-      final latestPosts = await PostService.fetchPosts(
+      List<Post> latestPosts = await PostService.fetchPosts(
         limit: _initialLoadCount,
         startId: 1,
       );
+
+      // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
+      if (latestPosts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📝 通常のリセット読み込みが空でした。ランダム取得を試みます...');
+        }
+        latestPosts =
+            await PostService.fetchRandomPosts(limit: _initialLoadCount);
+
+        if (kDebugMode) {
+          if (latestPosts.isNotEmpty) {
+            debugPrint('🎲 ランダムリセット読み込み成功: ${latestPosts.length}件');
+          } else {
+            debugPrint('⚠️ ランダムリセット読み込みも空でした');
+          }
+        }
+      }
 
       if (!_isDisposed && mounted && latestPosts.isNotEmpty) {
         // 一度も読み込まれていない最新のコンテンツをフィルタリング
@@ -2062,11 +2203,11 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 取得済みコンテンツIDを記録
             for (final post in newPosts) {
-              _fetchedContentIds.add(post.id);
+              _addFetchedContentId(post.id);
             }
             // 既存のIDも記録
             for (final post in _posts) {
-              _fetchedContentIds.add(post.id);
+              _addFetchedContentId(post.id);
             }
 
             // 現在のインデックスは変更しない（現在の位置を維持）
@@ -2113,15 +2254,16 @@ class _HomeScreenState extends State<HomeScreen>
       final historyPosts = await PostService.getPlayHistory();
 
       if (!_isDisposed && mounted && historyPosts.isNotEmpty) {
-        // 既に取得済みのコンテンツを除外
+        // 視聴履歴から取得する際は、直近の20件のみを除外（多様なコンテンツを表示するため）
+        final recentFetchedIds = _getRecentFetchedContentIds(limit: 20);
         final availablePosts = historyPosts
-            .where((post) => !_fetchedContentIds.contains(post.id))
+            .where((post) => !recentFetchedIds.contains(post.id))
             .toList();
 
         if (availablePosts.isEmpty) {
-          // 視聴履歴のすべてが既に取得済みの場合、視聴履歴全体からランダムに選択
+          // 直近の20件と重複している場合でも、視聴履歴全体から選択（ランダム取得の目的を優先）
           if (kDebugMode) {
-            debugPrint('⚠️ 視聴履歴のすべてが既に取得済みです。ランダムに選択します...');
+            debugPrint('⚠️ 視聴履歴が直近の取得済みIDと重複しています。視聴履歴全体から選択します...');
           }
           availablePosts.addAll(historyPosts);
         }
@@ -2144,11 +2286,11 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 取得済みコンテンツIDを記録
             for (final post in selectedPosts) {
-              _fetchedContentIds.add(post.id);
+              _addFetchedContentId(post.id);
             }
             // 既存のIDも記録
             for (final post in _posts) {
-              _fetchedContentIds.add(post.id);
+              _addFetchedContentId(post.id);
             }
 
             // 現在のインデックスは変更しない（現在の位置を維持）
@@ -2254,7 +2396,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 取得済みコンテンツIDを更新
               for (final post in newPostsToAdd) {
-                _fetchedContentIds.add(post.id);
+                _addFetchedContentId(post.id);
               }
             });
 
@@ -2329,41 +2471,61 @@ class _HomeScreenState extends State<HomeScreen>
       final loadCount = _preloadAheadCount;
 
       // 次のIDから追加読み込み
-      final morePosts = await PostService.fetchPosts(
+      List<Post> morePosts = await PostService.fetchPosts(
         limit: loadCount,
         startId: nextStartId,
       );
 
+      // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
+      if (morePosts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📝 通常の追加読み込みが空でした。ランダム取得を試みます...');
+        }
+        morePosts = await PostService.fetchRandomPosts(limit: loadCount);
+
+        if (kDebugMode) {
+          if (morePosts.isNotEmpty) {
+            debugPrint('🎲 ランダム追加読み込み成功: ${morePosts.length}件');
+          } else {
+            debugPrint('⚠️ ランダム追加読み込みも空でした');
+          }
+        }
+      }
+
       if (!_isDisposed && mounted && morePosts.isNotEmpty) {
-        // 重複を防ぐために、既に取得済みの投稿を除外
+        // 事前読み込み時は、直近の20件のみを除外（多様なコンテンツを表示するため）
+        final recentFetchedIds = _getRecentFetchedContentIds(limit: 20);
         final newPosts = morePosts
-            .where((post) => !_fetchedContentIds.contains(post.id))
+            .where((post) => !recentFetchedIds.contains(post.id))
             .toList();
+
+        // それでも全て重複していた場合は、除外せずに全て追加（ランダム取得の目的を優先）
+        final finalNewPosts = newPosts.isNotEmpty ? newPosts : morePosts;
 
         if (kDebugMode) {
           debugPrint(
-              '📝 取得した投稿: ${morePosts.length}件、重複除外後: ${newPosts.length}件');
-          for (final post in newPosts) {
+              '📝 取得した投稿: ${morePosts.length}件、重複除外後: ${finalNewPosts.length}件');
+          for (final post in finalNewPosts) {
             debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
           }
         }
 
-        if (newPosts.isNotEmpty) {
+        if (finalNewPosts.isNotEmpty) {
           setState(() {
-            _posts.addAll(newPosts);
+            _posts.addAll(finalNewPosts);
 
             // 取得済みコンテンツIDを記録
-            for (final post in newPosts) {
-              _fetchedContentIds.add(post.id);
+            for (final post in finalNewPosts) {
+              _addFetchedContentId(post.id);
             }
 
             // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
-            _hasMorePosts = newPosts.length >= loadCount;
+            _hasMorePosts = finalNewPosts.length >= loadCount;
           });
 
           if (kDebugMode) {
             debugPrint(
-                '📝 事前読み込み完了: ${newPosts.length}件（合計: ${_posts.length}件）');
+                '📝 事前読み込み完了: ${finalNewPosts.length}件（合計: ${_posts.length}件）');
           }
         } else {
           // 全て重複していた場合は、次のIDから再試行
@@ -2415,7 +2577,7 @@ class _HomeScreenState extends State<HomeScreen>
           // 取得済みコンテンツIDを更新
           _fetchedContentIds.clear();
           for (final post in posts) {
-            _fetchedContentIds.add(post.id);
+            _addFetchedContentId(post.id);
           }
         });
 
@@ -2701,7 +2863,7 @@ class _HomeScreenState extends State<HomeScreen>
           // 新規投稿を先頭に追加
           setState(() {
             _posts.insert(0, newPost);
-            _fetchedContentIds.add(newPost.id);
+            _addFetchedContentId(newPost.id);
           });
         }
       }
@@ -3534,6 +3696,34 @@ class _HomeScreenState extends State<HomeScreen>
           Positioned.fill(
             child: GestureDetector(
               onTap: () {
+                // 動画コンテンツの場合、音声プレイヤーが残っていれば停止・破棄
+                if (post.postType == PostType.video) {
+                  if (_audioPlayers.containsKey(postIndex) ||
+                      _initializedAudios.contains(postIndex)) {
+                    final audioPlayer = _audioPlayers[postIndex];
+                    if (audioPlayer != null) {
+                      if (kDebugMode) {
+                        debugPrint(
+                            '🛑 動画コンテンツタップ時、音声プレイヤーを停止・破棄: index=$postIndex');
+                      }
+                      try {
+                        audioPlayer.pause();
+                        audioPlayer.dispose();
+                      } catch (e) {
+                        if (kDebugMode) {
+                          debugPrint('⚠️ 音声プレイヤー破棄エラー: $e');
+                        }
+                      }
+                      _audioPlayers.remove(postIndex);
+                      _initializedAudios.remove(postIndex);
+                    }
+                    if (_currentPlayingAudio == postIndex) {
+                      _currentPlayingAudio = null;
+                      _seekBarUpdateTimerAudio?.cancel();
+                    }
+                  }
+                }
+
                 if (controller != null && controller.value.isInitialized) {
                   // シーク中でない場合は一時停止/再生
                   if (!_isSeeking) {
@@ -4224,20 +4414,28 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 画面サイズを取得してキャッシュサイズを計算
     final screenSize = MediaQuery.of(context).size;
-    final cacheWidth =
-        (screenSize.width * MediaQuery.of(context).devicePixelRatio).round();
-    final cacheHeight =
-        (screenSize.height * MediaQuery.of(context).devicePixelRatio).round();
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    // キャッシュサイズは画面サイズの2倍程度に設定（高解像度ディスプレイ対応）
+    final cacheWidth = (screenSize.width * devicePixelRatio * 2).round();
+    final cacheHeight = (screenSize.height * devicePixelRatio * 2).round();
 
     return Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.black,
-      child: RobustNetworkImage(
-        imageUrl: imageUrl,
-        fit: BoxFit.contain,
-        maxWidth: cacheWidth,
-        maxHeight: cacheHeight,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: screenSize.width,
+            maxHeight: screenSize.height,
+          ),
+          child: RobustNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            maxWidth: cacheWidth,
+            maxHeight: cacheHeight,
+          ),
+        ),
       ),
     );
   }
@@ -6501,6 +6699,15 @@ class _HomeScreenState extends State<HomeScreen>
           _initializedVideos.add(postIndex);
         });
 
+        // 動画の表示を確実にするため、フレーム描画後にsetStateを呼ぶ
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_isDisposed && mounted) {
+            setState(() {
+              // 動画コントローラーが更新されたことを通知
+            });
+          }
+        });
+
         // 再生位置の更新をリッスン（シークバーの更新用）
         controller.addListener(_onVideoPositionChanged);
 
@@ -6528,6 +6735,15 @@ class _HomeScreenState extends State<HomeScreen>
             _initializedVideos.add(postIndex);
           });
 
+          // 動画の表示を確実にするため、フレーム描画後にsetStateを呼ぶ
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_isDisposed && mounted) {
+              setState(() {
+                // 動画コントローラーが更新されたことを通知
+              });
+            }
+          });
+
           // 再生位置の更新をリッスン（シークバーの更新用）
           controller.addListener(_onVideoPositionChanged);
 
@@ -6543,7 +6759,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _handleMediaPageChange(int newIndex) {
+  Future<void> _handleMediaPageChange(int newIndex) async {
     if (newIndex < 0 || newIndex >= _posts.length) {
       if (kDebugMode) {
         debugPrint('⚠️ 無効なインデックス: $newIndex, 投稿数=${_posts.length}');
@@ -6567,8 +6783,11 @@ class _HomeScreenState extends State<HomeScreen>
         prevController.removeListener(_onVideoPositionChanged);
         // 動画を停止
         prevController.pause();
-        // 再生位置を先頭にリセット
+        // 再生位置を先頭にリセット（前のコンテンツは常にリセット）
         prevController.seekTo(Duration.zero);
+
+        // 前のコンテンツは常に先頭にリセット済み（表示時刻の記録は不要）
+
         if (kDebugMode) {
           debugPrint('🛑 前の動画を停止: インデックス $prevIndex');
         }
@@ -6592,8 +6811,11 @@ class _HomeScreenState extends State<HomeScreen>
       if (prevPlayer != null) {
         // 音声を停止
         prevPlayer.pause();
-        // 再生位置を先頭にリセット
+        // 再生位置を先頭にリセット（前のコンテンツは常にリセット）
         prevPlayer.seek(Duration.zero);
+
+        // 前のコンテンツは常に先頭にリセット済み（表示時刻の記録は不要）
+
         if (kDebugMode) {
           debugPrint('🛑 前の音声を停止: インデックス $prevAudioIndex');
         }
@@ -6620,12 +6842,89 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       }
 
+      // 動画コンテンツの場合、音声プレイヤーを確実に停止・破棄
+      // これにより、動画の音声と音声プレイヤーの音声が重複することを防ぐ
+      // _currentPlayingAudioだけでなく、_audioPlayersにも残っている可能性があるため、両方をチェック
+      // さらに、非同期処理で音声プレイヤーが初期化される可能性があるため、確実に停止・破棄する
+      if (_audioPlayers.containsKey(newIndex) ||
+          _initializedAudios.contains(newIndex)) {
+        final audioPlayer = _audioPlayers[newIndex];
+        if (audioPlayer != null) {
+          if (kDebugMode) {
+            debugPrint('🛑 動画コンテンツのため、音声プレイヤーを停止・破棄: index=$newIndex');
+          }
+          try {
+            // 確実に停止
+            audioPlayer.pause();
+            // 少し待ってから破棄（確実に停止するため）
+            await Future.delayed(const Duration(milliseconds: 50));
+            audioPlayer.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 音声プレイヤー破棄エラー: $e');
+            }
+          }
+          _audioPlayers.remove(newIndex);
+          _initializedAudios.remove(newIndex);
+        }
+        if (_currentPlayingAudio == newIndex) {
+          _currentPlayingAudio = null;
+          _seekBarUpdateTimerAudio?.cancel();
+        }
+      }
+
+      // 動画コンテンツの場合、音声プレイヤーが初期化されないようにする
+      // プリロード処理などで誤って初期化される可能性があるため、確実にクリアする
+      if (_initializedAudios.contains(newIndex)) {
+        _initializedAudios.remove(newIndex);
+      }
+      if (_audioPlayers.containsKey(newIndex)) {
+        final audioPlayer = _audioPlayers[newIndex];
+        if (audioPlayer != null) {
+          try {
+            audioPlayer.pause();
+            // 少し待ってから破棄（確実に停止するため）
+            await Future.delayed(const Duration(milliseconds: 50));
+            audioPlayer.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 音声プレイヤー追加破棄エラー: $e');
+            }
+          }
+        }
+        _audioPlayers.remove(newIndex);
+      }
+
       _currentPlayingVideo = newIndex;
 
       // シークバー更新タイマーを開始
       _startSeekBarUpdateTimer();
 
-      // 動画コントローラーが初期化されていない場合は優先的に初期化
+      // 既に初期化済みの動画コントローラーがある場合は破棄して再初期化
+      // これにより、何回目に再生されても一回目と同じように快適に視聴できる
+      if (_initializedVideos.contains(newIndex)) {
+        final existingController = _videoControllers[newIndex];
+        if (existingController != null) {
+          if (kDebugMode) {
+            debugPrint('🔄 既存の動画コントローラーを破棄して再初期化: index=$newIndex');
+          }
+
+          try {
+            existingController.removeListener(_onVideoPositionChanged);
+            existingController.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画コントローラー破棄エラー: $e');
+            }
+          }
+
+          // 初期化済みフラグをクリア
+          _initializedVideos.remove(newIndex);
+          _videoControllers.remove(newIndex);
+        }
+      }
+
+      // 動画コントローラーを初期化（毎回新しく初期化）
       if (!_initializedVideos.contains(newIndex)) {
         // 現在のページの動画を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeVideoController(newIndex).then((_) {
@@ -6633,9 +6932,107 @@ class _HomeScreenState extends State<HomeScreen>
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
             final controller = _videoControllers[newIndex];
             if (controller != null && controller.value.isInitialized) {
-              // 再生位置を先頭にリセット
-              controller.seekTo(Duration.zero);
-              controller.play();
+              // スクロールされるたびに新しいものとして認識するため、常に先頭から再生
+              // まず一時停止してからリセット（固まった状態を解消）
+              controller.pause();
+
+              // 再生位置を確実にリセット（複数回試行）
+              controller.seekTo(Duration.zero).then((_) {
+                // リセット成功後、再度リセットを確認（確実にするため）
+                Future.delayed(const Duration(milliseconds: 50), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                    final checkController = _videoControllers[newIndex];
+                    if (checkController != null &&
+                        checkController.value.isInitialized) {
+                      // 再生位置が0でない場合は再度リセット
+                      if (checkController.value.position != Duration.zero) {
+                        if (kDebugMode) {
+                          debugPrint(
+                              '⚠️ 動画再生位置がリセットされていません。再リセットします: index=$newIndex, position=${checkController.value.position}');
+                        }
+                        checkController.seekTo(Duration.zero);
+                      }
+                    }
+                  }
+                });
+              }).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ 動画再生位置リセットエラー: $error');
+                }
+              });
+
+              // 動画の表示を確実にするため、setStateを呼ぶ
+              if (mounted) {
+                setState(() {
+                  // 動画コントローラーが更新されたことを通知
+                });
+              }
+
+              // フレーム描画後に再生を開始（表示を確実にするため）
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                  final currentController = _videoControllers[newIndex];
+                  if (currentController != null &&
+                      currentController.value.isInitialized) {
+                    // 再生位置を再度確認してリセット
+                    if (currentController.value.position != Duration.zero) {
+                      currentController.seekTo(Duration.zero);
+                    }
+                    // 再生を試みる（失敗した場合は再試行）
+                    currentController.play().catchError((error) {
+                      if (kDebugMode) {
+                        debugPrint('⚠️ 動画再生エラー（再試行）: $error');
+                      }
+                      // 少し待ってから再試行
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (!_isDisposed &&
+                            mounted &&
+                            _currentIndex == newIndex) {
+                          final retryController = _videoControllers[newIndex];
+                          if (retryController != null &&
+                              retryController.value.isInitialized) {
+                            retryController.play();
+                          }
+                        }
+                      });
+                    });
+                    currentController.setLooping(true);
+                  }
+                }
+              });
+
+              // 即座に再生を試みる（フレーム描画前でも）
+              controller.play().then((_) {
+                // 再生が成功したか確認
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                    final checkController = _videoControllers[newIndex];
+                    if (checkController != null &&
+                        checkController.value.isInitialized &&
+                        !checkController.value.isPlaying) {
+                      // 再生されていない場合は再試行
+                      if (kDebugMode) {
+                        debugPrint('⚠️ 動画が再生されていません。再試行します: index=$newIndex');
+                      }
+                      checkController.play();
+                    }
+                  }
+                });
+              }).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ 動画即座再生エラー: $error');
+                }
+                // エラー時も再試行
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                    final retryController = _videoControllers[newIndex];
+                    if (retryController != null &&
+                        retryController.value.isInitialized) {
+                      retryController.play();
+                    }
+                  }
+                });
+              });
               controller.setLooping(true);
 
               // 動画読み込み完了時に視聴履歴を記録
@@ -6651,22 +7048,6 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('❌ 動画初期化エラー: index=$newIndex, error: $error');
           }
         });
-      } else {
-        // 既に初期化済みの場合は即座に再生
-        final controller = _videoControllers[newIndex];
-        if (controller != null && controller.value.isInitialized) {
-          // 再生位置を先頭にリセット
-          controller.seekTo(Duration.zero);
-          controller.play();
-          controller.setLooping(true);
-
-          // 既に初期化済みの場合も視聴履歴を記録（動画が読み込まれている）
-          _recordPlayHistory(newPost);
-
-          if (kDebugMode) {
-            debugPrint('✅ 動画即座に再生（既に初期化済み）: index=$newIndex');
-          }
-        }
       }
     } else if (newPost.postType == PostType.audio) {
       // 新しいページが音声投稿の場合
@@ -6678,9 +7059,60 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       }
 
+      // 音声コンテンツの場合、動画コントローラーを確実に停止・破棄
+      // これにより、音声プレイヤーと動画コントローラーの音声が重複することを防ぐ
+      // _currentPlayingVideoだけでなく、_videoControllersにも残っている可能性があるため、両方をチェック
+      if (_videoControllers.containsKey(newIndex) ||
+          _initializedVideos.contains(newIndex)) {
+        final videoController = _videoControllers[newIndex];
+        if (videoController != null) {
+          if (kDebugMode) {
+            debugPrint('🛑 音声コンテンツのため、動画コントローラーを停止・破棄: index=$newIndex');
+          }
+          try {
+            videoController.removeListener(_onVideoPositionChanged);
+            videoController.pause();
+            videoController.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 動画コントローラー破棄エラー: $e');
+            }
+          }
+          _videoControllers.remove(newIndex);
+          _initializedVideos.remove(newIndex);
+        }
+        if (_currentPlayingVideo == newIndex) {
+          _currentPlayingVideo = null;
+          _seekBarUpdateTimer?.cancel();
+        }
+      }
+
       _currentPlayingAudio = newIndex;
 
-      // 音声プレイヤーが初期化されていない場合は優先的に初期化
+      // 既に初期化済みの音声プレイヤーがある場合は破棄して再初期化
+      // これにより、何回目に再生されても一回目と同じように快適に視聴できる
+      if (_initializedAudios.contains(newIndex)) {
+        final existingPlayer = _audioPlayers[newIndex];
+        if (existingPlayer != null) {
+          if (kDebugMode) {
+            debugPrint('🔄 既存の音声プレイヤーを破棄して再初期化: index=$newIndex');
+          }
+
+          try {
+            existingPlayer.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 音声プレイヤー破棄エラー: $e');
+            }
+          }
+
+          // 初期化済みフラグをクリア
+          _initializedAudios.remove(newIndex);
+          _audioPlayers.remove(newIndex);
+        }
+      }
+
+      // 音声プレイヤーを初期化（毎回新しく初期化）
       if (!_initializedAudios.contains(newIndex)) {
         // 現在のページの音声を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeAudioPlayer(newIndex).then((_) {
@@ -6688,10 +7120,51 @@ class _HomeScreenState extends State<HomeScreen>
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
             final player = _audioPlayers[newIndex];
             if (player != null) {
-              // 再生位置を先頭にリセット
+              // スクロールされるたびに新しいものとして認識するため、常に先頭から再生
               player.seek(Duration.zero);
               player.setLoopMode(LoopMode.one);
-              player.play();
+
+              // 音声の再生を確実に実行（失敗した場合は再試行）
+              player.play().then((_) {
+                // 再生が成功したか確認（音声プレイヤーの再生状態を確認）
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                    final checkPlayer = _audioPlayers[newIndex];
+                    if (checkPlayer != null) {
+                      // 再生状態を確認（playingプロパティで確認）
+                      checkPlayer.playingStream.first.then((isPlaying) {
+                        if (!isPlaying) {
+                          // 再生されていない場合は再試行
+                          if (kDebugMode) {
+                            debugPrint(
+                                '⚠️ 音声が再生されていません。再試行します: index=$newIndex');
+                          }
+                          checkPlayer.play();
+                        }
+                      }).catchError((_) {
+                        // ストリームエラーは無視（再生を再試行）
+                        if (kDebugMode) {
+                          debugPrint('⚠️ 音声再生状態確認エラー。再試行します: index=$newIndex');
+                        }
+                        checkPlayer.play();
+                      });
+                    }
+                  }
+                });
+              }).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ 音声再生エラー（再試行）: $error');
+                }
+                // 少し待ってから再試行
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
+                    final retryPlayer = _audioPlayers[newIndex];
+                    if (retryPlayer != null) {
+                      retryPlayer.play();
+                    }
+                  }
+                });
+              });
               // シークバー更新タイマーを開始
               _startSeekBarUpdateTimerAudio();
 
@@ -6708,24 +7181,6 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('❌ 音声初期化エラー: index=$newIndex, error: $error');
           }
         });
-      } else {
-        // 既に初期化済みの場合は即座に再生
-        final player = _audioPlayers[newIndex];
-        if (player != null) {
-          // 再生位置を先頭にリセット
-          player.seek(Duration.zero);
-          player.setLoopMode(LoopMode.one);
-          player.play();
-          // シークバー更新タイマーを開始
-          _startSeekBarUpdateTimerAudio();
-
-          // 既に初期化済みの場合も視聴履歴を記録（音声が読み込まれている）
-          _recordPlayHistory(newPost);
-
-          if (kDebugMode) {
-            debugPrint('✅ 音声即座に再生（既に初期化済み）: index=$newIndex');
-          }
-        }
       }
     } else if (newPost.postType == PostType.image) {
       // 画像の場合は表示時に視聴履歴を記録（画像は即座に表示される）
@@ -6954,15 +7409,44 @@ class _HomeScreenState extends State<HomeScreen>
 
   // 音声プレイヤー初期化メソッド
   Future<void> _initializeAudioPlayer(int postIndex) async {
+    // インデックスの範囲チェック
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 音声初期化スキップ: 無効なインデックス=$postIndex');
+      }
+      return;
+    }
+
     final post = _posts[postIndex];
 
     // 音声投稿でない場合、またはmediaUrlが空の場合は何もしない
+    // 動画コンテンツの場合は確実にスキップ（キャッシュされた情報の影響を防ぐ）
     if (post.postType != PostType.audio ||
         post.mediaUrl == null ||
         post.mediaUrl!.isEmpty) {
       if (kDebugMode) {
         debugPrint(
-            '⚠️ 音声初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}');
+            '⚠️ 音声初期化スキップ: postType=${post.postType}, mediaUrl=${post.mediaUrl}, index=$postIndex');
+      }
+      // 動画コンテンツの場合は、誤って初期化された音声プレイヤーを確実にクリア
+      if (post.postType == PostType.video) {
+        if (_audioPlayers.containsKey(postIndex)) {
+          final audioPlayer = _audioPlayers[postIndex];
+          if (audioPlayer != null) {
+            try {
+              audioPlayer.pause();
+              audioPlayer.dispose();
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 動画コンテンツの音声プレイヤー破棄エラー: $e');
+              }
+            }
+            _audioPlayers.remove(postIndex);
+          }
+        }
+        if (_initializedAudios.contains(postIndex)) {
+          _initializedAudios.remove(postIndex);
+        }
       }
       return;
     }
@@ -7025,6 +7509,17 @@ class _HomeScreenState extends State<HomeScreen>
 
   // 音声の再生/停止を切り替え
   Future<void> _toggleAudioPlayback(int postIndex) async {
+    // 動画コンテンツの場合は音声プレイヤーを操作しない
+    if (postIndex < _posts.length) {
+      final post = _posts[postIndex];
+      if (post.postType == PostType.video) {
+        if (kDebugMode) {
+          debugPrint('⚠️ 動画コンテンツのため、音声プレイヤーの操作をスキップ: index=$postIndex');
+        }
+        return;
+      }
+    }
+
     final player = _audioPlayers[postIndex];
 
     if (player == null) {
