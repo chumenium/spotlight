@@ -1378,55 +1378,55 @@ class _HomeScreenState extends State<HomeScreen>
           _posts[index] = updatedPost;
         });
 
+        // setStateの完了を待ってからジャンプ（PageViewのitemCountが更新されるまで待つ）
+        await Future.delayed(const Duration(milliseconds: 100));
+
         // 投稿データを更新した後、再度インデックスを確認
         // setStateの後なので、確実に更新されているはず
         final verifiedIndex = _posts.indexWhere(
             (post) => post.id.toString() == targetPostId.toString());
-        if (verifiedIndex >= 0 && verifiedIndex != index) {
+        if (verifiedIndex >= 0) {
+          final targetIndex = verifiedIndex;
+          
           if (kDebugMode) {
-            debugPrint('⚠️ インデックスが変更されました: $index -> $verifiedIndex');
-          }
-          // インデックスが変更された場合は、新しいインデックスを使用
-          final actualIndex = verifiedIndex;
-
-          // PageControllerでジャンプ
-          if (_pageController.hasClients) {
-            await _pageController.animateToPage(
-              actualIndex,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-
-            if (kDebugMode) {
-              debugPrint(
-                  '✅ ジャンプ完了: インデックス $actualIndex, 現在の投稿ID=${_posts[actualIndex].id}');
-              debugPrint('  - タイトル: ${_posts[actualIndex].title}');
-              debugPrint('  - 投稿者: ${_posts[actualIndex].username}');
-              debugPrint('  - タイプ: ${_posts[actualIndex].type}');
+            if (targetIndex != index) {
+              debugPrint('⚠️ インデックスが変更されました: $index -> $targetIndex');
+            } else {
+              debugPrint('🔄 投稿データを更新しました: インデックス $targetIndex');
             }
-          }
-        } else {
-          // インデックスが変更されていない場合
-          if (kDebugMode) {
-            debugPrint('🔄 投稿データを更新しました: インデックス $index');
-            debugPrint('  - タイトル: ${_posts[index].title}');
-            debugPrint('  - 投稿者: ${_posts[index].username}');
-            debugPrint('  - タイプ: ${_posts[index].type}');
+            debugPrint('  - タイトル: ${_posts[targetIndex].title}');
+            debugPrint('  - 投稿者: ${_posts[targetIndex].username}');
+            debugPrint('  - タイプ: ${_posts[targetIndex].type}');
             debugPrint('  - animateToPageのonPageChangedでメディアが初期化されます');
           }
 
           // PageControllerでジャンプ
           if (_pageController.hasClients) {
             await _pageController.animateToPage(
-              index,
+              targetIndex,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
             );
 
-            if (kDebugMode) {
-              debugPrint(
-                  '✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
+            // animateToPageの完了を待ってから、念のためインデックスを確認
+            if (mounted) {
+              if (_currentIndex != targetIndex) {
+                setState(() {
+                  _currentIndex = targetIndex;
+                });
+                // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
+                // _handleMediaPageChange(targetIndex);
+              }
+
+              if (kDebugMode) {
+                debugPrint(
+                    '✅ ジャンプ完了: インデックス $targetIndex, 現在の投稿ID=${_posts[targetIndex].id}');
+              }
             }
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 投稿データを更新しましたが、インデックスが見つかりません: targetPostId=$targetPostId');
           }
         }
       } else {
@@ -1455,12 +1455,20 @@ class _HomeScreenState extends State<HomeScreen>
     } else {
       // 見つからなかった場合は、その投稿を取得して追加
       if (kDebugMode) {
-        debugPrint('🔍 投稿が見つかりません。取得を試みます...');
+        debugPrint('🔍 [checkAndJumpToTargetPost] 投稿が見つかりません。取得を試みます...');
+        debugPrint('🔍 [checkAndJumpToTargetPost] targetPostId=$targetPostId');
       }
 
       final expectedTitle = navigationProvider.targetPostTitle;
+      if (kDebugMode) {
+        debugPrint('🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()を呼び出し: postId=$targetPostId, expectedTitle=$expectedTitle');
+      }
       final success =
           await _fetchAndJumpToPost(targetPostId, expectedTitle: expectedTitle);
+      
+      if (kDebugMode) {
+        debugPrint('🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()の結果: success=$success');
+      }
 
       // 処理完了後、ターゲット投稿IDをクリア
       if (mounted) {
@@ -1504,17 +1512,25 @@ class _HomeScreenState extends State<HomeScreen>
   Future<bool> _fetchAndJumpToPost(String postId,
       {String? expectedTitle}) async {
     try {
+      if (kDebugMode) {
+        debugPrint('🔍 [fetchAndJumpToPost] 開始: postId=$postId, expectedTitle=$expectedTitle');
+      }
+
       // 投稿IDから数値に変換
       final contentId = int.tryParse(postId);
       if (contentId == null) {
         if (kDebugMode) {
-          debugPrint('❌ 無効な投稿ID: $postId');
+          debugPrint('❌ [fetchAndJumpToPost] 無効な投稿ID: $postId');
         }
         return false;
       }
 
       // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
       _isExternalNavigation = true;
+      
+      if (kDebugMode) {
+        debugPrint('📝 [fetchAndJumpToPost] /api/content/getcontent APIを呼び出し: contentID=$postId');
+      }
       
       // その投稿を直接取得（外部画面からの遷移時は /api/content/getcontent を使用）
       final post = await PostService.fetchContentById(postId);
@@ -1535,92 +1551,127 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
 
-      if (post != null && post.id.toString() == postId.toString()) {
-        final targetPost = post;
+      if (post == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [fetchAndJumpToPost] 投稿の取得に失敗: postId=$postId');
+          debugPrint('❌ [fetchAndJumpToPost] PostService.fetchContentById()がnullを返しました');
+        }
+        return false;
+      }
 
-        if (!_isDisposed && mounted) {
-          // 投稿リストに追加（既に存在する場合はスキップ）
-          final existingIndex = _posts
-              .indexWhere((post) => post.id.toString() == postId.toString());
+      if (post.id.toString() != postId.toString()) {
+        if (kDebugMode) {
+          debugPrint('⚠️ [fetchAndJumpToPost] 取得した投稿IDが一致しません:');
+          debugPrint('  - 期待するID: $postId');
+          debugPrint('  - 取得したID: ${post.id}');
+        }
+        // IDが一致しない場合でも、取得した投稿を使用する
+      }
 
-          if (existingIndex < 0) {
-            // 新しい投稿なので、適切な位置に挿入
-            // IDが現在の投稿より小さい場合は先頭に、大きい場合は末尾に追加
-            final currentFirstId =
-                _posts.isNotEmpty ? int.tryParse(_posts.first.id) : null;
-            final targetId = int.tryParse(postId) ?? 0;
+      final targetPost = post;
 
-            setState(() {
-              if (currentFirstId != null && targetId < currentFirstId) {
-                _posts.insert(0, targetPost);
-              } else {
-                _posts.add(targetPost);
-              }
+      if (!_isDisposed && mounted) {
+        // 投稿リストに追加（既に存在する場合はスキップ）
+        final existingIndex = _posts
+            .indexWhere((post) => post.id.toString() == postId.toString());
 
-              // 取得済みコンテンツIDを記録
-              _fetchedContentIds.add(postId);
-            });
+        if (kDebugMode) {
+          debugPrint('📝 [fetchAndJumpToPost] 既存投稿チェック: existingIndex=$existingIndex, 現在の投稿数=${_posts.length}');
+        }
 
-            // 投稿を追加した後、そのインデックスにジャンプ
-            // setStateの完了を待ってからジャンプ
-            await Future.delayed(const Duration(milliseconds: 50));
+        if (existingIndex < 0) {
+          // 新しい投稿なので、末尾に追加（要件: ホームの末尾に追加）
+          if (kDebugMode) {
+            debugPrint('📝 [fetchAndJumpToPost] 新しい投稿を末尾に追加: postId=$postId, タイトル=${targetPost.title}');
+          }
 
-            final newIndex = _posts
-                .indexWhere((post) => post.id.toString() == postId.toString());
-            if (newIndex >= 0 && _pageController.hasClients) {
-              if (kDebugMode) {
-                debugPrint(
-                    '✅ 投稿を追加しました: インデックス $newIndex, 投稿ID=${_posts[newIndex].id}');
-              }
+          // 投稿を追加する前のインデックスを記録
+          final newIndex = _posts.length;
 
-              // animateToPageはonPageChangedを自動的に呼び出す
-              await _pageController.animateToPage(
-                newIndex,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
+          setState(() {
+            _posts.add(targetPost);
 
-              // animateToPageの完了を待ってから、念のためインデックスを確認
-              if (mounted) {
-                // 再度インデックスを確認（setStateの後なので確実に更新されているはず）
-                final finalIndex = _posts.indexWhere(
-                    (post) => post.id.toString() == postId.toString());
-                if (finalIndex >= 0) {
-                  if (_currentIndex != finalIndex) {
-                    setState(() {
-                      _currentIndex = finalIndex;
-                    });
-                    // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
-                    // _handleMediaPageChange(finalIndex);
-                  }
-
-                  if (kDebugMode) {
-                    debugPrint(
-                        '✅ ジャンプ完了: インデックス $finalIndex, 現在の投稿ID=${_posts[finalIndex].id}');
-                  }
-
-                  // ターゲット投稿IDをクリア
-                  final navigationProvider =
-                      Provider.of<NavigationProvider>(context, listen: false);
-                  navigationProvider.clearTargetPostId();
-                  _lastTargetPostId = null;
-
-                  return true; // 成功
-                } else {
-                  if (kDebugMode) {
-                    debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
-                  }
-                  return false; // 失敗
-                }
-              }
-            } else {
-              if (kDebugMode) {
-                debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
-              }
-              return false; // 失敗
+            // 取得済みコンテンツIDを記録
+            _fetchedContentIds.add(postId);
+            
+            if (kDebugMode) {
+              debugPrint('📝 [fetchAndJumpToPost] 投稿を追加完了: インデックス $newIndex, 合計${_posts.length}件');
             }
+          });
+
+          // setStateの完了を待ってからジャンプ（PageViewのitemCountが更新されるまで待つ）
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // インデックスを再確認
+          final verifiedIndex = _posts.indexWhere(
+              (post) => post.id.toString() == postId.toString());
+          
+          if (kDebugMode) {
+            debugPrint('📝 [fetchAndJumpToPost] 追加後のインデックス検索: verifiedIndex=$verifiedIndex, 期待するインデックス=$newIndex');
+          }
+          
+          if (verifiedIndex >= 0 && _pageController.hasClients) {
+            final targetIndex = verifiedIndex;
+            
+            if (kDebugMode) {
+              debugPrint(
+                  '✅ [fetchAndJumpToPost] 投稿を追加しました: インデックス $targetIndex, 投稿ID=${_posts[targetIndex].id}');
+              debugPrint('✅ [fetchAndJumpToPost] PageControllerでジャンプ開始: インデックス $targetIndex');
+            }
+
+            // animateToPageはonPageChangedを自動的に呼び出す
+            await _pageController.animateToPage(
+              targetIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+            
+            if (kDebugMode) {
+              debugPrint('✅ [fetchAndJumpToPost] PageControllerでジャンプ完了: インデックス $targetIndex');
+            }
+
+            // animateToPageの完了を待ってから、念のためインデックスを確認
+            if (mounted) {
+              // 再度インデックスを確認（setStateの後なので確実に更新されているはず）
+              final finalIndex = _posts.indexWhere(
+                  (post) => post.id.toString() == postId.toString());
+              if (finalIndex >= 0) {
+                if (_currentIndex != finalIndex) {
+                  setState(() {
+                    _currentIndex = finalIndex;
+                  });
+                  // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
+                  // _handleMediaPageChange(finalIndex);
+                }
+
+                if (kDebugMode) {
+                  debugPrint(
+                      '✅ ジャンプ完了: インデックス $finalIndex, 現在の投稿ID=${_posts[finalIndex].id}');
+                }
+
+                // ターゲット投稿IDをクリア
+                final navigationProvider =
+                    Provider.of<NavigationProvider>(context, listen: false);
+                navigationProvider.clearTargetPostId();
+                _lastTargetPostId = null;
+
+                return true; // 成功
+              } else {
+                if (kDebugMode) {
+                  debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
+                }
+                return false; // 失敗
+              }
+            }
+            return false; // 失敗（mountedでない場合）
           } else {
-            // 既に存在する場合はそのインデックスにジャンプ
+            if (kDebugMode) {
+              debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId, verifiedIndex=$verifiedIndex, hasClients=${_pageController.hasClients}');
+            }
+            return false; // 失敗
+          }
+        } else {
+          // 既に存在する場合はそのインデックスにジャンプ
             if (_pageController.hasClients) {
               if (kDebugMode) {
                 debugPrint(
@@ -1657,20 +1708,18 @@ class _HomeScreenState extends State<HomeScreen>
 
                 return true; // 成功
               }
+              return false; // 失敗（mountedでない場合）
             }
-            return true; // 成功（既存の投稿にジャンプ）
-          }
+            return false; // 失敗（_pageController.hasClientsでない場合）
         }
-        return false; // 失敗（投稿が見つからない）
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ 投稿の取得に失敗しました: $postId');
-        }
-        return false; // 失敗
+        // Widget is disposed or not mounted
+        return false; // Return false if the widget is not active
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('❌ 投稿取得エラー: $e');
+        debugPrint('❌ [fetchAndJumpToPost] 例外発生: $e');
+        debugPrint('❌ [fetchAndJumpToPost] スタックトレース: $stackTrace');
       }
       return false; // 失敗
     }
@@ -1827,37 +1876,33 @@ class _HomeScreenState extends State<HomeScreen>
       final newPosts = await PostService.fetchContents();
 
       if (!_isDisposed && mounted) {
-        if (newPosts.isEmpty) {
-          // 追加のコンテンツがない場合
+        // バックエンドが5件未満を返した場合のみ、これ以上コンテンツがないと判断
+        if (newPosts.length < _initialLoadCount) {
           if (kDebugMode) {
-            debugPrint('⚠️ 追加のコンテンツがありません');
+            debugPrint('⚠️ バックエンドが${newPosts.length}件（5件未満）を返しました。これ以上コンテンツがありません');
           }
           setState(() {
             _hasMorePosts = false;
             _noMoreContent = true;
           });
         } else {
+          // バックエンドが5件を返している（newPosts.length >= 5）
           // 重複を防ぐために、既に取得済みの投稿を除外
           final uniqueNewPosts = newPosts
               .where((post) => !_fetchedContentIds.contains(post.id))
               .toList();
 
-          if (uniqueNewPosts.isEmpty) {
-            // 全て重複していた場合
-            if (kDebugMode) {
-              debugPrint('⚠️ 全て重複していたため、これ以上コンテンツがないと判断');
-            }
-            setState(() {
-              _hasMorePosts = false;
-              _noMoreContent = true;
-            });
-          } else {
-            // 新しいコンテンツがある場合
+          if (kDebugMode) {
+            debugPrint('📝 バックエンドから取得: ${newPosts.length}件, 重複除外後: ${uniqueNewPosts.length}件');
+          }
+
+          if (uniqueNewPosts.isNotEmpty) {
+            // 新しいコンテンツがある場合、追加
             setState(() {
               _posts.addAll(uniqueNewPosts);
               _noMoreContent = false;
-              // 5件取得できた場合は、まだコンテンツがある可能性がある
-              _hasMorePosts = uniqueNewPosts.length >= _initialLoadCount;
+              // バックエンドが5件を返している限り、まだコンテンツがある可能性がある
+              _hasMorePosts = true;
 
               // 取得済みコンテンツIDを記録
               for (final post in uniqueNewPosts) {
@@ -1871,6 +1916,17 @@ class _HomeScreenState extends State<HomeScreen>
             if (kDebugMode) {
               debugPrint('✅ 追加読み込み完了: ${uniqueNewPosts.length}件追加（合計: ${_posts.length}件）');
             }
+          } else {
+            // 全て重複していた場合でも、バックエンドが5件を返している限り、
+            // 次回のリクエストで新しいコンテンツが返る可能性があるため、
+            // _hasMorePostsはtrueのまま、_noMoreContentはfalseのままにする
+            if (kDebugMode) {
+              debugPrint('⚠️ 全て重複していますが、バックエンドは${newPosts.length}件を返しているため、継続して取得を試みます');
+            }
+            setState(() {
+              _noMoreContent = false;
+              _hasMorePosts = true; // バックエンドが5件返している限り、継続
+            });
           }
         }
       }
@@ -2741,14 +2797,23 @@ class _HomeScreenState extends State<HomeScreen>
                                       });
 
                                       // 最後から2番目のコンテンツが表示された時に追加取得（無限スクロール）
-                                      if (index >= _posts.length - 2 &&
+                                      // indexが有効な範囲内で、かつ最後から2番目以上の場合のみ
+                                      if (index >= 0 &&
+                                          index < _posts.length &&
+                                          index >= _posts.length - 2 &&
                                           !_noMoreContent &&
-                                          !_isLoadingMore) {
+                                          !_isLoadingMore &&
+                                          _hasMorePosts) {
+                                        if (kDebugMode) {
+                                          debugPrint('📝 追加読み込みをトリガー: index=$index, _posts.length=${_posts.length}');
+                                        }
                                         _loadMoreContents();
                                       }
 
                                       // 最後のページに到達した場合は最新コンテンツをチェック
-                                      if (index >= _posts.length - 1 &&
+                                      if (index >= 0 &&
+                                          index < _posts.length &&
+                                          index >= _posts.length - 1 &&
                                           !_noMoreContent) {
                                         _checkForNewContent();
                                       }
@@ -2756,10 +2821,22 @@ class _HomeScreenState extends State<HomeScreen>
                                       // 現在のページから5つ先までを事前読み込み
                                       _preloadNextPosts(index);
                                     },
-                                    itemCount: _hasMorePosts && !_noMoreContent
-                                        ? _posts.length + 1
-                                        : _posts.length +
-                                            (_noMoreContent ? 1 : 0),
+                                    itemCount: () {
+                                      // 投稿数が0の場合は0を返す
+                                      if (_posts.isEmpty) {
+                                        return 0;
+                                      }
+                                      // これ以上コンテンツがない場合は、投稿数 + 1（メッセージ表示用）
+                                      if (_noMoreContent) {
+                                        return _posts.length + 1;
+                                      }
+                                      // まだコンテンツがある場合は、投稿数 + 1（ローディング表示用）
+                                      if (_hasMorePosts && !_isLoadingMore) {
+                                        return _posts.length + 1;
+                                      }
+                                      // その他の場合は投稿数のみ
+                                      return _posts.length;
+                                    }(),
                                     itemBuilder: (context, index) {
                                       // 最後の項目
                                       if (index >= _posts.length) {

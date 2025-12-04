@@ -656,7 +656,8 @@ def get_content_random_5():
                 "iconimgpath": iconimgpath,
                 "spotlightflag": row[10],
                 "textflag":row[8],
-                "commentnum":row[11]
+                "commentnum":row[11],
+                "contentID":row[12]
             })
             lastcontentid = row[12]
 
@@ -666,24 +667,26 @@ def get_content_random_5():
             rows2 = get_history_ran(uid,limitnum=shortagenum)
             for row in rows2:
                 # DBから取得したパスをCloudFront URLに正規化
-                contentpath = normalize_content_url(rows[1]) if rows[1] else None
-                thumbnailpath = normalize_content_url(rows[9]) if len(rows) > 9 and rows[9] else None
-                iconimgpath = normalize_content_url(rows[7]) if len(rows) > 7 and rows[7] else None
+                contentpath = normalize_content_url(row[1]) if row[1] else None
+                thumbnailpath = normalize_content_url(row[9]) if len(row) > 9 and row[9] else None
+                iconimgpath = normalize_content_url(row[7]) if len(row) > 7 and row[7] else None
                 result.append({
-                    "title": rows[0],
+                    "title": row[0],
                     "contentpath": contentpath,
                     "thumbnailpath": thumbnailpath,
-                    "spotlightnum": rows[2],
-                    "posttimestamp": rows[3].isoformat(),
-                    "playnum": rows[4],
-                    "link": rows[5],
-                    "username": rows[6],
+                    "spotlightnum": row[2],
+                    "posttimestamp": row[3].isoformat(),
+                    "playnum": row[4],
+                    "link": row[5],
+                    "username": row[6],
                     "iconimgpath": iconimgpath,
-                    "spotlightflag": rows[10],
-                    "textflag":rows[8],
-                    "commentnum":rows[11]
+                    "spotlightflag": row[10],
+                    "textflag":row[8],
+                    "commentnum":row[11],
+                    "contentID":row[12]
                 })
-                lastcontentid = rows[12]
+                lastcontentid = row[12]
+                print(row[12],":",row[0],"を取得")
         update_last_contetid(uid, lastcontentid)
 
         return jsonify({
@@ -725,9 +728,11 @@ def get_content_designation():
                 "iconimgpath": iconimgpath,
                 "spotlightflag": row[10],
                 "textflag":row[8],
-                "commentnum":row[11]
+                "commentnum":row[11],
+                "contentID":row[12]
             })
             lastcontentid = row[12]
+            print(row[12],":",row[0],"を取得")
         update_last_contetid(uid, lastcontentid)
 
         return jsonify({
