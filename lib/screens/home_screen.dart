@@ -948,6 +948,7 @@ class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  String? _currentDisplayedPostId; // 実際に表示されている投稿のID（整合性チェック用）
   List<Post> _posts = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -1023,8 +1024,19 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    // ステータスバーを非表示にする
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+    // ステータスバーを表示（edgeToEdgeモードで表示）
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: [SystemUiOverlay.top],
+    );
+    // ステータスバーのスタイルを設定
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+    );
 
     // アニメーションコントローラー初期化
     _ambientAnimationController = AnimationController(
@@ -1148,6 +1160,27 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         // 投稿が取得できた、またはリトライ回数が上限に達した場合
+        // データの整合性を確認（各投稿のIDとユーザー情報が正しいことを確認）
+        if (kDebugMode && posts.isNotEmpty) {
+          debugPrint('📝 [データ整合性チェック] 取得した投稿数: ${posts.length}件');
+          for (int i = 0; i < posts.length; i++) {
+            final post = posts[i];
+            if (post.id.isEmpty) {
+              debugPrint('⚠️ [データ整合性チェック] 投稿[$i]: IDが空です');
+            }
+            if (post.username.isEmpty) {
+              debugPrint(
+                  '⚠️ [データ整合性チェック] 投稿[$i]: usernameが空です (postId: ${post.id})');
+            }
+            if (post.userId.isEmpty) {
+              debugPrint(
+                  '⚠️ [データ整合性チェック] 投稿[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+            }
+            debugPrint(
+                '📝 [データ整合性チェック] 投稿[$i]: id=${post.id}, username=${post.username}, userId=${post.userId}, title=${post.title}');
+          }
+        }
+
         setState(() {
           _posts = posts;
           _isLoading = false;
@@ -1164,6 +1197,15 @@ class _HomeScreenState extends State<HomeScreen>
             _fetchedContentIds.add(post.id);
             if (kDebugMode) {
               debugPrint('📝 取得済みIDを記録: ${post.id}');
+            }
+          }
+
+          // 初回読み込み時は、最初の投稿のIDを_currentDisplayedPostIdに設定
+          if (posts.isNotEmpty && _currentIndex < posts.length) {
+            _currentDisplayedPostId = posts[_currentIndex].id;
+            if (kDebugMode) {
+              debugPrint(
+                  '📝 初回読み込み: _currentDisplayedPostId=${_currentDisplayedPostId}');
             }
           }
         });
@@ -1253,7 +1295,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
     _lastTargetPostId = targetPostId;
-    
+
     // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
     _isExternalNavigation = true;
 
@@ -1387,7 +1429,7 @@ class _HomeScreenState extends State<HomeScreen>
             (post) => post.id.toString() == targetPostId.toString());
         if (verifiedIndex >= 0) {
           final targetIndex = verifiedIndex;
-          
+
           if (kDebugMode) {
             if (targetIndex != index) {
               debugPrint('⚠️ インデックスが変更されました: $index -> $targetIndex');
@@ -1426,7 +1468,8 @@ class _HomeScreenState extends State<HomeScreen>
           }
         } else {
           if (kDebugMode) {
-            debugPrint('❌ 投稿データを更新しましたが、インデックスが見つかりません: targetPostId=$targetPostId');
+            debugPrint(
+                '❌ 投稿データを更新しましたが、インデックスが見つかりません: targetPostId=$targetPostId');
           }
         }
       } else {
@@ -1461,13 +1504,15 @@ class _HomeScreenState extends State<HomeScreen>
 
       final expectedTitle = navigationProvider.targetPostTitle;
       if (kDebugMode) {
-        debugPrint('🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()を呼び出し: postId=$targetPostId, expectedTitle=$expectedTitle');
+        debugPrint(
+            '🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()を呼び出し: postId=$targetPostId, expectedTitle=$expectedTitle');
       }
       final success =
           await _fetchAndJumpToPost(targetPostId, expectedTitle: expectedTitle);
-      
+
       if (kDebugMode) {
-        debugPrint('🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()の結果: success=$success');
+        debugPrint(
+            '🔍 [checkAndJumpToTargetPost] _fetchAndJumpToPost()の結果: success=$success');
       }
 
       // 処理完了後、ターゲット投稿IDをクリア
@@ -1513,7 +1558,8 @@ class _HomeScreenState extends State<HomeScreen>
       {String? expectedTitle}) async {
     try {
       if (kDebugMode) {
-        debugPrint('🔍 [fetchAndJumpToPost] 開始: postId=$postId, expectedTitle=$expectedTitle');
+        debugPrint(
+            '🔍 [fetchAndJumpToPost] 開始: postId=$postId, expectedTitle=$expectedTitle');
       }
 
       // 投稿IDから数値に変換
@@ -1527,11 +1573,12 @@ class _HomeScreenState extends State<HomeScreen>
 
       // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
       _isExternalNavigation = true;
-      
+
       if (kDebugMode) {
-        debugPrint('📝 [fetchAndJumpToPost] /api/content/getcontent APIを呼び出し: contentID=$postId');
+        debugPrint(
+            '📝 [fetchAndJumpToPost] /api/content/getcontent APIを呼び出し: contentID=$postId');
       }
-      
+
       // その投稿を直接取得（外部画面からの遷移時は /api/content/getcontent を使用）
       final post = await PostService.fetchContentById(postId);
 
@@ -1554,7 +1601,8 @@ class _HomeScreenState extends State<HomeScreen>
       if (post == null) {
         if (kDebugMode) {
           debugPrint('❌ [fetchAndJumpToPost] 投稿の取得に失敗: postId=$postId');
-          debugPrint('❌ [fetchAndJumpToPost] PostService.fetchContentById()がnullを返しました');
+          debugPrint(
+              '❌ [fetchAndJumpToPost] PostService.fetchContentById()がnullを返しました');
         }
         return false;
       }
@@ -1576,13 +1624,15 @@ class _HomeScreenState extends State<HomeScreen>
             .indexWhere((post) => post.id.toString() == postId.toString());
 
         if (kDebugMode) {
-          debugPrint('📝 [fetchAndJumpToPost] 既存投稿チェック: existingIndex=$existingIndex, 現在の投稿数=${_posts.length}');
+          debugPrint(
+              '📝 [fetchAndJumpToPost] 既存投稿チェック: existingIndex=$existingIndex, 現在の投稿数=${_posts.length}');
         }
 
         if (existingIndex < 0) {
           // 新しい投稿なので、末尾に追加（要件: ホームの末尾に追加）
           if (kDebugMode) {
-            debugPrint('📝 [fetchAndJumpToPost] 新しい投稿を末尾に追加: postId=$postId, タイトル=${targetPost.title}');
+            debugPrint(
+                '📝 [fetchAndJumpToPost] 新しい投稿を末尾に追加: postId=$postId, タイトル=${targetPost.title}');
           }
 
           // 投稿を追加する前のインデックスを記録
@@ -1593,9 +1643,10 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 取得済みコンテンツIDを記録
             _fetchedContentIds.add(postId);
-            
+
             if (kDebugMode) {
-              debugPrint('📝 [fetchAndJumpToPost] 投稿を追加完了: インデックス $newIndex, 合計${_posts.length}件');
+              debugPrint(
+                  '📝 [fetchAndJumpToPost] 投稿を追加完了: インデックス $newIndex, 合計${_posts.length}件');
             }
           });
 
@@ -1603,20 +1654,22 @@ class _HomeScreenState extends State<HomeScreen>
           await Future.delayed(const Duration(milliseconds: 100));
 
           // インデックスを再確認
-          final verifiedIndex = _posts.indexWhere(
-              (post) => post.id.toString() == postId.toString());
-          
+          final verifiedIndex = _posts
+              .indexWhere((post) => post.id.toString() == postId.toString());
+
           if (kDebugMode) {
-            debugPrint('📝 [fetchAndJumpToPost] 追加後のインデックス検索: verifiedIndex=$verifiedIndex, 期待するインデックス=$newIndex');
+            debugPrint(
+                '📝 [fetchAndJumpToPost] 追加後のインデックス検索: verifiedIndex=$verifiedIndex, 期待するインデックス=$newIndex');
           }
-          
+
           if (verifiedIndex >= 0 && _pageController.hasClients) {
             final targetIndex = verifiedIndex;
-            
+
             if (kDebugMode) {
               debugPrint(
                   '✅ [fetchAndJumpToPost] 投稿を追加しました: インデックス $targetIndex, 投稿ID=${_posts[targetIndex].id}');
-              debugPrint('✅ [fetchAndJumpToPost] PageControllerでジャンプ開始: インデックス $targetIndex');
+              debugPrint(
+                  '✅ [fetchAndJumpToPost] PageControllerでジャンプ開始: インデックス $targetIndex');
             }
 
             // animateToPageはonPageChangedを自動的に呼び出す
@@ -1625,9 +1678,10 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
             );
-            
+
             if (kDebugMode) {
-              debugPrint('✅ [fetchAndJumpToPost] PageControllerでジャンプ完了: インデックス $targetIndex');
+              debugPrint(
+                  '✅ [fetchAndJumpToPost] PageControllerでジャンプ完了: インデックス $targetIndex');
             }
 
             // animateToPageの完了を待ってから、念のためインデックスを確認
@@ -1666,51 +1720,52 @@ class _HomeScreenState extends State<HomeScreen>
             return false; // 失敗（mountedでない場合）
           } else {
             if (kDebugMode) {
-              debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId, verifiedIndex=$verifiedIndex, hasClients=${_pageController.hasClients}');
+              debugPrint(
+                  '❌ 投稿を追加したが見つかりません: postId=$postId, verifiedIndex=$verifiedIndex, hasClients=${_pageController.hasClients}');
             }
             return false; // 失敗
           }
         } else {
           // 既に存在する場合はそのインデックスにジャンプ
-            if (_pageController.hasClients) {
+          if (_pageController.hasClients) {
+            if (kDebugMode) {
+              debugPrint(
+                  '✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
+            }
+
+            // animateToPageはonPageChangedを自動的に呼び出す
+            await _pageController.animateToPage(
+              existingIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+
+            // animateToPageの完了を待ってから、念のためインデックスを確認
+            if (mounted) {
+              if (_currentIndex != existingIndex) {
+                setState(() {
+                  _currentIndex = existingIndex;
+                });
+                // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
+                // _handleMediaPageChange(existingIndex);
+              }
+
               if (kDebugMode) {
                 debugPrint(
-                    '✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
+                    '✅ ジャンプ完了: インデックス $existingIndex, 現在の投稿ID=${_posts[existingIndex].id}');
               }
 
-              // animateToPageはonPageChangedを自動的に呼び出す
-              await _pageController.animateToPage(
-                existingIndex,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
+              // ターゲット投稿IDをクリア
+              final navigationProvider =
+                  Provider.of<NavigationProvider>(context, listen: false);
+              navigationProvider.clearTargetPostId();
+              _lastTargetPostId = null;
 
-              // animateToPageの完了を待ってから、念のためインデックスを確認
-              if (mounted) {
-                if (_currentIndex != existingIndex) {
-                  setState(() {
-                    _currentIndex = existingIndex;
-                  });
-                  // 外部画面からの遷移時は再生を開始しない（_handleMediaPageChangeを呼び出さない）
-                  // _handleMediaPageChange(existingIndex);
-                }
-
-                if (kDebugMode) {
-                  debugPrint(
-                      '✅ ジャンプ完了: インデックス $existingIndex, 現在の投稿ID=${_posts[existingIndex].id}');
-                }
-
-                // ターゲット投稿IDをクリア
-                final navigationProvider =
-                    Provider.of<NavigationProvider>(context, listen: false);
-                navigationProvider.clearTargetPostId();
-                _lastTargetPostId = null;
-
-                return true; // 成功
-              }
-              return false; // 失敗（mountedでない場合）
+              return true; // 成功
             }
-            return false; // 失敗（_pageController.hasClientsでない場合）
+            return false; // 失敗（mountedでない場合）
+          }
+          return false; // 失敗（_pageController.hasClientsでない場合）
         }
       } else {
         // Widget is disposed or not mounted
@@ -1858,9 +1913,21 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 無限スクロール用：追加のコンテンツを取得（/api/content/getcontentsを使用）
   Future<void> _loadMoreContents() async {
-    if (_isLoadingMore || !_hasMorePosts || _noMoreContent) {
+    // すべてのコンテンツが読み込まれた場合の処理
+    if (_noMoreContent || (!_hasMorePosts && _posts.isNotEmpty)) {
       if (kDebugMode) {
-        debugPrint('⏭️ 追加読み込みをスキップ: _isLoadingMore=$_isLoadingMore, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
+        debugPrint('🔄 すべてのコンテンツが読み込まれました。リセットして最新コンテンツを取得します...');
+      }
+
+      // リセット処理を実行
+      await _resetAndLoadNewContent();
+      return;
+    }
+
+    if (_isLoadingMore || !_hasMorePosts) {
+      if (kDebugMode) {
+        debugPrint(
+            '⏭️ 追加読み込みをスキップ: _isLoadingMore=$_isLoadingMore, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
       }
       return;
     }
@@ -1879,7 +1946,8 @@ class _HomeScreenState extends State<HomeScreen>
         // バックエンドが5件未満を返した場合のみ、これ以上コンテンツがないと判断
         if (newPosts.length < _initialLoadCount) {
           if (kDebugMode) {
-            debugPrint('⚠️ バックエンドが${newPosts.length}件（5件未満）を返しました。これ以上コンテンツがありません');
+            debugPrint(
+                '⚠️ バックエンドが${newPosts.length}件（5件未満）を返しました。これ以上コンテンツがありません');
           }
           setState(() {
             _hasMorePosts = false;
@@ -1893,7 +1961,8 @@ class _HomeScreenState extends State<HomeScreen>
               .toList();
 
           if (kDebugMode) {
-            debugPrint('📝 バックエンドから取得: ${newPosts.length}件, 重複除外後: ${uniqueNewPosts.length}件');
+            debugPrint(
+                '📝 バックエンドから取得: ${newPosts.length}件, 重複除外後: ${uniqueNewPosts.length}件');
           }
 
           if (uniqueNewPosts.isNotEmpty) {
@@ -1914,14 +1983,16 @@ class _HomeScreenState extends State<HomeScreen>
             });
 
             if (kDebugMode) {
-              debugPrint('✅ 追加読み込み完了: ${uniqueNewPosts.length}件追加（合計: ${_posts.length}件）');
+              debugPrint(
+                  '✅ 追加読み込み完了: ${uniqueNewPosts.length}件追加（合計: ${_posts.length}件）');
             }
           } else {
             // 全て重複していた場合でも、バックエンドが5件を返している限り、
             // 次回のリクエストで新しいコンテンツが返る可能性があるため、
             // _hasMorePostsはtrueのまま、_noMoreContentはfalseのままにする
             if (kDebugMode) {
-              debugPrint('⚠️ 全て重複していますが、バックエンドは${newPosts.length}件を返しているため、継続して取得を試みます');
+              debugPrint(
+                  '⚠️ 全て重複していますが、バックエンドは${newPosts.length}件を返しているため、継続して取得を試みます');
             }
             setState(() {
               _noMoreContent = false;
@@ -1941,6 +2012,187 @@ class _HomeScreenState extends State<HomeScreen>
       }
     } finally {
       _isLoadingMore = false;
+    }
+  }
+
+  /// すべてのコンテンツが読み込まれた場合、リセットして最新コンテンツまたは視聴履歴から取得
+  Future<void> _resetAndLoadNewContent() async {
+    if (_isLoadingMore) {
+      if (kDebugMode) {
+        debugPrint('⏭️ 既にリセット処理中です');
+      }
+      return;
+    }
+
+    _isLoadingMore = true;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🔄 リセット処理開始: 取得済みIDをクリアして最新コンテンツを取得します');
+      }
+
+      // 取得済みIDをクリア（最新コンテンツを取得するため）
+      final previousFetchedIds = Set<String>.from(_fetchedContentIds);
+      _fetchedContentIds.clear();
+
+      // 最新のコンテンツを取得（startId=1から最新順に取得）
+      final latestPosts = await PostService.fetchPosts(
+        limit: _initialLoadCount,
+        startId: 1,
+      );
+
+      if (!_isDisposed && mounted && latestPosts.isNotEmpty) {
+        // 一度も読み込まれていない最新のコンテンツをフィルタリング
+        final newPosts = latestPosts
+            .where((post) => !previousFetchedIds.contains(post.id))
+            .toList();
+
+        if (newPosts.isNotEmpty) {
+          // 新しいコンテンツがある場合、現在の位置の後ろに追加（自動スクロールしない）
+          if (kDebugMode) {
+            debugPrint('✅ 新しいコンテンツを発見: ${newPosts.length}件');
+          }
+
+          setState(() {
+            // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
+            final insertIndex = _currentIndex + 1;
+            _posts.insertAll(insertIndex, newPosts);
+            _noMoreContent = false;
+            _hasMorePosts = true;
+
+            // 取得済みコンテンツIDを記録
+            for (final post in newPosts) {
+              _fetchedContentIds.add(post.id);
+            }
+            // 既存のIDも記録
+            for (final post in _posts) {
+              _fetchedContentIds.add(post.id);
+            }
+
+            // 現在のインデックスは変更しない（現在の位置を維持）
+          });
+
+          if (kDebugMode) {
+            debugPrint(
+                '✅ リセット完了: 新しいコンテンツ${newPosts.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
+          }
+        } else {
+          // 新しいコンテンツがない場合、視聴履歴から最後に視聴したコンテンツを取得
+          if (kDebugMode) {
+            debugPrint('⚠️ 新しいコンテンツがありません。視聴履歴から取得します...');
+          }
+
+          await _loadFromPlayHistory();
+        }
+      } else {
+        // 最新コンテンツの取得に失敗した場合、視聴履歴から取得
+        if (kDebugMode) {
+          debugPrint('⚠️ 最新コンテンツの取得に失敗。視聴履歴から取得します...');
+        }
+        await _loadFromPlayHistory();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ リセット処理エラー: $e');
+      }
+      // エラーが発生した場合、視聴履歴から取得を試みる
+      await _loadFromPlayHistory();
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  /// 視聴履歴から最後に視聴したコンテンツを取得してランダムに表示
+  Future<void> _loadFromPlayHistory() async {
+    try {
+      if (kDebugMode) {
+        debugPrint('📚 視聴履歴からコンテンツを取得します...');
+      }
+
+      // 視聴履歴を取得
+      final historyPosts = await PostService.getPlayHistory();
+
+      if (!_isDisposed && mounted && historyPosts.isNotEmpty) {
+        // 既に取得済みのコンテンツを除外
+        final availablePosts = historyPosts
+            .where((post) => !_fetchedContentIds.contains(post.id))
+            .toList();
+
+        if (availablePosts.isEmpty) {
+          // 視聴履歴のすべてが既に取得済みの場合、視聴履歴全体からランダムに選択
+          if (kDebugMode) {
+            debugPrint('⚠️ 視聴履歴のすべてが既に取得済みです。ランダムに選択します...');
+          }
+          availablePosts.addAll(historyPosts);
+        }
+
+        if (availablePosts.isNotEmpty) {
+          // 視聴履歴順に選択（過去に表示したコンテンツ順）
+          // ランダムではなく、視聴履歴の順序を保持
+          final selectedPosts = availablePosts.take(_initialLoadCount).toList();
+
+          if (kDebugMode) {
+            debugPrint('✅ 視聴履歴から${selectedPosts.length}件を選択しました（視聴履歴順）');
+          }
+
+          setState(() {
+            // 現在の位置の後ろに選択したコンテンツを追加（現在の位置を維持）
+            final insertIndex = _currentIndex + 1;
+            _posts.insertAll(insertIndex, selectedPosts);
+            _noMoreContent = false;
+            _hasMorePosts = true;
+
+            // 取得済みコンテンツIDを記録
+            for (final post in selectedPosts) {
+              _fetchedContentIds.add(post.id);
+            }
+            // 既存のIDも記録
+            for (final post in _posts) {
+              _fetchedContentIds.add(post.id);
+            }
+
+            // 現在のインデックスは変更しない（現在の位置を維持）
+          });
+
+          if (kDebugMode) {
+            debugPrint(
+                '✅ 視聴履歴から読み込み完了: ${selectedPosts.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
+          }
+
+          if (kDebugMode) {
+            debugPrint(
+                '✅ 視聴履歴からの読み込み完了: ${selectedPosts.length}件を先頭に追加（合計: ${_posts.length}件）');
+          }
+        } else {
+          // 視聴履歴が空の場合
+          if (kDebugMode) {
+            debugPrint('⚠️ 視聴履歴が空です');
+          }
+          setState(() {
+            _noMoreContent = true;
+            _hasMorePosts = false;
+          });
+        }
+      } else {
+        // 視聴履歴の取得に失敗した場合
+        if (kDebugMode) {
+          debugPrint('⚠️ 視聴履歴の取得に失敗しました');
+        }
+        setState(() {
+          _noMoreContent = true;
+          _hasMorePosts = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 視聴履歴からの読み込みエラー: $e');
+      }
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _noMoreContent = true;
+          _hasMorePosts = false;
+        });
+      }
     }
   }
 
@@ -1984,7 +2236,7 @@ class _HomeScreenState extends State<HomeScreen>
               newContentIds.any((id) => !existingIds.contains(id));
 
           if (hasNewContent) {
-            // 新しいコンテンツがある場合は先頭に追加
+            // 新しいコンテンツがある場合は現在の位置の後ろに追加（自動スクロールしない）
             final newPostsToAdd = newPosts
                 .where((p) => !existingIds.contains(p.id.toString()))
                 .toList();
@@ -1994,8 +2246,9 @@ class _HomeScreenState extends State<HomeScreen>
             }
 
             setState(() {
-              // 新しいコンテンツを先頭に追加
-              _posts.insertAll(0, newPostsToAdd);
+              // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
+              final insertIndex = _currentIndex + 1;
+              _posts.insertAll(insertIndex, newPostsToAdd);
               _noMoreContent = false;
               _hasMorePosts = true;
 
@@ -2005,23 +2258,18 @@ class _HomeScreenState extends State<HomeScreen>
               }
             });
 
-            // 新しいコンテンツの最初のページに自動的にスクロール
-            if (newPostsToAdd.isNotEmpty && _pageController.hasClients) {
-              await _pageController.animateToPage(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
+            if (kDebugMode) {
+              debugPrint(
+                  '✅ 新しいコンテンツ${newPostsToAdd.length}件を現在の位置の後ろに追加（合計: ${_posts.length}件、現在のインデックス: $_currentIndex）');
             }
           } else {
-            // 新しいコンテンツがない場合
+            // 新しいコンテンツがない場合、視聴履歴から読み込む
             if (kDebugMode) {
-              debugPrint('⚠️ 新しいコンテンツはありません');
+              debugPrint('⚠️ 新しいコンテンツはありません。視聴履歴から取得します...');
             }
-            setState(() {
-              _noMoreContent = true;
-              _hasMorePosts = false;
-            });
+
+            // 視聴履歴から現在の位置の後ろに追加
+            await _loadFromPlayHistory();
           }
         }
       }
@@ -2551,22 +2799,31 @@ class _HomeScreenState extends State<HomeScreen>
           if (kDebugMode) {
             debugPrint('📱 [ライフサイクル] HomeScreenが表示されているため、メディアを再開');
           }
+          // データの整合性を確認してから再生
           if (_posts.isNotEmpty &&
-              _currentIndex < _posts.length &&
-              _posts[_currentIndex].postType == PostType.video &&
-              _currentPlayingVideo != null) {
-            final controller = _videoControllers[_currentPlayingVideo];
-            if (controller != null && controller.value.isInitialized) {
-              controller.play();
-            }
-          }
-          if (_posts.isNotEmpty &&
-              _currentIndex < _posts.length &&
-              _posts[_currentIndex].postType == PostType.audio &&
-              _currentPlayingAudio != null) {
-            final player = _audioPlayers[_currentPlayingAudio];
-            if (player != null) {
-              player.play();
+              _currentIndex >= 0 &&
+              _currentIndex < _posts.length) {
+            final currentPost = _posts[_currentIndex];
+            // 投稿IDが空でないことを確認
+            if (currentPost.id.isNotEmpty) {
+              if (currentPost.postType == PostType.video &&
+                  _currentPlayingVideo != null) {
+                final controller = _videoControllers[_currentPlayingVideo];
+                if (controller != null && controller.value.isInitialized) {
+                  controller.play();
+                }
+              }
+              if (currentPost.postType == PostType.audio &&
+                  _currentPlayingAudio != null) {
+                final player = _audioPlayers[_currentPlayingAudio];
+                if (player != null) {
+                  player.play();
+                }
+              }
+            } else {
+              if (kDebugMode) {
+                debugPrint('⚠️ [ライフサイクル] 投稿IDが空です: index=$_currentIndex');
+              }
             }
           }
           // リアルタイム更新を再開
@@ -2766,30 +3023,102 @@ class _HomeScreenState extends State<HomeScreen>
                                     // 大量コンテンツ対応：ビューポート範囲を制限
                                     allowImplicitScrolling: false,
                                     onPageChanged: (index) {
+                                      // インデックスの範囲チェック
+                                      if (index < 0 || index >= _posts.length) {
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ onPageChanged: 無効なインデックス: $index, _posts.length=${_posts.length}');
+                                        }
+                                        return;
+                                      }
+
+                                      final displayedPost = _posts[index];
+
                                       if (kDebugMode) {
                                         debugPrint(
                                             '📄 onPageChanged: インデックス $index, 投稿数=${_posts.length}');
-                                        if (index < _posts.length) {
+                                        debugPrint(
+                                            '  - 投稿ID: ${displayedPost.id}');
+                                        debugPrint(
+                                            '  - タイトル: ${displayedPost.title}');
+                                        debugPrint(
+                                            '  - 投稿者: ${displayedPost.username}');
+                                        debugPrint(
+                                            '  - タイプ: ${displayedPost.type}');
+                                        debugPrint(
+                                            '  - userId: ${displayedPost.userId}');
+                                        debugPrint(
+                                            '  - comments: ${displayedPost.comments}');
+
+                                        // データの整合性を確認
+                                        if (displayedPost.id.isEmpty) {
                                           debugPrint(
-                                              '  - 投稿ID: ${_posts[index].id}');
+                                              '⚠️ onPageChanged: 表示される投稿のIDが空です');
+                                        }
+                                        if (displayedPost.username.isEmpty) {
                                           debugPrint(
-                                              '  - タイトル: ${_posts[index].title}');
-                                          debugPrint(
-                                              '  - 投稿者: ${_posts[index].username}');
-                                          debugPrint(
-                                              '  - タイプ: ${_posts[index].type}');
+                                              '⚠️ onPageChanged: 表示される投稿のusernameが空です (postId: ${displayedPost.id})');
                                         }
                                       }
 
+                                      // _currentIndexを更新する前に、実際に表示されている投稿のIDを保存
+                                      // これにより、_buildBottomControlsなどで使用している_posts[_currentIndex]が正しい投稿を参照することを保証
                                       setState(() {
                                         _currentIndex = index;
+                                        _currentDisplayedPostId = displayedPost
+                                            .id; // 実際に表示されている投稿のIDを保存
                                         _resetSpotlightState();
+
+                                        // データの整合性を再確認（_currentIndexが更新された後の_posts[_currentIndex]と、表示されている投稿が一致していることを確認）
+                                        if (_currentIndex >= 0 &&
+                                            _currentIndex < _posts.length) {
+                                          final currentPost =
+                                              _posts[_currentIndex];
+                                          if (currentPost.id !=
+                                              displayedPost.id) {
+                                            if (kDebugMode) {
+                                              debugPrint(
+                                                  '⚠️ onPageChanged: データの不一致を検出');
+                                              debugPrint(
+                                                  '  - 表示される投稿ID: ${displayedPost.id}');
+                                              debugPrint(
+                                                  '  - _posts[_currentIndex]の投稿ID: ${currentPost.id}');
+                                              debugPrint(
+                                                  '  - 表示される投稿username: ${displayedPost.username}');
+                                              debugPrint(
+                                                  '  - _posts[_currentIndex]の投稿username: ${currentPost.username}');
+                                            }
+                                            // データの不一致を修正（表示されている投稿のIDと一致する投稿を検索）
+                                            final correctIndex =
+                                                _posts.indexWhere((p) =>
+                                                    p.id == displayedPost.id);
+                                            if (correctIndex >= 0 &&
+                                                correctIndex < _posts.length) {
+                                              if (kDebugMode) {
+                                                debugPrint(
+                                                    '✅ 正しい投稿を検索: インデックス $correctIndex');
+                                              }
+                                              // 正しいインデックスに更新
+                                              _currentIndex = correctIndex;
+                                            } else {
+                                              if (kDebugMode) {
+                                                debugPrint(
+                                                    '⚠️ 正しい投稿が見つかりませんでした。表示されている投稿のデータを使用します。');
+                                              }
+                                            }
+                                          }
+                                        }
+
                                         // 外部画面からの遷移時は再生を開始しない
                                         if (!_isExternalNavigation) {
-                                          _handleMediaPageChange(index);
+                                          _handleMediaPageChange(_currentIndex);
+
+                                          // 次のページのメディアを事前に初期化（読み込みを高速化）
+                                          _preloadNextPageMedia(_currentIndex);
                                         } else {
                                           if (kDebugMode) {
-                                            debugPrint('⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $index');
+                                            debugPrint(
+                                                '⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $_currentIndex');
                                           }
                                           // フラグをリセット（次回の通常スクロール時は再生を開始する）
                                           _isExternalNavigation = false;
@@ -2798,14 +3127,14 @@ class _HomeScreenState extends State<HomeScreen>
 
                                       // 最後から2番目のコンテンツが表示された時に追加取得（無限スクロール）
                                       // indexが有効な範囲内で、かつ最後から2番目以上の場合のみ
+                                      // すべてのコンテンツが読み込まれた場合でも、リセット処理を実行するため条件を緩和
                                       if (index >= 0 &&
                                           index < _posts.length &&
                                           index >= _posts.length - 2 &&
-                                          !_noMoreContent &&
-                                          !_isLoadingMore &&
-                                          _hasMorePosts) {
+                                          !_isLoadingMore) {
                                         if (kDebugMode) {
-                                          debugPrint('📝 追加読み込みをトリガー: index=$index, _posts.length=${_posts.length}');
+                                          debugPrint(
+                                              '📝 追加読み込みをトリガー: index=$index, _posts.length=${_posts.length}, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
                                         }
                                         _loadMoreContents();
                                       }
@@ -2838,83 +3167,121 @@ class _HomeScreenState extends State<HomeScreen>
                                       return _posts.length;
                                     }(),
                                     itemBuilder: (context, index) {
-                                      // 最後の項目
-                                      if (index >= _posts.length) {
-                                        if (_noMoreContent) {
-                                          // これ以上コンテンツがない場合はメッセージを表示
-                                          return Container(
-                                            color: Colors.black,
-                                            child: Center(
-                                              child: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  const Icon(
-                                                    Icons.inbox_outlined,
-                                                    color: Colors.white38,
-                                                    size: 64,
-                                                  ),
-                                                  const SizedBox(height: 16),
-                                                  const Text(
-                                                    '表示できるコンテンツはありません',
-                                                    style: TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 16,
+                                      // インデックスの範囲チェック
+                                      if (index < 0 || index >= _posts.length) {
+                                        // 最後の項目（ローディングまたはメッセージ）
+                                        if (index >= _posts.length) {
+                                          if (_noMoreContent) {
+                                            // これ以上コンテンツがない場合はメッセージを表示
+                                            return Container(
+                                              color: Colors.black,
+                                              child: Center(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.inbox_outlined,
+                                                      color: Colors.white38,
+                                                      size: 64,
                                                     ),
-                                                  ),
-                                                  const SizedBox(height: 32),
-                                                  ElevatedButton.icon(
-                                                    onPressed: () =>
-                                                        _reloadMoreContent(),
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          const Color(
-                                                              0xFFFF6B35),
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        horizontal: 24,
-                                                        vertical: 12,
-                                                      ),
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(8),
-                                                      ),
-                                                    ),
-                                                    icon: const Icon(
-                                                      Icons.refresh,
-                                                      color: Colors.white,
-                                                      size: 20,
-                                                    ),
-                                                    label: const Text(
-                                                      '再読み込み',
+                                                    const SizedBox(height: 16),
+                                                    const Text(
+                                                      '表示できるコンテンツはありません',
                                                       style: TextStyle(
-                                                        color: Colors.white,
+                                                        color: Colors.white70,
                                                         fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.w600,
                                                       ),
                                                     ),
-                                                  ),
-                                                ],
+                                                    const SizedBox(height: 32),
+                                                    ElevatedButton.icon(
+                                                      onPressed: () =>
+                                                          _reloadMoreContent(),
+                                                      style: ElevatedButton
+                                                          .styleFrom(
+                                                        backgroundColor:
+                                                            const Color(
+                                                                0xFFFF6B35),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                          horizontal: 24,
+                                                          vertical: 12,
+                                                        ),
+                                                        shape:
+                                                            RoundedRectangleBorder(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(8),
+                                                        ),
+                                                      ),
+                                                      icon: const Icon(
+                                                        Icons.refresh,
+                                                        color: Colors.white,
+                                                        size: 20,
+                                                      ),
+                                                      label: const Text(
+                                                        '再読み込み',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          );
-                                        } else {
-                                          // ローディングインジケーター
-                                          return Container(
-                                            color: Colors.black,
-                                            child: const Center(
-                                              child: CircularProgressIndicator(
-                                                color: Color(0xFFFF6B35),
+                                            );
+                                          } else {
+                                            // ローディングインジケーター
+                                            return Container(
+                                              color: Colors.black,
+                                              child: const Center(
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  color: Color(0xFFFF6B35),
+                                                ),
                                               ),
-                                            ),
-                                          );
+                                            );
+                                          }
                                         }
+                                        // 無効なインデックスの場合は空のコンテナを返す
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ 無効なインデックス: index=$index, _posts.length=${_posts.length}');
+                                        }
+                                        return Container(color: Colors.black);
                                       }
-                                      return _buildPostContent(_posts[index]);
+
+                                      // データの整合性チェック
+                                      final post = _posts[index];
+                                      if (post.id.isEmpty) {
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ 投稿IDが空です: index=$index');
+                                        }
+                                        return Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: Text(
+                                              'データの読み込みに失敗しました',
+                                              style: TextStyle(
+                                                  color: Colors.white70),
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      // デバッグログ（データの整合性を確認）
+                                      if (kDebugMode && index % 10 == 0) {
+                                        // 10件ごとにログを出力（パフォーマンスへの影響を最小化）
+                                        debugPrint(
+                                            '📝 [itemBuilder] index=$index, postId=${post.id}, username=${post.username}, userId=${post.userId}');
+                                      }
+
+                                      return _buildPostContent(post);
                                     },
                                   ),
                                 ),
@@ -2950,29 +3317,108 @@ class _HomeScreenState extends State<HomeScreen>
 
                           // 下部の投稿者情報とコントロール
                           if (_posts.isNotEmpty &&
+                              _currentIndex >= 0 &&
                               _currentIndex < _posts.length)
-                            Positioned(
-                              bottom: 0,
-                              left: 0,
-                              right: 0,
-                              child:
-                                  _buildBottomControls(_posts[_currentIndex]),
+                            Builder(
+                              builder: (context) {
+                                // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+                                Post? currentPost;
+                                if (_currentDisplayedPostId != null &&
+                                    _currentDisplayedPostId!.isNotEmpty) {
+                                  currentPost = _posts.firstWhere(
+                                    (p) => p.id == _currentDisplayedPostId,
+                                    orElse: () => _posts[_currentIndex],
+                                  );
+                                } else {
+                                  currentPost = _posts[_currentIndex];
+                                }
+
+                                // データの整合性を確認
+                                if (currentPost.id.isEmpty) {
+                                  if (kDebugMode) {
+                                    debugPrint(
+                                        '⚠️ _buildBottomControls: 投稿IDが空です: index=$_currentIndex, displayedPostId=$_currentDisplayedPostId');
+                                  }
+                                  return const SizedBox.shrink();
+                                }
+
+                                // データの整合性を再確認（_currentDisplayedPostIdと一致していることを確認）
+                                if (_currentDisplayedPostId != null &&
+                                    currentPost.id != _currentDisplayedPostId) {
+                                  if (kDebugMode) {
+                                    debugPrint(
+                                        '⚠️ _buildBottomControls: データの不一致を検出');
+                                    debugPrint(
+                                        '  - _currentDisplayedPostId: $_currentDisplayedPostId');
+                                    debugPrint(
+                                        '  - currentPost.id: ${currentPost.id}');
+                                    debugPrint(
+                                        '  - currentPost.username: ${currentPost.username}');
+                                  }
+                                }
+
+                                return Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: _buildBottomControls(currentPost),
+                                );
+                              },
                             ),
 
                           // 右下のコントロールボタン
                           if (_posts.isNotEmpty &&
+                              _currentIndex >= 0 &&
                               _currentIndex < _posts.length)
-                            Positioned(
-                              bottom: 120,
-                              right: 20,
-                              child: _buildRightBottomControls(
-                                  _posts[_currentIndex]),
+                            Builder(
+                              builder: (context) {
+                                // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+                                Post? currentPost;
+                                if (_currentDisplayedPostId != null &&
+                                    _currentDisplayedPostId!.isNotEmpty) {
+                                  currentPost = _posts.firstWhere(
+                                    (p) => p.id == _currentDisplayedPostId,
+                                    orElse: () => _posts[_currentIndex],
+                                  );
+                                } else {
+                                  currentPost = _posts[_currentIndex];
+                                }
+
+                                // データの整合性を確認
+                                if (currentPost.id.isEmpty) {
+                                  if (kDebugMode) {
+                                    debugPrint(
+                                        '⚠️ _buildRightBottomControls: 投稿IDが空です: index=$_currentIndex, displayedPostId=$_currentDisplayedPostId');
+                                  }
+                                  return const SizedBox.shrink();
+                                }
+
+                                return Positioned(
+                                  bottom: 120,
+                                  right: 20,
+                                  child: _buildRightBottomControls(currentPost),
+                                );
+                              },
                             ),
 
                           // 右上の通報ボタン（自分の投稿以外）
                           if (_posts.isNotEmpty &&
+                              _currentIndex >= 0 &&
                               _currentIndex < _posts.length)
-                            _buildReportButton(_posts[_currentIndex]),
+                            Builder(
+                              builder: (context) {
+                                final currentPost = _posts[_currentIndex];
+                                // データの整合性を確認
+                                if (currentPost.id.isEmpty) {
+                                  if (kDebugMode) {
+                                    debugPrint(
+                                        '⚠️ _buildReportButton: 投稿IDが空です: index=$_currentIndex');
+                                  }
+                                  return const SizedBox.shrink();
+                                }
+                                return _buildReportButton(currentPost);
+                              },
+                            ),
                         ],
                       ),
                     ),
@@ -2993,7 +3439,31 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildVideoContent(Post post) {
-    final postIndex = _posts.indexOf(post);
+    // インデックスを安全に取得（indexOfは見つからない場合-1を返す）
+    final postIndex = _posts.indexWhere((p) => p.id == post.id);
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint(
+            '⚠️ _buildVideoContent: 投稿が見つかりません: postId=${post.id}, _posts.length=${_posts.length}');
+      }
+      // フォールバック: 直接postを使用
+      return _buildVideoContentFallback(post);
+    }
+
+    // データの整合性を再確認
+    final actualPost = _posts[postIndex];
+    if (actualPost.id != post.id) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _buildVideoContent: データの不一致を検出');
+        debugPrint('  - 期待されるpostId: ${post.id}');
+        debugPrint('  - 実際のpostId: ${actualPost.id}');
+        debugPrint('  - 期待されるusername: ${post.username}');
+        debugPrint('  - 実際のusername: ${actualPost.username}');
+      }
+      // 実際の投稿データを使用
+      return _buildVideoContentFallback(actualPost);
+    }
+
     final controller = _videoControllers[postIndex];
 
     return Container(
@@ -3109,6 +3579,58 @@ class _HomeScreenState extends State<HomeScreen>
               controller != null &&
               controller.value.isInitialized)
             _buildSeekBar(controller),
+        ],
+      ),
+    );
+  }
+
+  /// 動画コンテンツのフォールバック表示（プレイヤーなし）
+  Widget _buildVideoContentFallback(Post post) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.black,
+      child: Stack(
+        children: [
+          // サムネイル画像
+          if (post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty)
+            Positioned.fill(
+              child: Image.network(
+                post.thumbnailUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[900],
+                    child: const Center(
+                      child: Icon(
+                        Icons.videocam_off,
+                        color: Colors.white38,
+                        size: 64,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            Container(
+              color: Colors.grey[900],
+              child: const Center(
+                child: Icon(
+                  Icons.videocam_off,
+                  color: Colors.white38,
+                  size: 64,
+                ),
+              ),
+            ),
+          // 再生ボタン
+          const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+              size: 80,
+            ),
+          ),
         ],
       ),
     );
@@ -3771,7 +4293,31 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildAudioContent(Post post) {
-    final postIndex = _posts.indexOf(post);
+    // インデックスを安全に取得（indexOfは見つからない場合-1を返す）
+    final postIndex = _posts.indexWhere((p) => p.id == post.id);
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint(
+            '⚠️ _buildAudioContent: 投稿が見つかりません: postId=${post.id}, _posts.length=${_posts.length}');
+      }
+      // フォールバック: 直接postを使用（プレイヤーなし）
+      return _buildAudioContentFallback(post);
+    }
+
+    // データの整合性を再確認
+    final actualPost = _posts[postIndex];
+    if (actualPost.id != post.id) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _buildAudioContent: データの不一致を検出');
+        debugPrint('  - 期待されるpostId: ${post.id}');
+        debugPrint('  - 実際のpostId: ${actualPost.id}');
+        debugPrint('  - 期待されるusername: ${post.username}');
+        debugPrint('  - 実際のusername: ${actualPost.username}');
+      }
+      // 実際の投稿データを使用
+      return _buildAudioContentFallback(actualPost);
+    }
+
     final player = _audioPlayers[postIndex];
     final isPlaying = _currentPlayingAudio == postIndex && player != null;
 
@@ -3888,6 +4434,68 @@ class _HomeScreenState extends State<HomeScreen>
             player != null &&
             _initializedAudios.contains(postIndex))
           _buildAudioSeekBar(player),
+      ],
+    );
+  }
+
+  /// 音声コンテンツのフォールバック表示（プレイヤーなし）
+  Widget _buildAudioContentFallback(Post post) {
+    return Stack(
+      children: [
+        // モダンな背景デザイン
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                SpotLightColors.getSpotlightColor(2).withOpacity(0.4),
+                SpotLightColors.getSpotlightColor(1).withOpacity(0.3),
+                Colors.black,
+                Colors.black,
+              ],
+              stops: const [0.0, 0.3, 0.7, 1.0],
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        SpotLightColors.getSpotlightColor(2).withOpacity(0.6),
+                        SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.audiotrack,
+                    color: Colors.white,
+                    size: 100,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                const Text(
+                  '音声投稿',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -4145,13 +4753,72 @@ class _HomeScreenState extends State<HomeScreen>
 
   // スポットライト実行（共通処理）
   Future<void> _executeSpotlight() async {
-    final currentPost = _posts[_currentIndex];
-    final isCurrentlySpotlighted = currentPost.isSpotlighted;
+    // 実際に表示されている投稿のIDを使用して投稿を検索（整合性を保証）
+    Post? currentPost;
+    if (_currentDisplayedPostId != null &&
+        _currentDisplayedPostId!.isNotEmpty) {
+      try {
+        currentPost = _posts.firstWhere(
+          (p) => p.id == _currentDisplayedPostId,
+        );
+      } catch (e) {
+        // 見つからない場合は、_currentIndexを使用
+        if (_currentIndex >= 0 && _currentIndex < _posts.length) {
+          currentPost = _posts[_currentIndex];
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ _executeSpotlight: 投稿が見つかりません: _currentDisplayedPostId=$_currentDisplayedPostId, _currentIndex=$_currentIndex');
+          }
+          return;
+        }
+      }
+    } else {
+      // _currentDisplayedPostIdが設定されていない場合は、_currentIndexを使用
+      if (_currentIndex < 0 || _currentIndex >= _posts.length) {
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ _executeSpotlight: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+        }
+        return;
+      }
+      currentPost = _posts[_currentIndex];
+    }
+
+    // nullチェック
+    if (currentPost == null) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _executeSpotlight: currentPostがnullです');
+      }
+      return;
+    }
+
+    // currentPostがnullでないことを確認したので、非null型として使用
+    final post = currentPost;
+
+    // データの整合性を確認
+    if (post.id.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _executeSpotlight: 投稿IDが空です: index=$_currentIndex');
+      }
+      return;
+    }
+
+    // デバッグログ（データの整合性を確認）
+    if (kDebugMode) {
+      debugPrint('📝 [スポットライト] 投稿データ確認:');
+      debugPrint('  - postId: ${post.id}');
+      debugPrint('  - username: ${post.username}');
+      debugPrint('  - userId: ${post.userId}');
+      debugPrint('  - title: ${post.title}');
+    }
+
+    final isCurrentlySpotlighted = post.isSpotlighted;
 
     // バックエンドAPIを呼び出し
     final success = isCurrentlySpotlighted
-        ? await PostService.spotlightOff(currentPost.id)
-        : await PostService.spotlightOn(currentPost.id);
+        ? await PostService.spotlightOff(post.id)
+        : await PostService.spotlightOn(post.id);
 
     if (!success) {
       if (kDebugMode) {
@@ -4160,30 +4827,36 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    // 投稿のスポットライト状態を更新
-    _posts[_currentIndex] = Post(
-      id: currentPost.id,
-      userId: currentPost.userId,
-      username: currentPost.username,
-      userIconPath: currentPost.userIconPath,
-      userIconUrl: currentPost.userIconUrl,
-      title: currentPost.title,
-      content: currentPost.content,
-      contentPath: currentPost.contentPath,
-      type: currentPost.type,
-      mediaUrl: currentPost.mediaUrl,
-      thumbnailUrl: currentPost.thumbnailUrl,
-      likes: isCurrentlySpotlighted
-          ? currentPost.likes - 1
-          : currentPost.likes + 1,
-      playNum: currentPost.playNum,
-      link: currentPost.link,
-      comments: currentPost.comments,
-      shares: currentPost.shares,
+    // 投稿のスポットライト状態を更新（実際に表示されている投稿のIDを使用してインデックスを検索）
+    final postIndex = _posts.indexWhere((p) => p.id == post.id);
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _executeSpotlight: 投稿が見つかりません: postId=${post.id}');
+      }
+      return;
+    }
+
+    _posts[postIndex] = Post(
+      id: post.id,
+      userId: post.userId,
+      username: post.username,
+      userIconPath: post.userIconPath,
+      userIconUrl: post.userIconUrl,
+      title: post.title,
+      content: post.content,
+      contentPath: post.contentPath,
+      type: post.type,
+      mediaUrl: post.mediaUrl,
+      thumbnailUrl: post.thumbnailUrl,
+      likes: isCurrentlySpotlighted ? post.likes - 1 : post.likes + 1,
+      playNum: post.playNum,
+      link: post.link,
+      comments: post.comments,
+      shares: post.shares,
       isSpotlighted: !isCurrentlySpotlighted,
-      isText: currentPost.isText,
-      nextContentId: currentPost.nextContentId,
-      createdAt: currentPost.createdAt,
+      isText: post.isText,
+      nextContentId: post.nextContentId,
+      createdAt: post.createdAt,
     );
 
     if (!isCurrentlySpotlighted) {
@@ -4269,6 +4942,47 @@ class _HomeScreenState extends State<HomeScreen>
         // モーダルが閉じられた場合はスキップ
         return comments;
       }
+
+      // データの整合性を確認（post.idが有効であることを確認）
+      if (post.id.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ refreshComments: 投稿IDが空です');
+        }
+        return comments;
+      }
+
+      // 現在のインデックスと投稿データの整合性を確認
+      if (_currentIndex >= 0 && _currentIndex < _posts.length) {
+        final currentPost = _posts[_currentIndex];
+        if (currentPost.id != post.id) {
+          if (kDebugMode) {
+            debugPrint('⚠️ refreshComments: データの不一致を検出');
+            debugPrint('  - 期待されるpostId: ${post.id}');
+            debugPrint('  - 実際のpostId: ${currentPost.id}');
+            debugPrint('  - 期待されるusername: ${post.username}');
+            debugPrint('  - 実際のusername: ${currentPost.username}');
+          }
+          // 実際の投稿データを使用してコメントを取得
+          final fetchedComments =
+              await CommentService.getComments(currentPost.id);
+          if (!mounted || !isSheetOpen) {
+            return comments;
+          }
+          try {
+            setModalState(() {
+              if (isSheetOpen) {
+                comments = fetchedComments;
+                isLoading = false;
+              }
+            });
+          } catch (e) {
+            // モーダルが閉じられた場合はスキップ
+            return comments;
+          }
+          return fetchedComments;
+        }
+      }
+
       final fetchedComments = await CommentService.getComments(post.id);
       if (!mounted || !isSheetOpen) {
         return comments;
@@ -4649,8 +5363,16 @@ class _HomeScreenState extends State<HomeScreen>
                                     if (kDebugMode) {
                                       debugPrint(
                                           '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
-                                      debugPrint(
-                                          '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
+                                      // インデックスの範囲チェック
+                                      if (_currentIndex >= 0 &&
+                                          _currentIndex < _posts.length) {
+                                        debugPrint(
+                                            '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
+                                        debugPrint(
+                                            '💬 現在の投稿ID: ${_posts[_currentIndex].id}');
+                                        debugPrint(
+                                            '💬 現在の投稿username: ${_posts[_currentIndex].username}');
+                                      }
                                       debugPrint(
                                           '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
                                       if (wasReplying) {
@@ -4660,41 +5382,64 @@ class _HomeScreenState extends State<HomeScreen>
 
                                     // 投稿のコメント数を更新
                                     if (mounted && !_isDisposed) {
-                                      setState(() {
-                                        _posts[_currentIndex] = Post(
-                                          id: _posts[_currentIndex].id,
-                                          userId: _posts[_currentIndex].userId,
-                                          username:
-                                              _posts[_currentIndex].username,
-                                          userIconPath: _posts[_currentIndex]
-                                              .userIconPath,
-                                          userIconUrl:
-                                              _posts[_currentIndex].userIconUrl,
-                                          title: _posts[_currentIndex].title,
-                                          content:
-                                              _posts[_currentIndex].content,
-                                          contentPath:
-                                              _posts[_currentIndex].contentPath,
-                                          type: _posts[_currentIndex].type,
-                                          mediaUrl:
-                                              _posts[_currentIndex].mediaUrl,
-                                          thumbnailUrl: _posts[_currentIndex]
-                                              .thumbnailUrl,
-                                          likes: _posts[_currentIndex].likes,
-                                          playNum:
-                                              _posts[_currentIndex].playNum,
-                                          link: _posts[_currentIndex].link,
-                                          comments: updatedTotal,
-                                          shares: _posts[_currentIndex].shares,
-                                          isSpotlighted: _posts[_currentIndex]
-                                              .isSpotlighted,
-                                          isText: _posts[_currentIndex].isText,
-                                          nextContentId: _posts[_currentIndex]
-                                              .nextContentId,
-                                          createdAt:
-                                              _posts[_currentIndex].createdAt,
-                                        );
-                                      });
+                                      // インデックスの範囲チェックとデータの整合性確認
+                                      if (_currentIndex >= 0 &&
+                                          _currentIndex < _posts.length) {
+                                        final currentPost =
+                                            _posts[_currentIndex];
+
+                                        // データの整合性を確認（post.idと一致することを確認）
+                                        if (currentPost.id == post.id &&
+                                            currentPost.id.isNotEmpty) {
+                                          setState(() {
+                                            _posts[_currentIndex] = Post(
+                                              id: currentPost.id,
+                                              userId: currentPost.userId,
+                                              username: currentPost.username,
+                                              userIconPath:
+                                                  currentPost.userIconPath,
+                                              userIconUrl:
+                                                  currentPost.userIconUrl,
+                                              title: currentPost.title,
+                                              content: currentPost.content,
+                                              contentPath:
+                                                  currentPost.contentPath,
+                                              type: currentPost.type,
+                                              mediaUrl: currentPost.mediaUrl,
+                                              thumbnailUrl:
+                                                  currentPost.thumbnailUrl,
+                                              likes: currentPost.likes,
+                                              playNum: currentPost.playNum,
+                                              link: currentPost.link,
+                                              comments: updatedTotal,
+                                              shares: currentPost.shares,
+                                              isSpotlighted:
+                                                  currentPost.isSpotlighted,
+                                              isText: currentPost.isText,
+                                              nextContentId:
+                                                  currentPost.nextContentId,
+                                              createdAt: currentPost.createdAt,
+                                            );
+                                          });
+                                        } else {
+                                          if (kDebugMode) {
+                                            debugPrint('⚠️ コメント追加: データの不一致を検出');
+                                            debugPrint(
+                                                '  - 期待されるpostId: ${post.id}');
+                                            debugPrint(
+                                                '  - 実際のpostId: ${currentPost.id}');
+                                            debugPrint(
+                                                '  - 期待されるusername: ${post.username}');
+                                            debugPrint(
+                                                '  - 実際のusername: ${currentPost.username}');
+                                          }
+                                        }
+                                      } else {
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ コメント追加: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+                                        }
+                                      }
                                     }
                                   } else {
                                     try {
@@ -5368,30 +6113,53 @@ class _HomeScreenState extends State<HomeScreen>
                 onTap: () {
                   Navigator.pop(context);
                   _showSnackBar('リンクをコピーしました');
-                  setState(() {
-                    _posts[_currentIndex] = Post(
-                      id: _posts[_currentIndex].id,
-                      userId: _posts[_currentIndex].userId,
-                      username: _posts[_currentIndex].username,
-                      userIconPath: _posts[_currentIndex].userIconPath,
-                      userIconUrl: _posts[_currentIndex].userIconUrl,
-                      title: _posts[_currentIndex].title,
-                      content: _posts[_currentIndex].content,
-                      contentPath: _posts[_currentIndex].contentPath,
-                      type: _posts[_currentIndex].type,
-                      mediaUrl: _posts[_currentIndex].mediaUrl,
-                      thumbnailUrl: _posts[_currentIndex].thumbnailUrl,
-                      likes: _posts[_currentIndex].likes,
-                      playNum: _posts[_currentIndex].playNum,
-                      link: _posts[_currentIndex].link,
-                      comments: _posts[_currentIndex].comments,
-                      shares: _posts[_currentIndex].shares + 1,
-                      isSpotlighted: _posts[_currentIndex].isSpotlighted,
-                      isText: _posts[_currentIndex].isText,
-                      nextContentId: _posts[_currentIndex].nextContentId,
-                      createdAt: _posts[_currentIndex].createdAt,
-                    );
-                  });
+
+                  // インデックスの範囲チェックとデータの整合性確認
+                  if (_currentIndex >= 0 && _currentIndex < _posts.length) {
+                    final currentPost = _posts[_currentIndex];
+
+                    // データの整合性を確認（post.idと一致することを確認）
+                    if (currentPost.id == post.id &&
+                        currentPost.id.isNotEmpty) {
+                      setState(() {
+                        _posts[_currentIndex] = Post(
+                          id: currentPost.id,
+                          userId: currentPost.userId,
+                          username: currentPost.username,
+                          userIconPath: currentPost.userIconPath,
+                          userIconUrl: currentPost.userIconUrl,
+                          title: currentPost.title,
+                          content: currentPost.content,
+                          contentPath: currentPost.contentPath,
+                          type: currentPost.type,
+                          mediaUrl: currentPost.mediaUrl,
+                          thumbnailUrl: currentPost.thumbnailUrl,
+                          likes: currentPost.likes,
+                          playNum: currentPost.playNum,
+                          link: currentPost.link,
+                          comments: currentPost.comments,
+                          shares: currentPost.shares + 1,
+                          isSpotlighted: currentPost.isSpotlighted,
+                          isText: currentPost.isText,
+                          nextContentId: currentPost.nextContentId,
+                          createdAt: currentPost.createdAt,
+                        );
+                      });
+                    } else {
+                      if (kDebugMode) {
+                        debugPrint('⚠️ _handleShareButton: データの不一致を検出');
+                        debugPrint('  - 期待されるpostId: ${post.id}');
+                        debugPrint('  - 実際のpostId: ${currentPost.id}');
+                        debugPrint('  - 期待されるusername: ${post.username}');
+                        debugPrint('  - 実際のusername: ${currentPost.username}');
+                      }
+                    }
+                  } else {
+                    if (kDebugMode) {
+                      debugPrint(
+                          '⚠️ _handleShareButton: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+                    }
+                  }
                 },
               ),
               _buildShareOption(
@@ -5857,8 +6625,9 @@ class _HomeScreenState extends State<HomeScreen>
       // シークバー更新タイマーを開始
       _startSeekBarUpdateTimer();
 
-      // 動画コントローラーが初期化されていない場合は初期化
+      // 動画コントローラーが初期化されていない場合は優先的に初期化
       if (!_initializedVideos.contains(newIndex)) {
+        // 現在のページの動画を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeVideoController(newIndex).then((_) {
           if (!_isDisposed && mounted && _currentIndex == newIndex) {
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
@@ -5871,7 +6640,15 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 動画読み込み完了時に視聴履歴を記録
               _recordPlayHistory(newPost);
+
+              if (kDebugMode) {
+                debugPrint('✅ 動画初期化完了・再生開始: index=$newIndex');
+              }
             }
+          }
+        }).catchError((error) {
+          if (kDebugMode) {
+            debugPrint('❌ 動画初期化エラー: index=$newIndex, error: $error');
           }
         });
       } else {
@@ -5885,6 +6662,10 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 既に初期化済みの場合も視聴履歴を記録（動画が読み込まれている）
           _recordPlayHistory(newPost);
+
+          if (kDebugMode) {
+            debugPrint('✅ 動画即座に再生（既に初期化済み）: index=$newIndex');
+          }
         }
       }
     } else if (newPost.postType == PostType.audio) {
@@ -5899,8 +6680,9 @@ class _HomeScreenState extends State<HomeScreen>
 
       _currentPlayingAudio = newIndex;
 
-      // 音声プレイヤーが初期化されていない場合は初期化
+      // 音声プレイヤーが初期化されていない場合は優先的に初期化
       if (!_initializedAudios.contains(newIndex)) {
+        // 現在のページの音声を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeAudioPlayer(newIndex).then((_) {
           if (!_isDisposed && mounted && _currentIndex == newIndex) {
             // 初期化完了後に自動再生（ページが変わっていない場合のみ）
@@ -5915,7 +6697,15 @@ class _HomeScreenState extends State<HomeScreen>
 
               // 音声読み込み完了時に視聴履歴を記録
               _recordPlayHistory(newPost);
+
+              if (kDebugMode) {
+                debugPrint('✅ 音声初期化完了・再生開始: index=$newIndex');
+              }
             }
+          }
+        }).catchError((error) {
+          if (kDebugMode) {
+            debugPrint('❌ 音声初期化エラー: index=$newIndex, error: $error');
           }
         });
       } else {
@@ -5931,29 +6721,36 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 既に初期化済みの場合も視聴履歴を記録（音声が読み込まれている）
           _recordPlayHistory(newPost);
+
+          if (kDebugMode) {
+            debugPrint('✅ 音声即座に再生（既に初期化済み）: index=$newIndex');
+          }
         }
       }
     } else if (newPost.postType == PostType.image) {
       // 画像の場合は表示時に視聴履歴を記録（画像は即座に表示される）
       _recordPlayHistory(newPost);
 
-      // 次の画像を事前読み込み
-      _preloadImagesAround(newIndex);
+      // 次のメディア（画像・動画・音声）を事前読み込み
+      _preloadMediaAround(newIndex);
     }
     // 動画と音声の場合は、読み込み完了時に視聴履歴を記録（上記の初期化処理内で実行）
   }
 
-  /// 画像のプリロード（現在のページの前後2件ずつ）
-  void _preloadImagesAround(int currentIndex) {
+  /// メディア（画像・動画・音声）のプリロード（現在のページの前後3件ずつ）
+  void _preloadMediaAround(int currentIndex) {
     if (_posts.isEmpty || !mounted) return;
 
-    // 前後2件ずつプリロード（優先度: 次の画像 > 前の画像）
-    final preloadIndices = [1, 2, -1, -2]; // 次の画像を優先的にプリロード
+    // 前後3件ずつプリロード（優先度: 次のメディア > 前のメディア）
+    // 次のメディアを優先的にプリロード（1, 2, 3, -1, -2, -3）
+    final preloadIndices = [1, 2, 3, -1, -2, -3];
 
     for (final offset in preloadIndices) {
       final targetIndex = currentIndex + offset;
       if (targetIndex >= 0 && targetIndex < _posts.length) {
         final post = _posts[targetIndex];
+
+        // 画像のプリロード
         if (post.postType == PostType.image) {
           final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
           if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -5981,6 +6778,78 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint('⚠️ 画像プリロードエラー: $imageUrl, error: $error');
               }
             });
+          }
+        }
+        // 動画のプリロード（初期化のみ、再生はしない）
+        else if (post.postType == PostType.video) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            // まだ初期化されていない場合のみプリロード
+            if (!_initializedVideos.contains(targetIndex)) {
+              _initializeVideoController(targetIndex).catchError((error) {
+                // エラーは無視（プリロードなので失敗しても問題ない）
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 動画プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+        // 音声のプリロード（初期化のみ、再生はしない）
+        else if (post.postType == PostType.audio) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            // まだ初期化されていない場合のみプリロード
+            if (!_initializedAudios.contains(targetIndex)) {
+              _initializeAudioPlayer(targetIndex).catchError((error) {
+                // エラーは無視（プリロードなので失敗しても問題ない）
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 音声プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// 次のページのメディアを事前に初期化（読み込みを高速化）
+  void _preloadNextPageMedia(int currentIndex) {
+    if (_posts.isEmpty || !mounted) return;
+
+    // 次の1-2ページのメディアを事前に初期化（優先度: +1 > +2）
+    final preloadIndices = [1, 2];
+
+    for (final offset in preloadIndices) {
+      final targetIndex = currentIndex + offset;
+      if (targetIndex >= 0 && targetIndex < _posts.length) {
+        final post = _posts[targetIndex];
+
+        // 動画の事前初期化
+        if (post.postType == PostType.video) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            if (!_initializedVideos.contains(targetIndex)) {
+              _initializeVideoController(targetIndex).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 次のページ動画プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
+          }
+        }
+        // 音声の事前初期化
+        else if (post.postType == PostType.audio) {
+          if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+            if (!_initializedAudios.contains(targetIndex)) {
+              _initializeAudioPlayer(targetIndex).catchError((error) {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 次のページ音声プリロードエラー: index=$targetIndex, error: $error');
+                }
+              });
+            }
           }
         }
       }

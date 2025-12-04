@@ -77,22 +77,23 @@ class HelpScreen extends StatelessWidget {
           _buildHelpCard(
             icon: Icons.flashlight_on,
             title: 'スポットライトとは？',
-            description: 'お気に入りの投稿に光を当てて、特別なコレクションを作成できます。スポットライトした投稿は、プロフィール画面から簡単にアクセスできます。',
+            description:
+                'お気に入りの投稿に光を当てて、ユーザーに賞賛を送れます。スポットライトした投稿は、プロフィール画面から簡単にアクセスできます。',
           ),
           _buildHelpCard(
             icon: Icons.search,
             title: '検索機能の使い方',
-            description: '投稿、ユーザー、タグから検索できます。検索履歴は自動的に保存され、よく使う検索にすばやくアクセスできます。',
+            description: 'タイトル、タグから検索できます。検索履歴は自動的に保存され、よく使う検索にすばやくアクセスできます。',
           ),
           _buildHelpCard(
             icon: Icons.add_circle,
             title: '投稿の作成',
-            description: 'テキスト、画像、動画を投稿できます。中央の「+」ボタンをタップして、新しい投稿を作成しましょう。',
+            description: '画像、動画、音声を投稿できます。中央の「+」ボタンをタップして、新しい投稿を作成しましょう。',
           ),
           _buildHelpCard(
             icon: Icons.notifications,
             title: '通知について',
-            description: 'フォロワーからのアクション、コメント、いいねなどの通知を受け取れます。通知設定は設定画面から変更できます。',
+            description: '他のユーザーからのスポットライト、コメントの通知を受け取れます。通知設定は端末設定画面から変更できます。',
           ),
 
           const SizedBox(height: 24),
@@ -102,14 +103,10 @@ class HelpScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildHelpCard(
             icon: Icons.person,
-            title: 'プロフィールの編集',
-            description: 'プロフィール画面の設定ボタンから、名前、アイコン、自己紹介などを編集できます。',
+            title: 'アイコンの編集',
+            description: 'マイページのアイコンをタップすると好きな画像をアイコンに設定できます。また画像の削除もできます。',
           ),
-          _buildHelpCard(
-            icon: Icons.lock,
-            title: 'プライバシー設定',
-            description: 'アカウントの公開範囲や、誰があなたの投稿を見られるかを設定できます。',
-          ),
+
           _buildHelpCard(
             icon: Icons.logout,
             title: 'ログアウト方法',
@@ -123,19 +120,17 @@ class HelpScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildFAQCard(
             question: '投稿を削除するには？',
-            answer: '投稿の右上のメニューアイコンをタップし、「削除」を選択してください。削除した投稿は復元できません。',
+            answer:
+                'プロフィール画面の自分の投稿一覧から該当する動画のメニューアイコンをタップし、「投稿を削除」を選択してください。削除した投稿は復元できません。',
           ),
           _buildFAQCard(
             question: 'バッジの獲得方法は？',
-            answer: 'アプリの利用、投稿数、いいね数などの実績によって自動的にバッジが付与されます。',
+            answer: '自分の投稿に対して他のユーザーがスポットライトを当てると新しい上位バッジが獲得できます。',
           ),
           _buildFAQCard(
             question: '再生リストの作成方法は？',
-            answer: '投稿を長押しして「再生リストに追加」を選択し、新しい再生リストを作成するか、既存のリストに追加できます。',
-          ),
-          _buildFAQCard(
-            question: 'フォロワーを増やすには？',
-            answer: '定期的に投稿し、他のユーザーと交流することで、自然とフォロワーが増えていきます。人気のタグを使うのも効果的です。',
+            answer:
+                '再生リストに追加したい投稿の画面左下にある再生リストアイコンを押して、新しい再生リストを作成するか、既存のリストに追加できます。',
           ),
 
           const SizedBox(height: 24),
@@ -177,7 +172,7 @@ class HelpScreen extends StatelessWidget {
                 _buildContactItem(
                   icon: Icons.email_outlined,
                   label: 'メール',
-                  value: 'support@spotlight.app',
+                  value: 'support@spotlight-app.click',
                 ),
                 const SizedBox(height: 12),
                 _buildContactItem(
@@ -353,5 +348,3 @@ class HelpScreen extends StatelessWidget {
     );
   }
 }
-
-

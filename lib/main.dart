@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'providers/navigation_provider.dart';
@@ -17,6 +18,21 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // ステータスバーを表示（全画面で有効）
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.edgeToEdge,
+    overlays: [SystemUiOverlay.top],
+  );
+  
+  // ステータスバーのスタイルを設定（ライトテーマ用）
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+    ),
+  );
   
   try {
     // Firebase初期化（FCMトークン初期化も含む）
@@ -43,24 +59,36 @@ class SpotLightApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => NavigationProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
       ],
-      child: MaterialApp(
-        title: 'SpotLight',
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          primarySwatch: Colors.orange,
-          primaryColor: const Color(0xFFFF6B35),
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFFF6B35),
-            brightness: Brightness.dark,
-          ),
-          scaffoldBackgroundColor: const Color(0xFF121212),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFF1E1E1E),
-            foregroundColor: Colors.white,
-            elevation: 0,
-          ),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
         ),
-        home: const SplashScreen(), // スプラッシュスクリーンを最初に表示
+        child: MaterialApp(
+          title: 'SpotLight',
+          theme: ThemeData(
+            brightness: Brightness.dark,
+            primarySwatch: Colors.orange,
+            primaryColor: const Color(0xFFFF6B35),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFFFF6B35),
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF121212),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF1E1E1E),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              systemOverlayStyle: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.light,
+                statusBarBrightness: Brightness.dark,
+              ),
+            ),
+          ),
+          home: const SplashScreen(), // スプラッシュスクリーンを最初に表示
+        ),
       ),
     );
   }

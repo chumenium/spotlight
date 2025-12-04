@@ -185,6 +185,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  /// プロフィールデータをリフレッシュ（プルリフレッシュ用）
+  Future<void> _refreshProfileData() async {
+    if (kDebugMode) {
+      debugPrint('🔄 プロフィールデータをリフレッシュ中...');
+    }
+
+    // すべてのデータを並列で取得
+    await Future.wait([
+      _fetchSpotlightCount(),
+      _fetchMyPosts(),
+      _fetchHistory(),
+      _fetchPlaylists(),
+    ]);
+
+    if (kDebugMode) {
+      debugPrint('✅ プロフィールデータのリフレッシュ完了');
+    }
+  }
+
   /// 視聴履歴を取得（最前の5件まで）
   Future<void> _fetchHistory() async {
     setState(() {
@@ -459,45 +478,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // プロフィールヘッダー
-              _buildProfileHeader(),
+        child: RefreshIndicator(
+          onRefresh: _refreshProfileData,
+          color: const Color(0xFFFF6B35),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // プロフィールヘッダー
+                _buildProfileHeader(),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // スポットライトセクション
-              _buildSpotlightSection(context),
+                // スポットライトセクション
+                _buildSpotlightSection(context),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // 履歴セクション
-              _buildHistorySection(context),
+                // 履歴セクション
+                _buildHistorySection(context),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // 再生リストセクション
-              _buildPlaylistSection(context),
+                // 再生リストセクション
+                _buildPlaylistSection(context),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // バッジセクション
-              _buildBadgeSection(),
+                // バッジセクション
+                _buildBadgeSection(),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // 統計・ヘルプセクション
-              _buildStatsAndHelpSection(context),
+                // 統計・ヘルプセクション
+                _buildStatsAndHelpSection(context),
 
-              const SizedBox(height: 40), // プライバシーポリシーから隙間を開ける
+                const SizedBox(height: 40), // プライバシーポリシーから隙間を開ける
 
-              // ログアウトボタン
-              _buildLogoutButton(context),
+                // ログアウトボタン
+                _buildLogoutButton(context),
 
-              const SizedBox(height: 100), // ボトムナビゲーション分の余白
-            ],
+                const SizedBox(height: 100), // ボトムナビゲーション分の余白
+              ],
+            ),
           ),
         ),
       ),
