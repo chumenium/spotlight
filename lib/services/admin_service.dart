@@ -223,13 +223,29 @@ class AdminService {
   ///
   /// パラメータ:
   /// - offset: 取得開始位置（デフォルト: 0）
-  /// - status: フィルタリング（"pending", "resolved", "all"）
   ///
   /// 戻り値:
   /// - List<Map<String, dynamic>>?: 通報データのリスト、失敗時はnull
+  ///
+  /// 注意: バックエンドAPIは`offset`パラメータのみを受け取ります。
+  /// バックエンドのレスポンスには以下のフィールドが含まれます:
+  /// - reportID: 通報のID
+  /// - reporttype: 通報の種類("user","content","comment")
+  /// - reportuidID: 通報したユーザーのID
+  /// - username: 通報したユーザーの名前
+  /// - targetuidID: 通報されたユーザーのID
+  /// - targetusername: 通報されたユーザーの名前
+  /// - contentID: 通報されたコンテンツのID
+  /// - comCTID: 通報されたコメントのコンテンツID
+  /// - comCMID: 通報されたコメントのコメントID
+  /// - commenttext: コメントテキスト
+  /// - title: 通報されたコンテンツのタイトル
+  /// - processflag: 通報の処理状態(False: 未処理, True: 処理済み)
+  /// - reason: 通報の理由
+  /// - detail: 通報の詳細（nullの可能性あり）
+  /// - reporttimestamp: 通報の時間
   static Future<List<Map<String, dynamic>>?> getReports({
     int offset = 0,
-    String status = 'all',
   }) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
@@ -245,7 +261,7 @@ class AdminService {
 
       if (kDebugMode) {
         debugPrint('📋 管理者API: 通報取得URL: $url');
-        debugPrint('📋 管理者API: offset: $offset, status: $status');
+        debugPrint('📋 管理者API: offset: $offset');
       }
 
       final response = await http.post(
@@ -256,7 +272,6 @@ class AdminService {
         },
         body: jsonEncode({
           'offset': offset,
-          'status': status,
         }),
       );
 
@@ -272,23 +287,53 @@ class AdminService {
           debugPrint('📋 管理者API: レスポンスデータ: ${responseData.toString()}');
         }
 
-        if (responseData['status'] == 'success' &&
-            responseData['reports'] != null) {
-          final List<dynamic> reports = responseData['reports'];
-          if (kDebugMode) {
-            debugPrint('✅ 管理者API: ${reports.length}件の通報データを取得');
+        if (responseData['status'] == 'success') {
+          // reportsがnullの場合は空のリストとして扱う
+          final reports = responseData['reports'];
+          if (reports != null && reports is List) {
+            final List<dynamic> reportsList = reports;
+            if (kDebugMode) {
+              debugPrint('✅ 管理者API: ${reportsList.length}件の通報データを取得');
+              // 最初の通報データのフィールドを確認
+              if (reportsList.isNotEmpty) {
+                final firstReport = reportsList[0] as Map<String, dynamic>;
+                debugPrint('📋 通報データのフィールド: ${firstReport.keys.toList()}');
+                debugPrint('📋 通報データの内容: $firstReport');
+                debugPrint('📋 reasonフィールド: ${firstReport['reason']} (type: ${firstReport['reason']?.runtimeType})');
+                debugPrint('📋 detailフィールド: ${firstReport['detail']} (type: ${firstReport['detail']?.runtimeType})');
+              }
+            }
+            return reportsList
+                .map((report) => report as Map<String, dynamic>)
+                .toList();
+          } else {
+            // reportsがnullまたはリストでない場合は空のリストを返す
+            if (kDebugMode) {
+              debugPrint('⚠️ 管理者API: reportsがnullまたはリストではありません');
+              debugPrint('  reportsの型: ${reports.runtimeType}');
+              debugPrint('  空のリストを返します');
+            }
+            return [];
           }
-          return reports
-              .map((report) => report as Map<String, dynamic>)
-              .toList();
         } else {
           if (kDebugMode) {
             debugPrint('❌ 管理者API: レスポンス形式が不正');
             debugPrint('  status: ${responseData['status']}');
             debugPrint('  message: ${responseData['message'] ?? 'なし'}');
             debugPrint('  reports存在: ${responseData['reports'] != null}');
+            debugPrint('  空のリストを返します');
           }
+          // エラーでも空のリストを返す（nullではなく）
+          return [];
         }
+      } else if (response.statusCode == 400) {
+        // 管理者以外からのアクセスなど
+        final responseData = jsonDecode(response.body);
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: アクセス拒否 (400)');
+          debugPrint('  message: ${responseData['message'] ?? '管理者以外からのアクセス'}');
+        }
+        return null;
       } else if (response.statusCode == 404) {
         if (kDebugMode) {
           debugPrint('❌ 管理者API: エンドポイントが見つかりません (404)');
@@ -315,13 +360,11 @@ class AdminService {
   ///
   /// パラメータ:
   /// - reportID: 処理する通報のID
-  /// - action: 処理アクション（"resolve", "reject"など）
   ///
   /// 戻り値:
   /// - bool: 成功時true、失敗時false
-  static Future<bool> resolveReport({
+  static Future<bool> processReport({
     required String reportID,
-    String action = 'resolve',
   }) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
@@ -333,11 +376,11 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/resolvereport';
+      final url = '${AppConfig.apiBaseUrl}/admin/processreport';
 
       if (kDebugMode) {
-        debugPrint('📋 管理者API: 通報処理URL: $url');
-        debugPrint('📋 管理者API: reportID: $reportID, action: $action');
+        debugPrint('📋 管理者API: 通報処理済みURL: $url');
+        debugPrint('📋 管理者API: reportID: $reportID');
       }
 
       final response = await http.post(
@@ -348,7 +391,6 @@ class AdminService {
         },
         body: jsonEncode({
           'reportID': reportID,
-          'action': action,
         }),
       );
 
@@ -361,7 +403,77 @@ class AdminService {
         final responseData = jsonDecode(response.body);
         if (responseData['status'] == 'success') {
           if (kDebugMode) {
-            debugPrint('✅ 管理者API: 通報を処理しました');
+            debugPrint('✅ 管理者API: 通報を処理済みにしました');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: ${responseData['message'] ?? 'エラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return false;
+  }
+
+  /// 通報を未処理に戻す
+  ///
+  /// パラメータ:
+  /// - reportID: 未処理に戻す通報のID
+  ///
+  /// 戻り値:
+  /// - bool: 成功時true、失敗時false
+  static Future<bool> unprocessReport({
+    required String reportID,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/admin/unprocessreport';
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: 通報未処理URL: $url');
+        debugPrint('📋 管理者API: reportID: $reportID');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'reportID': reportID,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('📋 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: 通報を未処理に戻しました');
           }
           return true;
         } else {
