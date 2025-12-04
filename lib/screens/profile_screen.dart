@@ -426,13 +426,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF121212),
+        elevation: 0,
+        toolbarHeight: 60,
+        leadingWidth: 160,
+        leading: SizedBox(
+          height: 45,
+          width: 160,
+          child: Image.asset(
+            'assets/images/logo.png',
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              // ロゴ画像が見つからない場合は何も表示しない
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 上部の余白を追加（端末によって見切れるのを防ぐ）
-              const SizedBox(height: 30),
               // プロフィールヘッダー
               _buildProfileHeader(),
 
