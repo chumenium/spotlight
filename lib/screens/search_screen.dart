@@ -191,6 +191,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Image.asset(
                 'assets/images/logo.png',
                 fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
                 errorBuilder: (context, error, stackTrace) {
                   // ロゴ画像が見つからない場合は何も表示しない
                   return const SizedBox.shrink();
