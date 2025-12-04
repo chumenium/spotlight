@@ -60,6 +60,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Map<String, double> _imageAspectRatios = {};
   // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
   final Map<int, String?> _playlistFirstContentThumbnails = {};
+  // バッジポップアップのオーバーレイ
+  OverlayEntry? _badgeOverlayEntry;
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -175,6 +177,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // 初期化時に前回のspotlight数を設定（初回は0）
     _previousSpotlightCount = 0;
+  }
+
+  @override
+  void dispose() {
+    _hideBadgeOverlay();
+    super.dispose();
   }
 
   /// 視聴履歴を取得（最前の5件まで）
@@ -477,7 +485,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // 統計・ヘルプセクション
               _buildStatsAndHelpSection(context),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 40), // プライバシーポリシーから隙間を開ける
 
               // ログアウトボタン
               _buildLogoutButton(context),
@@ -1723,8 +1731,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   return GestureDetector(
                     // 獲得済みのバッジのみタップ可能
-                    onTap: isUnlocked
-                        ? () => _showBadgeDialog(context, badge)
+                    onTapDown: isUnlocked
+                        ? (_) => _showBadgeOverlay(context, badge)
+                        : null,
+                    onTapUp: isUnlocked
+                        ? (_) => _hideBadgeOverlay()
+                        : null,
+                    onTapCancel: isUnlocked
+                        ? () => _hideBadgeOverlay()
                         : null,
                     child: Container(
                       width: 80,
@@ -1798,116 +1812,132 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// バッジの詳細ダイアログを表示（獲得済みのバッジのみ）
-  void _showBadgeDialog(BuildContext context, Badge badge) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // バッジのイラスト（大きなアイコン）
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: SpotLightColors.getGradient(badge.id),
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+  /// バッジの詳細オーバーレイを表示（タップ中のみ）
+  void _showBadgeOverlay(BuildContext context, Badge badge) {
+    // 既存のオーバーレイがあれば削除
+    _hideBadgeOverlay();
+
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.of(context).size;
+    
+    // ポップアップのサイズを計算
+    const popupWidth = 280.0;
+    const popupHeight = 400.0;
+    
+    // ポップアップの位置を計算（画面中央に配置）
+    final left = (screenSize.width - popupWidth) / 2;
+    final top = (screenSize.height - popupHeight) / 2;
+
+    _badgeOverlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: left,
+        top: top,
+        child: Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: () {}, // タップイベントを消費して閉じないようにする
+            child: Container(
+              width: popupWidth,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
                   ),
-                  borderRadius: BorderRadius.circular(60),
-                  boxShadow: [
-                    BoxShadow(
-                      color: badge.badgeColor.withOpacity(0.5),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  badge.icon,
-                  color: Colors.white,
-                  size: 60,
-                ),
+                ],
               ),
-              const SizedBox(height: 24),
-              // バッジ名
-              Text(
-                badge.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 獲得条件（管理者バッジの場合は特別な表示）
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      '獲得条件',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // バッジのイラスト（大きなアイコン）
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: SpotLightColors.getGradient(badge.id),
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      borderRadius: BorderRadius.circular(60),
+                      boxShadow: [
+                        BoxShadow(
+                          color: badge.badgeColor.withOpacity(0.5),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      badge.id == 999
-                          ? '管理者権限を持つユーザー'
-                          : '${badge.requiredSpotlights}個のスポットライトを獲得',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
+                    child: Icon(
+                      badge.icon,
+                      color: Colors.white,
+                      size: 60,
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // 閉じるボタン
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: badge.badgeColor,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
+                  ),
+                  const SizedBox(height: 24),
+                  // バッジ名
+                  Text(
+                    badge.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 獲得条件（管理者バッジの場合は特別な表示）
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
                       borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-                  child: const Text(
-                    '閉じる',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    child: Column(
+                      children: [
+                        const Text(
+                          '獲得条件',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          badge.id == 999
+                              ? '管理者権限を持つユーザー'
+                              : '${badge.requiredSpotlights}個のスポットライトを獲得',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
+
+    overlay.insert(_badgeOverlayEntry!);
+  }
+
+  /// バッジの詳細オーバーレイを非表示にする
+  void _hideBadgeOverlay() {
+    if (_badgeOverlayEntry != null) {
+      _badgeOverlayEntry!.remove();
+      _badgeOverlayEntry = null;
+    }
   }
 
   Widget _buildStatsAndHelpSection(BuildContext context) {
@@ -2050,134 +2080,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final isGuest = authProvider.currentUser?.id == 'guest';
 
           return Container(
-            width: double.infinity,
-            height: 56,
-            decoration: BoxDecoration(
-              // より洗練されたグラデーション
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.red.shade500,
-                  Colors.red.shade700,
-                  Colors.red.shade800,
-                ],
-                stops: const [0.0, 0.5, 1.0],
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(
+                isGuest ? Icons.exit_to_app : Icons.logout_rounded,
+                color: Colors.grey[400],
+                size: 24,
               ),
-              borderRadius: BorderRadius.circular(16),
-              // より洗練された影の効果
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.red.withOpacity(0.4),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                  spreadRadius: 0,
+              title: Text(
+                isGuest ? 'ログイン画面へ戻る' : 'ログアウト',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
                 ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                  spreadRadius: -2,
-                ),
-              ],
-              // ボーダーを追加（より洗練された見た目）
-              border: Border.all(
-                color: Colors.red.shade300.withOpacity(0.3),
-                width: 1,
               ),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () async {
-                  // 確認ダイアログを表示
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      backgroundColor: const Color(0xFF2A2A2A),
-                      title: const Text(
-                        'ログアウト',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      content: Text(
-                        isGuest ? 'ログイン画面に戻りますか？' : 'ログアウトしてログイン画面に戻りますか？',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text(
-                            'キャンセル',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: Text(
-                            isGuest ? '戻る' : 'ログアウト',
-                            style: TextStyle(color: Colors.red.shade400),
-                          ),
-                        ),
-                      ],
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Colors.grey,
+                size: 20,
+              ),
+              onTap: () async {
+                // 確認ダイアログを表示
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: const Color(0xFF2A2A2A),
+                    title: const Text(
+                      'ログアウト',
+                      style: TextStyle(color: Colors.white),
                     ),
-                  );
-
-                  // ユーザーが確認した場合
-                  if (confirmed == true && context.mounted) {
-                    // ログアウト処理（ゲストモードもログイン中も同じ処理）
-                    await authProvider.logout();
-
-                    if (kDebugMode) {
-                      debugPrint('✅ ログアウト完了: ログイン画面へ遷移');
-                    }
-
-                    // ログイン画面に遷移
-                    if (context.mounted) {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const SocialLoginScreen(),
-                        ),
-                        (route) => false, // すべての前のルートを削除
-                      );
-                    }
-                  }
-                },
-                borderRadius: BorderRadius.circular(16),
-                // リップル効果をカスタマイズ
-                splashColor: Colors.white.withOpacity(0.2),
-                highlightColor: Colors.white.withOpacity(0.1),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // より大きく、洗練されたアイコン
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isGuest ? Icons.exit_to_app : Icons.logout_rounded,
-                          color: Colors.white,
-                          size: 22,
+                    content: Text(
+                      isGuest ? 'ログイン画面に戻りますか？' : 'ログアウトしてログイン画面に戻りますか？',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text(
+                          'キャンセル',
+                          style: TextStyle(color: Colors.grey),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        isGuest ? 'ログイン画面へ戻る' : 'ログアウト',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: Text(
+                          isGuest ? '戻る' : 'ログアウト',
+                          style: const TextStyle(color: Colors.grey),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
+                );
+
+                // ユーザーが確認した場合
+                if (confirmed == true && context.mounted) {
+                  // ログアウト処理（ゲストモードもログイン中も同じ処理）
+                  await authProvider.logout();
+
+                  if (kDebugMode) {
+                    debugPrint('✅ ログアウト完了: ログイン画面へ遷移');
+                  }
+
+                  // ログイン画面に遷移
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const SocialLoginScreen(),
+                      ),
+                      (route) => false, // すべての前のルートを削除
+                    );
+                  }
+                }
+              },
+              contentPadding: EdgeInsets.zero,
             ),
           );
         },
