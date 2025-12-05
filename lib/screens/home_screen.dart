@@ -3697,15 +3697,16 @@ class _HomeScreenState extends State<HomeScreen>
           Positioned.fill(
             child: GestureDetector(
               onTap: () {
-                // 動画コンテンツの場合、音声プレイヤーが残っていれば停止・破棄
+                // 動画コンテンツの場合、すべての音声プレイヤーを確実に停止・破棄
+                // これにより、動画の音声と音声プレイヤーの音声が重複することを防ぐ
                 if (post.postType == PostType.video) {
-                  if (_audioPlayers.containsKey(postIndex) ||
-                      _initializedAudios.contains(postIndex)) {
-                    final audioPlayer = _audioPlayers[postIndex];
+                  final audioPlayerIndices = _audioPlayers.keys.toList();
+                  for (final audioIndex in audioPlayerIndices) {
+                    final audioPlayer = _audioPlayers[audioIndex];
                     if (audioPlayer != null) {
                       if (kDebugMode) {
                         debugPrint(
-                            '🛑 動画コンテンツタップ時、音声プレイヤーを停止・破棄: index=$postIndex');
+                            '🛑 動画コンテンツタップ時、音声プレイヤーを停止・破棄: index=$audioIndex');
                       }
                       try {
                         audioPlayer.pause();
@@ -3715,13 +3716,14 @@ class _HomeScreenState extends State<HomeScreen>
                           debugPrint('⚠️ 音声プレイヤー破棄エラー: $e');
                         }
                       }
-                      _audioPlayers.remove(postIndex);
-                      _initializedAudios.remove(postIndex);
+                      _audioPlayers.remove(audioIndex);
+                      _initializedAudios.remove(audioIndex);
                     }
-                    if (_currentPlayingAudio == postIndex) {
-                      _currentPlayingAudio = null;
-                      _seekBarUpdateTimerAudio?.cancel();
-                    }
+                  }
+                  // すべての音声プレイヤーを停止したので、_currentPlayingAudioをクリア
+                  if (_currentPlayingAudio != null) {
+                    _currentPlayingAudio = null;
+                    _seekBarUpdateTimerAudio?.cancel();
                   }
                 }
 
@@ -3756,7 +3758,8 @@ class _HomeScreenState extends State<HomeScreen>
                 final screenHeight = MediaQuery.of(context).size.height;
                 final touchY = details.globalPosition.dy;
                 if (touchY >= screenHeight / 2 &&
-                    controller != null && controller.value.isInitialized) {
+                    controller != null &&
+                    controller.value.isInitialized) {
                   if (!_isSeeking) {
                     _startSeeking(controller);
                   }
@@ -4957,7 +4960,7 @@ class _HomeScreenState extends State<HomeScreen>
     final screenHeight = MediaQuery.of(context).size.height;
     final touchY = details.globalPosition.dy;
     _lastPanY = touchY; // 最後のY座標を保存
-    
+
     // 上半分（画面の高さの半分より上）でのみ処理
     if (touchY < screenHeight / 2 && details.delta.dx > 0) {
       setState(() {
@@ -4972,7 +4975,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_lastPanY != null) {
       final screenHeight = MediaQuery.of(context).size.height;
       final isUpperHalf = _lastPanY! < screenHeight / 2;
-      
+
       if (isUpperHalf) {
         // スワイプが十分な場合は即座にスポットライト実行
         if (_swipeOffset > 80) {
@@ -6891,16 +6894,15 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       }
 
-      // 動画コンテンツの場合、音声プレイヤーを確実に停止・破棄
+      // 動画コンテンツの場合、すべての音声プレイヤーを確実に停止・破棄
       // これにより、動画の音声と音声プレイヤーの音声が重複することを防ぐ
-      // _currentPlayingAudioだけでなく、_audioPlayersにも残っている可能性があるため、両方をチェック
-      // さらに、非同期処理で音声プレイヤーが初期化される可能性があるため、確実に停止・破棄する
-      if (_audioPlayers.containsKey(newIndex) ||
-          _initializedAudios.contains(newIndex)) {
-        final audioPlayer = _audioPlayers[newIndex];
+      // 現在のインデックスのみではなく、すべての音声プレイヤーをチェックして停止
+      final audioPlayerIndices = _audioPlayers.keys.toList();
+      for (final audioIndex in audioPlayerIndices) {
+        final audioPlayer = _audioPlayers[audioIndex];
         if (audioPlayer != null) {
           if (kDebugMode) {
-            debugPrint('🛑 動画コンテンツのため、音声プレイヤーを停止・破棄: index=$newIndex');
+            debugPrint('🛑 動画コンテンツのため、音声プレイヤーを停止・破棄: index=$audioIndex');
           }
           try {
             // 確実に停止
@@ -6913,35 +6915,14 @@ class _HomeScreenState extends State<HomeScreen>
               debugPrint('⚠️ 音声プレイヤー破棄エラー: $e');
             }
           }
-          _audioPlayers.remove(newIndex);
-          _initializedAudios.remove(newIndex);
-        }
-        if (_currentPlayingAudio == newIndex) {
-          _currentPlayingAudio = null;
-          _seekBarUpdateTimerAudio?.cancel();
+          _audioPlayers.remove(audioIndex);
+          _initializedAudios.remove(audioIndex);
         }
       }
-
-      // 動画コンテンツの場合、音声プレイヤーが初期化されないようにする
-      // プリロード処理などで誤って初期化される可能性があるため、確実にクリアする
-      if (_initializedAudios.contains(newIndex)) {
-        _initializedAudios.remove(newIndex);
-      }
-      if (_audioPlayers.containsKey(newIndex)) {
-        final audioPlayer = _audioPlayers[newIndex];
-        if (audioPlayer != null) {
-          try {
-            audioPlayer.pause();
-            // 少し待ってから破棄（確実に停止するため）
-            await Future.delayed(const Duration(milliseconds: 50));
-            audioPlayer.dispose();
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ 音声プレイヤー追加破棄エラー: $e');
-            }
-          }
-        }
-        _audioPlayers.remove(newIndex);
+      // すべての音声プレイヤーを停止したので、_currentPlayingAudioをクリア
+      if (_currentPlayingAudio != null) {
+        _currentPlayingAudio = null;
+        _seekBarUpdateTimerAudio?.cancel();
       }
 
       _currentPlayingVideo = newIndex;
@@ -6960,6 +6941,7 @@ class _HomeScreenState extends State<HomeScreen>
 
           try {
             existingController.removeListener(_onVideoPositionChanged);
+            existingController.pause();
             existingController.dispose();
           } catch (e) {
             if (kDebugMode) {
@@ -6974,6 +6956,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       // 動画コントローラーを初期化（毎回新しく初期化）
+      // 既に初期化済みの場合でも、確実に再初期化するため、常に初期化を実行
       if (!_initializedVideos.contains(newIndex)) {
         // 現在のページの動画を優先的に初期化（awaitで待機して即座に表示できるようにする）
         _initializeVideoController(newIndex).then((_) {
@@ -7784,7 +7767,7 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         parent: _controller,
         curve: Curves.linear,
       ));
-      
+
       if (!_needsScroll) {
         setState(() {
           _needsScroll = true;
