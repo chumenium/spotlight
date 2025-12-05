@@ -968,6 +968,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isSpotlighting = false;
   AnimationController? _ambientAnimationController;
   Animation<double>? _ambientOpacityAnimation;
+  double? _lastPanY; // 最後のパンジェスチャーのY座標（上半分/下半分判定用）
 
   // 動画プレイヤー関連
   final Map<int, VideoPlayerController?> _videoControllers = {};
@@ -3740,14 +3741,22 @@ class _HomeScreenState extends State<HomeScreen>
                 }
               },
               onHorizontalDragStart: (details) {
-                if (controller != null &&
+                // 下半分でのみシークを開始
+                final screenHeight = MediaQuery.of(context).size.height;
+                final touchY = details.globalPosition.dy;
+                if (touchY >= screenHeight / 2 &&
+                    controller != null &&
                     controller.value.isInitialized &&
                     postIndex == _currentIndex) {
                   _startSeeking(controller);
                 }
               },
               onHorizontalDragUpdate: (details) {
-                if (controller != null && controller.value.isInitialized) {
+                // 下半分でのみシークを更新
+                final screenHeight = MediaQuery.of(context).size.height;
+                final touchY = details.globalPosition.dy;
+                if (touchY >= screenHeight / 2 &&
+                    controller != null && controller.value.isInitialized) {
                   if (!_isSeeking) {
                     _startSeeking(controller);
                   }
@@ -3755,7 +3764,11 @@ class _HomeScreenState extends State<HomeScreen>
                 }
               },
               onHorizontalDragEnd: (details) {
-                if (_isSeeking &&
+                // 下半分でのシークのみ終了
+                final screenHeight = MediaQuery.of(context).size.height;
+                final touchY = details.globalPosition.dy;
+                if (touchY >= screenHeight / 2 &&
+                    _isSeeking &&
                     controller != null &&
                     controller.value.isInitialized) {
                   _endSeeking(controller);
@@ -4097,19 +4110,31 @@ class _HomeScreenState extends State<HomeScreen>
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onHorizontalDragStart: (details) {
-                    if (player.duration == null) return;
-                    _startSeekingAudio(player);
-                  },
-                  onHorizontalDragUpdate: (details) {
-                    if (player.duration == null) return;
-                    if (!_isSeekingAudio) {
+                    // 下半分でのみシークを開始
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final touchY = details.globalPosition.dy;
+                    if (touchY >= screenHeight / 2 && player.duration != null) {
                       _startSeekingAudio(player);
                     }
-                    _updateSeekingAudio(details, player);
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    // 下半分でのみシークを更新
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final touchY = details.globalPosition.dy;
+                    if (touchY >= screenHeight / 2 && player.duration != null) {
+                      if (!_isSeekingAudio) {
+                        _startSeekingAudio(player);
+                      }
+                      _updateSeekingAudio(details, player);
+                    }
                   },
                   onHorizontalDragEnd: (details) {
-                    if (player.duration == null) return;
-                    _endSeekingAudio(player);
+                    // 下半分でのシークのみ終了
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final touchY = details.globalPosition.dy;
+                    if (touchY >= screenHeight / 2 && player.duration != null) {
+                      _endSeekingAudio(player);
+                    }
                   },
                   onTapDown: (details) {
                     if (player.duration == null) return;
@@ -4807,15 +4832,13 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const SizedBox(height: 12),
           // タイトル
-          Text(
-            post.title,
+          _ScrollingTitle(
+            text: post.title,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -4929,8 +4952,14 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ジェスチャー処理
   void _handlePanUpdate(DragUpdateDetails details) {
-    // 右スワイプのみを検出
-    if (details.delta.dx > 0) {
+    if (!mounted) return;
+    // 画面の上半分でのみ右スワイプを検出
+    final screenHeight = MediaQuery.of(context).size.height;
+    final touchY = details.globalPosition.dy;
+    _lastPanY = touchY; // 最後のY座標を保存
+    
+    // 上半分（画面の高さの半分より上）でのみ処理
+    if (touchY < screenHeight / 2 && details.delta.dx > 0) {
       setState(() {
         _swipeOffset = math.min(_swipeOffset + details.delta.dx, 300.0);
       });
@@ -4938,15 +4967,35 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _handlePanEnd(DragEndDetails details) {
-    // スワイプが十分な場合は即座にスポットライト実行
-    if (_swipeOffset > 80) {
-      _executeSpotlight();
+    if (!mounted) return;
+    // 上半分でのスワイプの場合のみスポットライト処理
+    if (_lastPanY != null) {
+      final screenHeight = MediaQuery.of(context).size.height;
+      final isUpperHalf = _lastPanY! < screenHeight / 2;
+      
+      if (isUpperHalf) {
+        // スワイプが十分な場合は即座にスポットライト実行
+        if (_swipeOffset > 80) {
+          _executeSpotlight();
+        } else {
+          // スワイプが不十分な場合は元に戻す
+          setState(() {
+            _swipeOffset = 0.0;
+          });
+        }
+      } else {
+        // 下半分の場合は元に戻す
+        setState(() {
+          _swipeOffset = 0.0;
+        });
+      }
     } else {
-      // スワイプが不十分な場合は元に戻す
+      // Y座標が取得できない場合は元に戻す
       setState(() {
         _swipeOffset = 0.0;
       });
     }
+    _lastPanY = null;
   }
 
   // スポットライト実行（共通処理）
@@ -7669,5 +7718,167 @@ class _HomeScreenState extends State<HomeScreen>
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+}
+
+/// 長いテキストを右から左にスクロールするウィジェット
+class _ScrollingTitle extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+
+  const _ScrollingTitle({
+    required this.text,
+    required this.style,
+  });
+
+  @override
+  State<_ScrollingTitle> createState() => _ScrollingTitleState();
+}
+
+class _ScrollingTitleState extends State<_ScrollingTitle>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  Animation<double>? _animation;
+  bool _needsScroll = false;
+  double _lastContainerWidth = 0.0;
+  bool _hasChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 15),
+      vsync: this,
+    );
+  }
+
+  void _checkIfNeedsScroll(double containerWidth) {
+    // コンテナ幅が変わっていない場合は再チェックしない
+    if (_lastContainerWidth == containerWidth && _hasChecked) {
+      return;
+    }
+    _lastContainerWidth = containerWidth;
+    _hasChecked = true;
+
+    // TextPainterを使ってテキストの実際の幅を測定
+    final textPainter = TextPainter(
+      text: TextSpan(text: widget.text, style: widget.style),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+    );
+    textPainter.layout(maxWidth: double.infinity);
+    final textWidth = textPainter.size.width;
+
+    if (textWidth > containerWidth) {
+      // スクロールが必要な場合
+      // 最後の文字が左端を完全に通過したら、右端から最初の文字が出てくる
+      // テキストを右端から始めて、左にスクロールさせる
+      // スクロール距離 = テキスト幅 + 隙間（最初のテキストが完全に流れるまで）
+      final gap = 100.0; // テキスト間の隙間
+      final scrollDistance = textWidth + gap;
+      // 右端から始めるために、初期位置をコンテナ幅に設定
+      _animation = Tween<double>(
+        begin: containerWidth, // 右端から開始
+        end: containerWidth - scrollDistance, // 左にスクロール
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: Curves.linear,
+      ));
+      
+      if (!_needsScroll) {
+        setState(() {
+          _needsScroll = true;
+        });
+        // 無限ループで繰り返す
+        _controller.repeat();
+      }
+    } else {
+      // スクロールが不要な場合
+      if (_needsScroll) {
+        setState(() {
+          _needsScroll = false;
+        });
+        _controller.stop();
+        _controller.reset();
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(_ScrollingTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // テキストが変更された場合は再チェック
+    if (oldWidget.text != widget.text) {
+      _hasChecked = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // レイアウト後にテキスト幅をチェック（初回のみ）
+        if (!_hasChecked || _lastContainerWidth != constraints.maxWidth) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _checkIfNeedsScroll(constraints.maxWidth);
+            }
+          });
+        }
+
+        return SizedBox(
+          height: 40, // テキストの高さを固定（2行分）
+          child: ClipRect(
+            child: _needsScroll && _animation != null
+                ? AnimatedBuilder(
+                    animation: _animation!,
+                    builder: (context, child) {
+                      // ループさせるために、テキストを2回繰り返して表示
+                      // 最後の文字が左端を完全に通過したら、右端から最初の文字が出てくる
+                      final gap = 100.0; // テキスト間の隙間
+                      return Transform.translate(
+                        offset: Offset(_animation!.value, 0),
+                        child: OverflowBox(
+                          maxWidth: double.infinity,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.text,
+                                style: widget.style,
+                                overflow: TextOverflow.visible,
+                              ),
+                              // ループ用に同じテキストを再度表示（隙間を設ける）
+                              Padding(
+                                padding: EdgeInsets.only(left: gap),
+                                child: Text(
+                                  widget.text,
+                                  style: widget.style,
+                                  overflow: TextOverflow.visible,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : Text(
+                    widget.text,
+                    style: widget.style,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+          ),
+        );
+      },
+    );
   }
 }

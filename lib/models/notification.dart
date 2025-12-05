@@ -59,7 +59,7 @@ class NotificationItem {
       postId: json['contentID']?.toString(),
       postTitle: json['contenttitle'],
       thumbnailUrl: json['thumbnailpath'],
-      createdAt: DateTime.parse(json['timestamp']),
+      createdAt: DateTime.parse(json['timestamp']).toLocal(),
       isRead: json['isread'] ?? false,
     );
   }

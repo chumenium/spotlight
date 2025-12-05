@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
+import 'dart:async';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -429,7 +430,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                     // 時刻
                     const SizedBox(height: 6),
                     Text(
-                      _formatTime(notification.createdAt.toLocal()),
+                      _formatTime(notification.createdAt),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey[600],
@@ -593,8 +594,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   String _formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
+    // 端末のローカル時間から逆算
+    final now = DateTime.now().toLocal();
+    final localDateTime = dateTime.toLocal();
+    final difference = now.difference(localDateTime);
 
     if (difference.inMinutes < 1) {
       return 'たった今';
@@ -605,7 +608,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     } else if (difference.inDays < 7) {
       return '${difference.inDays}日前';
     } else {
-      return '${dateTime.year}/${dateTime.month}/${dateTime.day}';
+      return '${localDateTime.year}/${localDateTime.month}/${localDateTime.day}';
     }
   }
 }
