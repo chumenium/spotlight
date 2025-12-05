@@ -692,87 +692,130 @@ class PostService {
   }
 
   /// 複数のランダムな投稿を取得
-  /// バックエンドの/api/content/detail APIを複数回呼び出してランダム取得
+  /// バックエンドの/api/content/random APIを使用してランダム取得
+  /// 直近5件の視聴履歴を除外し、重複なしで取得
   /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
   /// - limit: 取得する件数（デフォルト: 5件）
-  /// 注意: 直近で視聴した5件は除外されます
   static Future<List<Post>> fetchRandomPosts({int limit = 5}) async {
-    final List<Post> posts = [];
-    final Set<String> fetchedIds = {}; // 重複を避けるため
-
-    // 直近で視聴した50件のIDを取得（ランダム選択から除外するため）
-    // 【重要】直近表示コンテンツが再選択されるのを防ぐため、除外範囲を拡大
-    final Set<String> recentPlayHistoryIds = {};
     try {
-      final playHistory = await getPlayHistory();
-      // 直近50件のIDを取得（視聴履歴は既に最新順でソート済み）
-      final recentHistory = playHistory.take(50).toList();
-      for (final historyPost in recentHistory) {
-        recentPlayHistoryIds.add(historyPost.id);
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [ランダム取得複数] JWTトークンが取得できません');
+        }
+        return [];
       }
 
-      if (kDebugMode) {
-        debugPrint('🎲 [ランダム取得複数] 直近視聴50件を除外: ${recentPlayHistoryIds.length}件');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [ランダム取得複数] 視聴履歴取得エラー（除外なしで続行）: $e');
-      }
-    }
-
-    if (kDebugMode) {
-      debugPrint(
-          '🎲 [ランダム取得複数] 取得開始: limit=$limit, 除外ID数=${recentPlayHistoryIds.length}');
-    }
-
-    int attemptCount = 0;
-    final int maxAttempts = limit * 5; // 最大試行回数（除外があるため多めに設定）
-
-    while (posts.length < limit && attemptCount < maxAttempts) {
-      attemptCount++;
+      final url = '${AppConfig.apiBaseUrl}/content/random';
 
       if (kDebugMode) {
         debugPrint(
-            '🎲 [ランダム取得複数] 試行$attemptCount: 現在の取得数=${posts.length}/$limit');
+            '🎲 [ランダム取得複数] 取得開始: limit=$limit, URL=$url');
       }
 
-      final post = await fetchRandomPost();
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({'limit': limit}),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('📝 [ランダム取得複数] タイムアウト');
+          }
+          throw TimeoutException('Request timeout for random posts');
+        },
+      );
 
-      if (post != null &&
-          !fetchedIds.contains(post.id) &&
-          !recentPlayHistoryIds.contains(post.id)) {
-        // 重複しておらず、直近視聴5件にも含まれていない場合のみ追加
-        posts.add(post);
-        fetchedIds.add(post.id);
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint(
-              '🎲 [ランダム取得複数] 取得成功: contentID=${post.id}, タイトル=${post.title}');
+        // バックエンドがエラーを返した場合の処理
+        if (responseData['status'] == 'error') {
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ [ランダム取得複数] バックエンドエラー: ${responseData['message'] ?? '不明なエラー'}');
+          }
+          return [];
         }
-      } else if (post != null) {
-        if (kDebugMode) {
-          if (fetchedIds.contains(post.id)) {
-            debugPrint('🎲 [ランダム取得複数] 重複スキップ: contentID=${post.id}');
-          } else if (recentPlayHistoryIds.contains(post.id)) {
-            debugPrint('🎲 [ランダム取得複数] 直近視聴50件のため除外: contentID=${post.id}');
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final List<dynamic> contentsJson = responseData['data'] as List;
+
+          if (kDebugMode) {
+            debugPrint(
+                '🎲 [ランダム取得複数] 取得成功: ${contentsJson.length}件（直近5件の視聴履歴を除外、重複なし）');
+          }
+
+          // Postオブジェクトのリストに変換
+          final List<Post> posts = [];
+          for (final contentJson in contentsJson) {
+            try {
+              // contentIDをidとして設定
+              final contentId = contentJson['contentID']?.toString() ?? '';
+              if (contentId.isEmpty) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [ランダム取得複数] contentIDが空です: $contentJson');
+                }
+                continue;
+              }
+
+              contentJson['id'] = contentId;
+              final post = Post.fromJson(
+                  contentJson, backendUrl: AppConfig.backendUrl);
+              posts.add(post);
+
+              if (kDebugMode) {
+                debugPrint(
+                    '🎲 [ランダム取得複数] 追加: contentID=${post.id}, タイトル=${post.title}');
+              }
+            } catch (e, stackTrace) {
+              if (kDebugMode) {
+                debugPrint(
+                    '⚠️ [ランダム取得複数] Post変換エラー: $e, スタックトレース: $stackTrace');
+                debugPrint('⚠️ [ランダム取得複数] コンテンツJSON: $contentJson');
+              }
+            }
+          }
+
+          if (kDebugMode) {
+            debugPrint(
+                '🎲 [ランダム取得複数] 取得完了: ${posts.length}件（重複なし、直近5件の視聴履歴を除外）');
+            if (posts.length < limit) {
+              debugPrint(
+                  '⚠️ [ランダム取得複数] 要求件数に達しませんでした（取得可能なコンテンツが不足している可能性）');
+            }
+          }
+
+          return posts;
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [ランダム取得複数] APIレスポンスエラー: status=${responseData['status']}, message=${responseData['message']}');
           }
         }
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [ランダム取得複数] HTTPエラー: statusCode=${response.statusCode}');
+          debugPrint('📝 [ランダム取得複数] レスポンス: ${response.body}');
+        }
       }
-
-      // 少し待機してから次のリクエストを送信（サーバー負荷軽減）
-      if (posts.length < limit && attemptCount < maxAttempts) {
-        await Future.delayed(const Duration(milliseconds: 100));
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [ランダム取得複数] 例外: error=$e');
+        debugPrint('📝 [ランダム取得複数] スタックトレース: $stackTrace');
       }
     }
 
-    if (kDebugMode) {
-      debugPrint('🎲 [ランダム取得複数] 取得完了: ${posts.length}件（試行回数: $attemptCount）');
-      if (posts.length < limit) {
-        debugPrint('⚠️ [ランダム取得複数] 要求件数に達しませんでした（除外IDの影響の可能性）');
-      }
-    }
-
-    return posts;
+    return [];
   }
 
   /// 投稿を削除
