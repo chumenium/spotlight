@@ -31,6 +31,40 @@ String? _addIconCacheKey(String? iconUrl) {
   return '$iconUrl${separator}cache=$cacheKey';
 }
 
+/// ローカルファイルパスかどうかを判定
+/// iOS: /private/var/mobile/...
+/// Android: /data/user/..., /storage/emulated/...
+bool _isLocalFilePath(String path) {
+  final normalizedPath = path.trim();
+
+  // iOSのローカルファイルパス
+  if (normalizedPath.startsWith('/private/var/mobile/') ||
+      normalizedPath.startsWith('/var/mobile/')) {
+    return true;
+  }
+
+  // Androidのローカルファイルパス
+  if (normalizedPath.startsWith('/data/user/') ||
+      normalizedPath.startsWith('/storage/emulated/') ||
+      normalizedPath.startsWith('/sdcard/')) {
+    return true;
+  }
+
+  // その他のローカルパスのパターン
+  if (normalizedPath.contains('/tmp/') ||
+      normalizedPath.contains('/cache/') ||
+      normalizedPath.contains('image_picker_')) {
+    // CloudFront URLに含まれない可能性が高いパターン
+    // ただし、完全なURL（http/httpsで始まる）の場合はローカルパスではない
+    if (!normalizedPath.startsWith('http://') &&
+        !normalizedPath.startsWith('https://')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// パスをCloudFront URLに正規化（バックエンドのnormalize_content_url相当）
 /// /content/movie/filename.mp4 -> https://d30se1secd7t6t.cloudfront.net/movie/filename.mp4
 String? _normalizeContentUrl(String? path) {
@@ -41,6 +75,14 @@ String? _normalizeContentUrl(String? path) {
   final rawPath = path.trim();
 
   if (rawPath.isEmpty) {
+    return null;
+  }
+
+  // ローカルファイルパスの場合は無効としてnullを返す
+  if (_isLocalFilePath(rawPath)) {
+    if (kDebugMode) {
+      debugPrint('⚠️ ローカルファイルパスを検出しました（無効として扱います）: $rawPath');
+    }
     return null;
   }
 
@@ -73,6 +115,14 @@ String? _buildFullUrl(String? baseUrl, dynamic path) {
   final rawPath = path.toString().trim();
 
   if (rawPath.isEmpty) {
+    return null;
+  }
+
+  // ローカルファイルパスの場合は無効としてnullを返す
+  if (_isLocalFilePath(rawPath)) {
+    if (kDebugMode) {
+      debugPrint('⚠️ _buildFullUrl: ローカルファイルパスを検出しました（無効として扱います）: $rawPath');
+    }
     return null;
   }
 
@@ -204,9 +254,29 @@ class Post {
     // contentpathから完全なURLを生成（CloudFront URLを使用）
     // バックエンドが返すパス形式（/content/movie/filename.mp4など）をCloudFront URLに変換
     final contentPath = json['contentpath'] as String? ?? '';
-    final normalizedContentPath = _normalizeContentUrl(contentPath);
-    final mediaUrl = normalizedContentPath ??
-        _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
+    String? mediaUrl;
+
+    // ローカルファイルパスが含まれている場合は無効として扱う
+    if (contentPath.isNotEmpty && _isLocalFilePath(contentPath)) {
+      if (kDebugMode) {
+        debugPrint('⚠️ contentpathにローカルファイルパスが含まれています: $contentPath');
+        debugPrint('   CloudFront URLの使用を試みますが、contentpathが不正な可能性があります');
+      }
+      // ローカルパスの場合は、正規化もURL構築も行わない
+      mediaUrl = null;
+    } else {
+      final normalizedContentPath = _normalizeContentUrl(contentPath);
+      mediaUrl = normalizedContentPath ??
+          _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
+    }
+
+    // mediaUrlがローカルパスの場合、nullにして警告を出す
+    if (mediaUrl != null && _isLocalFilePath(mediaUrl)) {
+      if (kDebugMode) {
+        debugPrint('⚠️ mediaUrlがローカルファイルパスになっています（無効として扱います）: $mediaUrl');
+      }
+      mediaUrl = null;
+    }
 
     // thumbnailpathから完全なURLを生成（CloudFront URLを使用）
     final thumbnailPath = json['thumbnailpath'] as String?;
@@ -261,11 +331,12 @@ class Post {
     }
 
     // user_idまたはfirebase_uidを取得
-    final userId = json['user_id'] as String? ?? 
-                   json['firebase_uid'] as String? ?? 
-                   '';
-    
-    if (kDebugMode && userId.isEmpty && (json['username'] as String? ?? '').isNotEmpty) {
+    final userId =
+        json['user_id'] as String? ?? json['firebase_uid'] as String? ?? '';
+
+    if (kDebugMode &&
+        userId.isEmpty &&
+        (json['username'] as String? ?? '').isNotEmpty) {
       debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
       debugPrint('  contentID: $contentIdStr');
       debugPrint('  username: ${json['username']}');

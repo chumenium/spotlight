@@ -140,8 +140,10 @@ class RobustNetworkImage extends StatelessWidget {
         key: ValueKey(imageUrl),
         cacheKey: imageUrl,
         fit: fit,
+        // アスペクト比を保持するために、maxWidthのみを指定
+        // maxHeightを指定しないことで、画像の元のアスペクト比が保持される
         memCacheWidth: maxWidth,
-        memCacheHeight: maxHeight,
+        // maxHeightは指定しない（アスペクト比を保持）
         maxHeightDiskCache:
             maxHeight != null ? ((maxHeight! * 2).round()) : 2000,
         maxWidthDiskCache: maxWidth != null ? ((maxWidth! * 2).round()) : 2000,
@@ -225,7 +227,7 @@ class RobustNetworkImage extends StatelessWidget {
     // 新規読み込み開始の場合のみ、読み込み開始を記録
     // ただし、既に読み込み成功している場合は記録しない
     if (!_loadedUrls.containsKey(imageUrl)) {
-    _recordLoadingStart(imageUrl);
+      _recordLoadingStart(imageUrl);
     }
 
     if (_shouldLog(imageUrl)) {
@@ -243,7 +245,7 @@ class RobustNetworkImage extends StatelessWidget {
       Future.delayed(const Duration(milliseconds: 50), () {
         // まだ記録されていない場合のみ記録
         if (!_loadedUrls.containsKey(imageUrl)) {
-        _recordLoadedUrl(imageUrl);
+          _recordLoadedUrl(imageUrl);
         }
       });
     });
@@ -253,8 +255,10 @@ class RobustNetworkImage extends StatelessWidget {
       key: ValueKey(imageUrl), // 同じURLの場合は再構築を防ぐ
       cacheKey: imageUrl, // キャッシュキーを明示的に設定（同じURLの場合はキャッシュから読み込む）
       fit: fit,
+      // アスペクト比を保持するために、maxWidthのみを指定
+      // maxHeightを指定しないことで、画像の元のアスペクト比が保持される
       memCacheWidth: maxWidth,
-      memCacheHeight: maxHeight,
+      // maxHeightは指定しない（アスペクト比を保持）
       maxHeightDiskCache: maxHeight != null
           ? ((maxHeight! * 2).round())
           : 2000, // ディスクキャッシュの最大高さ（2倍に拡大）
@@ -277,7 +281,7 @@ class RobustNetworkImage extends StatelessWidget {
           _recordLoadedUrl(imageUrl);
           if (_shouldLog(imageUrl)) {
             debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
-        }
+          }
         }
         // プログレスインジケーターを表示（読み込み中の場合）
         if (placeholder != null) return placeholder!;
@@ -296,15 +300,29 @@ class RobustNetworkImage extends StatelessWidget {
         // 読み込み中から削除
         _loadingUrls.remove(url);
 
+        final errorString = error.toString();
+
         // 404エラーの場合は記録（1時間に1回の読み込み制限）
-        if (error.toString().contains('404') ||
-            error.toString().contains('Not Found')) {
+        if (errorString.contains('404') || errorString.contains('Not Found')) {
           _recordFailedUrl(url);
           if (_shouldLog(url)) {
             debugPrint('❌ 画像読み込み404エラー: $error');
             debugPrint('   URL: $imageUrl');
             debugPrint('   エラーURL: $url');
             debugPrint('   1時間以内はリトライしません（AWS使用量削減）');
+          }
+        }
+        // デコードエラーの場合も記録（破損した画像の再試行を防ぐ）
+        else if (errorString.contains('EncodingError') ||
+            errorString.contains('cannot be decoded') ||
+            errorString.contains('decode')) {
+          _recordFailedUrl(url);
+          if (_shouldLog(url)) {
+            debugPrint('❌ 画像デコードエラー: $error');
+            debugPrint('   URL: $imageUrl');
+            debugPrint('   エラーURL: $url');
+            debugPrint('   画像ファイルが破損している可能性があります');
+            debugPrint('   1時間以内はリトライしません');
           }
         } else {
           if (_shouldLog(url)) {

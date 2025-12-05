@@ -6,6 +6,40 @@ import '../config/app_config.dart';
 import '../models/post.dart';
 import '../services/jwt_service.dart';
 
+/// ローカルファイルパスかどうかを判定
+/// iOS: /private/var/mobile/...
+/// Android: /data/user/..., /storage/emulated/...
+bool _isLocalFilePath(String path) {
+  final normalizedPath = path.trim();
+
+  // iOSのローカルファイルパス
+  if (normalizedPath.startsWith('/private/var/mobile/') ||
+      normalizedPath.startsWith('/var/mobile/')) {
+    return true;
+  }
+
+  // Androidのローカルファイルパス
+  if (normalizedPath.startsWith('/data/user/') ||
+      normalizedPath.startsWith('/storage/emulated/') ||
+      normalizedPath.startsWith('/sdcard/')) {
+    return true;
+  }
+
+  // その他のローカルパスのパターン
+  if (normalizedPath.contains('/tmp/') ||
+      normalizedPath.contains('/cache/') ||
+      normalizedPath.contains('image_picker_')) {
+    // CloudFront URLに含まれない可能性が高いパターン
+    // ただし、完全なURL（http/httpsで始まる）の場合はローカルパスではない
+    if (!normalizedPath.startsWith('http://') &&
+        !normalizedPath.startsWith('https://')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// 投稿APIサービス
 class PostService {
   // 最近記録された視聴履歴のcontentIDを保存（最新の視聴履歴を確実に取得するため）
@@ -173,8 +207,51 @@ class PostService {
             // コンテンツIDを追加
             data['contentID'] = contentId;
 
+            // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
+            if (kDebugMode) {
+              final hasUsername = data.containsKey('username') &&
+                  data['username'] != null &&
+                  (data['username'] as String).isNotEmpty;
+              final hasUserId = (data.containsKey('user_id') &&
+                      data['user_id'] != null &&
+                      (data['user_id'] as String).isNotEmpty) ||
+                  (data.containsKey('firebase_uid') &&
+                      data['firebase_uid'] != null &&
+                      (data['firebase_uid'] as String).isNotEmpty);
+
+              if (!hasUsername) {
+                debugPrint(
+                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: usernameが含まれていません');
+                debugPrint('   - contentID: $contentId');
+                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
+              }
+              if (!hasUserId) {
+                debugPrint(
+                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: user_id/firebase_uidが含まれていません');
+                debugPrint('   - contentID: $contentId');
+                debugPrint('   - username: ${data['username']}');
+                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
+              }
+            }
+
             // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
             final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+
+            // 変換後のデータの整合性を確認
+            if (kDebugMode) {
+              if (post.id.isEmpty) {
+                debugPrint('⚠️ [fetchPosts] Post変換後[試行$attemptCount]: IDが空です');
+              }
+              if (post.username.isEmpty) {
+                debugPrint(
+                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: usernameが空です (postId: ${post.id})');
+              }
+              if (post.userId.isEmpty) {
+                debugPrint(
+                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+              }
+            }
+
             posts.add(post);
 
             if (kDebugMode) {
@@ -183,6 +260,8 @@ class PostService {
               debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
               debugPrint('  userIconUrl: ${post.userIconUrl}');
               debugPrint('  type: ${post.type}');
+              debugPrint('  username: ${post.username}');
+              debugPrint('  userId: ${post.userId}');
             }
           } else {
             // コンテンツが存在しない場合はスキップ
@@ -429,6 +508,105 @@ class PostService {
     return _fetchPostDetailInternal(contentId, recordHistory: false);
   }
 
+  /// ランダムな投稿を取得
+  /// バックエンドの/api/content/detail APIでcontentIDを指定せずに呼び出すことでランダム取得
+  /// 戻り値: 成功時はPost、失敗時はnull
+  static Future<Post?> fetchRandomPost() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [ランダム取得] JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/detail';
+
+      if (kDebugMode) {
+        debugPrint('🎲 [ランダム取得] 取得開始: URL=$url');
+      }
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        // contentIDを指定しない（空のオブジェクト）ことでランダム取得
+        body: jsonEncode({}),
+      )
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('📝 [ランダム取得] タイムアウト');
+          }
+          throw TimeoutException('Request timeout for random content');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        // バックエンドがエラーを返した場合の処理
+        if (responseData['status'] == 'error') {
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ [ランダム取得] バックエンドエラー: ${responseData['message'] ?? '不明なエラー'}');
+          }
+          return null;
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final Map<String, dynamic> data = responseData['data'];
+
+          // バックエンドのレスポンスでは nextcontentid フィールドにランダム取得したコンテンツIDが含まれる
+          // バックエンドの実装（contents.py 357行目）を確認: "nextcontentid": nextcontentID
+          final contentId = data['nextcontentid']?.toString() ?? '';
+
+          if (contentId.isEmpty) {
+            if (kDebugMode) {
+              debugPrint('⚠️ [ランダム取得] nextcontentidがレスポンスに含まれていません');
+              debugPrint('⚠️ [ランダム取得] レスポンスデータ: $data');
+            }
+            return null;
+          }
+
+          data['contentID'] = contentId;
+          final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+
+          if (kDebugMode) {
+            debugPrint(
+                '🎲 [ランダム取得] 取得成功: contentID=$contentId, タイトル=${post.title}');
+          }
+
+          return post;
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '📝 [ランダム取得] APIレスポンスエラー: status=${responseData['status']}, message=${responseData['message']}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('📝 [ランダム取得] HTTPエラー: statusCode=${response.statusCode}');
+          debugPrint('📝 [ランダム取得] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('📝 [ランダム取得] 例外: error=$e');
+        debugPrint('📝 [ランダム取得] スタックトレース: $stackTrace');
+      }
+    }
+
+    return null;
+  }
+
   /// 投稿詳細を取得（内部実装）
   static Future<Post?> _fetchPostDetailInternal(String contentId,
       {required bool recordHistory}) async {
@@ -511,6 +689,89 @@ class PostService {
     }
 
     return null;
+  }
+
+  /// 複数のランダムな投稿を取得
+  /// バックエンドの/api/content/detail APIを複数回呼び出してランダム取得
+  /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
+  /// - limit: 取得する件数（デフォルト: 5件）
+  /// 注意: 直近で視聴した5件は除外されます
+  static Future<List<Post>> fetchRandomPosts({int limit = 5}) async {
+    final List<Post> posts = [];
+    final Set<String> fetchedIds = {}; // 重複を避けるため
+
+    // 直近で視聴した5件のIDを取得（ランダム選択から除外するため）
+    final Set<String> recentPlayHistoryIds = {};
+    try {
+      final playHistory = await getPlayHistory();
+      // 直近5件のIDを取得（視聴履歴は既に最新順でソート済み）
+      final recentHistory = playHistory.take(5).toList();
+      for (final historyPost in recentHistory) {
+        recentPlayHistoryIds.add(historyPost.id);
+      }
+
+      if (kDebugMode) {
+        debugPrint('🎲 [ランダム取得複数] 直近視聴5件を除外: ${recentPlayHistoryIds.toList()}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ [ランダム取得複数] 視聴履歴取得エラー（除外なしで続行）: $e');
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+          '🎲 [ランダム取得複数] 取得開始: limit=$limit, 除外ID数=${recentPlayHistoryIds.length}');
+    }
+
+    int attemptCount = 0;
+    final int maxAttempts = limit * 5; // 最大試行回数（除外があるため多めに設定）
+
+    while (posts.length < limit && attemptCount < maxAttempts) {
+      attemptCount++;
+
+      if (kDebugMode) {
+        debugPrint(
+            '🎲 [ランダム取得複数] 試行$attemptCount: 現在の取得数=${posts.length}/$limit');
+      }
+
+      final post = await fetchRandomPost();
+
+      if (post != null &&
+          !fetchedIds.contains(post.id) &&
+          !recentPlayHistoryIds.contains(post.id)) {
+        // 重複しておらず、直近視聴5件にも含まれていない場合のみ追加
+        posts.add(post);
+        fetchedIds.add(post.id);
+
+        if (kDebugMode) {
+          debugPrint(
+              '🎲 [ランダム取得複数] 取得成功: contentID=${post.id}, タイトル=${post.title}');
+        }
+      } else if (post != null) {
+        if (kDebugMode) {
+          if (fetchedIds.contains(post.id)) {
+            debugPrint('🎲 [ランダム取得複数] 重複スキップ: contentID=${post.id}');
+          } else if (recentPlayHistoryIds.contains(post.id)) {
+            debugPrint('🎲 [ランダム取得複数] 直近視聴5件のため除外: contentID=${post.id}');
+          }
+        }
+      }
+
+      // 少し待機してから次のリクエストを送信（サーバー負荷軽減）
+      if (posts.length < limit && attemptCount < maxAttempts) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint('🎲 [ランダム取得複数] 取得完了: ${posts.length}件（試行回数: $attemptCount）');
+      if (posts.length < limit) {
+        debugPrint('⚠️ [ランダム取得複数] 要求件数に達しませんでした（除外IDの影響の可能性）');
+      }
+    }
+
+    return posts;
   }
 
   /// 投稿を削除
@@ -911,12 +1172,31 @@ class PostService {
                   mergedData['username'] = post.username;
                   mergedData['iconimgpath'] = post.userIconPath;
                   // contentpathがない場合はlinkを使用（バックエンドが返すlinkは相対パスまたはCloudFront URL）
+                  // ただし、ローカルファイルパスの場合は使用しない
                   if (mergedData['contentpath'] == null ||
                       (mergedData['contentpath'] as String).isEmpty) {
                     final link = historyData['link'] as String?;
-                    if (link != null && link.isNotEmpty) {
+                    if (link != null &&
+                        link.isNotEmpty &&
+                        !_isLocalFilePath(link)) {
+                      // ローカルパスでない場合のみlinkを使用
                       mergedData['contentpath'] = link;
                     } else {
+                      // ローカルパスの場合やlinkがない場合は、post.contentPathを使用
+                      mergedData['contentpath'] = post.contentPath;
+                    }
+                  } else {
+                    // contentpathが既に存在する場合、ローカルパスでないことを確認
+                    final existingContentPath =
+                        mergedData['contentpath'] as String;
+                    if (_isLocalFilePath(existingContentPath)) {
+                      if (kDebugMode) {
+                        debugPrint(
+                            '⚠️ [視聴履歴] contentpathがローカルファイルパスです: $existingContentPath');
+                        debugPrint(
+                            '   post.contentPathを使用します: ${post.contentPath}');
+                      }
+                      // ローカルパスの場合は、post.contentPathを使用（CloudFront URLの可能性が高い）
                       mergedData['contentpath'] = post.contentPath;
                     }
                   }
@@ -1542,7 +1822,8 @@ class PostService {
 
       if (jwtToken == null) {
         if (kDebugMode) {
-          debugPrint('📝 [getcontents] JWTトークンが取得できません');
+          debugPrint('❌ [getcontents] JWTトークンが取得できません');
+          debugPrint('❌ [getcontents] 認証が必要です。ログインしてください。');
         }
         return [];
       }
@@ -1550,111 +1831,227 @@ class PostService {
       final url = '${AppConfig.apiBaseUrl}/content/getcontents';
 
       if (kDebugMode) {
-        debugPrint('📝 [getcontents] API呼び出し: $url');
+        debugPrint('📝 [getcontents] API呼び出し開始: $url');
+        debugPrint('📝 [getcontents] JWTトークン: ${jwtToken.substring(0, 20)}...');
       }
 
-      final response = await http.post(
+      // タイムアウトを設定（30秒）
+      final response = await http
+          .post(
         Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
         body: jsonEncode({}),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents] タイムアウト: 30秒以内にレスポンスがありませんでした');
+            debugPrint('❌ [getcontents] URL: $url');
+          }
+          throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
+        },
       );
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-
-        if (kDebugMode) {
-          debugPrint('📝 [getcontents] レスポンス: ${responseData.toString()}');
-        }
-
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final List<dynamic> contentsJson = responseData['data'] as List;
+        try {
+          final responseData = jsonDecode(response.body);
 
           if (kDebugMode) {
-            debugPrint('📝 [getcontents] 取得件数: ${contentsJson.length}件');
+            debugPrint('📝 [getcontents] レスポンス受信: statusCode=200');
+            debugPrint(
+                '📝 [getcontents] レスポンスステータス: ${responseData['status']}');
           }
 
-          // レスポンスデータをPostオブジェクトに変換
-          final List<Post> posts = [];
-          for (int i = 0; i < contentsJson.length; i++) {
-            final contentJson = contentsJson[i] as Map<String, dynamic>;
-            
+          if (responseData['status'] == 'success' &&
+              responseData['data'] != null) {
+            final List<dynamic> contentsJson = responseData['data'] as List;
+
             if (kDebugMode) {
-              debugPrint('📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
-              debugPrint('📝 [getcontents] コンテンツ[$i]の内容: $contentJson');
-            }
-            
-            // contentIDがレスポンスに含まれていない場合の警告
-            if (!contentJson.containsKey('contentID') && 
-                !contentJson.containsKey('contentid') && 
-                !contentJson.containsKey('id')) {
-              if (kDebugMode) {
-                debugPrint('⚠️ [getcontents] ⚠️⚠️⚠️ バックエンドの不具合 ⚠️⚠️⚠️');
-                debugPrint('⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
-                debugPrint('⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
-                debugPrint('⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
-                debugPrint('⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
-              }
-              // バックエンドの不具合のため、このコンテンツはスキップ
-              continue;
+              debugPrint('📝 [getcontents] 取得件数: ${contentsJson.length}件');
             }
 
-            // contentID/contentid/idのいずれかを使用
-            final contentId = contentJson['contentID']?.toString() ?? 
-                             contentJson['contentid']?.toString() ?? 
-                             contentJson['id']?.toString() ?? '';
-            
-            if (contentId.isEmpty) {
+            // データが空のリストの場合
+            if (contentsJson.isEmpty) {
               if (kDebugMode) {
-                debugPrint('⚠️ [getcontents] contentIDが空です: インデックス $i');
+                debugPrint('⚠️ [getcontents] レスポンスデータが空です');
               }
-              continue;
+              return [];
             }
-            
-            // idとして設定（Post.fromJsonで使用される）
-            contentJson['id'] = contentId;
-            contentJson['contentID'] = contentId; // 念のため両方設定
-            
-            // Post.fromJsonを使用してPostオブジェクトに変換
-            try {
-              final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
-              posts.add(post);
-              
+
+            // レスポンスデータをPostオブジェクトに変換
+            final List<Post> posts = [];
+            for (int i = 0; i < contentsJson.length; i++) {
+              final contentJson = contentsJson[i] as Map<String, dynamic>;
+
               if (kDebugMode) {
-                debugPrint('✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}');
+                debugPrint(
+                    '📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
+                debugPrint('📝 [getcontents] コンテンツ[$i]の内容: $contentJson');
               }
-            } catch (e, stackTrace) {
-              if (kDebugMode) {
-                debugPrint('⚠️ [getcontents] Post変換エラー: $e, インデックス $i');
-                debugPrint('⚠️ [getcontents] スタックトレース: $stackTrace');
-                debugPrint('⚠️ [getcontents] コンテンツJSON: $contentJson');
+
+              // contentIDがレスポンスに含まれていない場合の警告
+              if (!contentJson.containsKey('contentID') &&
+                  !contentJson.containsKey('contentid') &&
+                  !contentJson.containsKey('id')) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [getcontents] ⚠️⚠️⚠️ バックエンドの不具合 ⚠️⚠️⚠️');
+                  debugPrint(
+                      '⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
+                  debugPrint(
+                      '⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
+                  debugPrint(
+                      '⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
+                  debugPrint(
+                      '⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
+                }
+                // バックエンドの不具合のため、このコンテンツはスキップ
+                continue;
               }
+
+              // contentID/contentid/idのいずれかを使用
+              final contentId = contentJson['contentID']?.toString() ??
+                  contentJson['contentid']?.toString() ??
+                  contentJson['id']?.toString() ??
+                  '';
+
+              if (contentId.isEmpty) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [getcontents] contentIDが空です: インデックス $i');
+                }
+                continue;
+              }
+
+              // idとして設定（Post.fromJsonで使用される）
+              contentJson['id'] = contentId;
+              contentJson['contentID'] = contentId; // 念のため両方設定
+
+              // Post.fromJsonを使用してPostオブジェクトに変換
+              try {
+                // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
+                if (kDebugMode) {
+                  final hasUsername = contentJson.containsKey('username') &&
+                      contentJson['username'] != null &&
+                      (contentJson['username'] as String).isNotEmpty;
+                  final hasUserId = (contentJson.containsKey('user_id') &&
+                          contentJson['user_id'] != null &&
+                          (contentJson['user_id'] as String).isNotEmpty) ||
+                      (contentJson.containsKey('firebase_uid') &&
+                          contentJson['firebase_uid'] != null &&
+                          (contentJson['firebase_uid'] as String).isNotEmpty);
+
+                  if (!hasUsername) {
+                    debugPrint(
+                        '⚠️ [getcontents] データ整合性警告[$i]: usernameが含まれていません');
+                    debugPrint(
+                        '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
+                    debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
+                  }
+                  if (!hasUserId) {
+                    debugPrint(
+                        '⚠️ [getcontents] データ整合性警告[$i]: user_id/firebase_uidが含まれていません');
+                    debugPrint(
+                        '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
+                    debugPrint('   - username: ${contentJson['username']}');
+                    debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
+                  }
+                }
+
+                final post = Post.fromJson(contentJson,
+                    backendUrl: AppConfig.backendUrl);
+
+                // 変換後のデータの整合性を確認
+                if (kDebugMode) {
+                  if (post.id.isEmpty) {
+                    debugPrint('⚠️ [getcontents] Post変換後[$i]: IDが空です');
+                  }
+                  if (post.username.isEmpty) {
+                    debugPrint(
+                        '⚠️ [getcontents] Post変換後[$i]: usernameが空です (postId: ${post.id})');
+                  }
+                  if (post.userId.isEmpty) {
+                    debugPrint(
+                        '⚠️ [getcontents] Post変換後[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+                  }
+                  debugPrint(
+                      '✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}, username=${post.username}, userId=${post.userId}');
+                }
+
+                posts.add(post);
+              } catch (e, stackTrace) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [getcontents] Post変換エラー: $e, インデックス $i');
+                  debugPrint('⚠️ [getcontents] スタックトレース: $stackTrace');
+                  debugPrint('⚠️ [getcontents] コンテンツJSON: $contentJson');
+                }
+              }
+            }
+
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents] 変換完了: ${posts.length}件');
+              if (posts.isEmpty) {
+                debugPrint('⚠️ [getcontents] 変換後の投稿が0件です。データ変換エラーの可能性があります。');
+              }
+            }
+
+            return posts;
+          } else {
+            if (kDebugMode) {
+              debugPrint('❌ [getcontents] APIレスポンスエラー:');
+              debugPrint('   - status: ${responseData['status']}');
+              debugPrint(
+                  '   - message: ${responseData['message'] ?? responseData['error'] ?? 'なし'}');
+              debugPrint('   - data: ${responseData['data']}');
             }
           }
-
+        } catch (e) {
           if (kDebugMode) {
-            debugPrint('📝 [getcontents] 変換完了: ${posts.length}件');
-          }
-
-          return posts;
-        } else {
-          if (kDebugMode) {
-            debugPrint('📝 [getcontents] APIレスポンスエラー: ${responseData['status']}');
+            debugPrint('❌ [getcontents] レスポンスJSON解析エラー: $e');
+            debugPrint('❌ [getcontents] レスポンスボディ: ${response.body}');
           }
         }
       } else {
         if (kDebugMode) {
-          debugPrint('📝 [getcontents] HTTPエラー: ${response.statusCode}');
-          debugPrint('📝 [getcontents] レスポンス: ${response.body}');
+          debugPrint('❌ [getcontents] HTTPエラー:');
+          debugPrint('   - ステータスコード: ${response.statusCode}');
+          debugPrint('   - レスポンス: ${response.body}');
         }
+
+        // 401 Unauthorizedの場合は認証エラー
+        if (response.statusCode == 401) {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents] 認証エラー: JWTトークンが無効です');
+          }
+        }
+        // 500 Internal Server Errorの場合はサーバーエラー
+        else if (response.statusCode >= 500) {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents] サーバーエラー: バックエンドサーバーでエラーが発生しています');
+          }
+        }
+      }
+    } on TimeoutException catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [getcontents] タイムアウトエラー: $e');
+        debugPrint('❌ [getcontents] ネットワーク接続がタイムアウトしました');
+      }
+    } on http.ClientException catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [getcontents] ネットワーク接続エラー: $e');
+        debugPrint('❌ [getcontents] インターネット接続を確認してください');
+      }
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [getcontents] データ形式エラー: $e');
+        debugPrint('❌ [getcontents] サーバーからのレスポンス形式が正しくありません');
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('📝 [getcontents] 例外: $e');
-        debugPrint('📝 [getcontents] スタックトレース: $stackTrace');
+        debugPrint('❌ [getcontents] 予期しないエラー: $e');
+        debugPrint('❌ [getcontents] スタックトレース: $stackTrace');
       }
     }
 
@@ -1718,25 +2115,29 @@ class PostService {
 
           // 最初の要素を取得（1件のみのはず）
           final contentJson = contentsJson[0] as Map<String, dynamic>;
-          
+
           // contentIDがレスポンスに含まれていない場合、パラメータのcontentIdを使用
           if (!contentJson.containsKey('contentID')) {
             if (kDebugMode) {
-              debugPrint('⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
+              debugPrint(
+                  '⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
             }
             contentJson['contentID'] = contentId;
           }
 
           // contentIDをidとして設定
-          final responseContentId = contentJson['contentID']?.toString() ?? contentId;
+          final responseContentId =
+              contentJson['contentID']?.toString() ?? contentId;
           contentJson['id'] = responseContentId;
 
           // Post.fromJsonを使用してPostオブジェクトに変換
           try {
-            final post = Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
-            
+            final post =
+                Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
+
             if (kDebugMode) {
-              debugPrint('📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
+              debugPrint(
+                  '📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
             }
 
             return post;
@@ -1748,7 +2149,8 @@ class PostService {
           }
         } else {
           if (kDebugMode) {
-            debugPrint('📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
+            debugPrint(
+                '📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
           }
         }
       } else {
