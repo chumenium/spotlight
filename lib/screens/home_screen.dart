@@ -3070,7 +3070,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildScaffold(
       BuildContext context, NavigationProvider navigationProvider) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      // 画面の暗転を防ぐため、背景色をグレーに設定
+      backgroundColor: Colors.grey[900],
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
@@ -3180,7 +3181,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 angle: _swipeOffset * 0.001, // スワイプに応じて左下を中心に回転
                                 alignment: Alignment.bottomLeft, // 左下を中心に回転
                                 child: Container(
-                                  color: Colors.black, // 不透明な背景を追加
+                                  // 画面の暗転を防ぐため、背景色をグレーに設定
+                                  color: Colors.grey[900],
                                   child: PageView.builder(
                                     controller: _pageController,
                                     scrollDirection: Axis.vertical, // 縦スクロール
@@ -3373,7 +3375,8 @@ class _HomeScreenState extends State<HomeScreen>
                                           if (_noMoreContent) {
                                             // これ以上コンテンツがない場合はメッセージを表示
                                             return Container(
-                                              color: Colors.black,
+                                              // 画面の暗転を防ぐため、背景色をグレーに設定
+                                              color: Colors.grey[900],
                                               child: Center(
                                                 child: Column(
                                                   mainAxisAlignment:
@@ -3436,7 +3439,8 @@ class _HomeScreenState extends State<HomeScreen>
                                           } else {
                                             // ローディングインジケーター
                                             return Container(
-                                              color: Colors.black,
+                                              // 画面の暗転を防ぐため、背景色をグレーに設定
+                                              color: Colors.grey[900],
                                               child: const Center(
                                                 child:
                                                     CircularProgressIndicator(
@@ -3451,7 +3455,8 @@ class _HomeScreenState extends State<HomeScreen>
                                           debugPrint(
                                               '⚠️ 無効なインデックス: index=$index, _posts.length=${_posts.length}');
                                         }
-                                        return Container(color: Colors.black);
+                                        return Container(
+                                            color: Colors.grey[900]);
                                       }
 
                                       // データの整合性チェック
@@ -3462,7 +3467,7 @@ class _HomeScreenState extends State<HomeScreen>
                                               '⚠️ 投稿IDが空です: index=$index');
                                         }
                                         return Container(
-                                          color: Colors.black,
+                                          color: Colors.grey[900],
                                           child: const Center(
                                             child: Text(
                                               'データの読み込みに失敗しました',
@@ -3967,7 +3972,8 @@ class _HomeScreenState extends State<HomeScreen>
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black,
+      // 画面の暗転を防ぐため、背景色をグレーに設定
+      color: Colors.grey[900],
       child: Stack(
         children: [
           // サムネイル画像
@@ -4576,7 +4582,8 @@ class _HomeScreenState extends State<HomeScreen>
       return Container(
         width: double.infinity,
         height: double.infinity,
-        color: Colors.black,
+        // 画面の暗転を防ぐため、背景色をグレーに設定
+        color: Colors.grey[900],
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
