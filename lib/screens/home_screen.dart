@@ -2862,10 +2862,21 @@ class _HomeScreenState extends State<HomeScreen>
 
         // 既に取得済みのコンテンツIDかチェック
         if (!_fetchedContentIds.contains(newPost.id)) {
-          // 新規投稿を先頭に追加
+          // 自動切り替えを防ぐため、新規投稿を先頭ではなく現在の位置の後ろに追加
+          // これにより、現在表示中の投稿のインデックスが変わらない
+          final insertIndex =
+              _currentIndex >= 0 && _currentIndex < _posts.length
+                  ? _currentIndex + 1
+                  : 0;
+
           setState(() {
-            _posts.insert(0, newPost);
+            _posts.insert(insertIndex, newPost);
             _addFetchedContentId(newPost.id);
+
+            if (kDebugMode) {
+              debugPrint(
+                  '🔄 新規投稿追加: 現在の位置の後ろに追加: インデックス $insertIndex (現在のインデックス: $_currentIndex)');
+            }
           });
         }
       }
