@@ -59,61 +59,62 @@ class ThemeProvider with ChangeNotifier {
         onPrimary: Colors.white,
         secondary: const Color(0xFFFF8A65),
         onSecondary: Colors.white,
-        surface: const Color(0xFFFFF5E6),
-        onSurface: const Color(0xFF2C2C2C),
-        background: const Color(0xFFFFFBF5),
-        onBackground: const Color(0xFF2C2C2C),
+        surface: Colors.white, // より明るい白に変更
+        onSurface: const Color(0xFF1A1A1A), // より濃い色でコントラスト向上
+        background: const Color(0xFFFAFAFA), // より明るくクリーンな背景
+        onBackground: const Color(0xFF1A1A1A), // より濃い色でコントラスト向上
         error: const Color(0xFFE63946),
         onError: Colors.white,
       ),
-      scaffoldBackgroundColor: const Color(0xFFFFFBF5), // 温かみのあるクリーム色
-      cardColor: const Color(0xFFFFF5E6), // 薄いオレンジ系のカード背景
+      scaffoldBackgroundColor: const Color(0xFFFAFAFA), // より明るくクリーンな背景
+      cardColor: Colors.white, // 純白のカード背景で視認性向上
       cardTheme: CardThemeData(
-        color: const Color(0xFFFFF5E6),
-        elevation: 2,
+        color: Colors.white,
+        elevation: 3, // elevationを上げて立体感を出す
+        shadowColor: Colors.black.withOpacity(0.08), // より明確な影
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2C2C2C),
-        elevation: 0,
-        shadowColor: const Color(0xFFFF6B35).withOpacity(0.1),
+        foregroundColor: const Color(0xFF1A1A1A), // より濃い色でコントラスト向上
+        elevation: 1, // 軽い影を追加して区別しやすく
+        shadowColor: Colors.black.withOpacity(0.05),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
         iconTheme: const IconThemeData(
-          color: Color(0xFF2C2C2C),
+          color: Color(0xFF1A1A1A), // より濃い色でコントラスト向上
         ),
         titleTextStyle: const TextStyle(
-          color: Color(0xFF2C2C2C),
+          color: Color(0xFF1A1A1A), // より濃い色でコントラスト向上
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
       ),
       textTheme: const TextTheme(
-        displayLarge: TextStyle(color: Color(0xFF2C2C2C)),
-        displayMedium: TextStyle(color: Color(0xFF2C2C2C)),
-        displaySmall: TextStyle(color: Color(0xFF2C2C2C)),
-        headlineLarge: TextStyle(color: Color(0xFF2C2C2C)),
-        headlineMedium: TextStyle(color: Color(0xFF2C2C2C)),
-        headlineSmall: TextStyle(color: Color(0xFF2C2C2C)),
-        titleLarge: TextStyle(color: Color(0xFF2C2C2C)),
-        titleMedium: TextStyle(color: Color(0xFF2C2C2C)),
-        titleSmall: TextStyle(color: Color(0xFF2C2C2C)),
-        bodyLarge: TextStyle(color: Color(0xFF3A3A3A)),
-        bodyMedium: TextStyle(color: Color(0xFF3A3A3A)),
-        bodySmall: TextStyle(color: Color(0xFF6B6B6B)),
-        labelLarge: TextStyle(color: Color(0xFF2C2C2C)),
-        labelMedium: TextStyle(color: Color(0xFF3A3A3A)),
-        labelSmall: TextStyle(color: Color(0xFF6B6B6B)),
+        displayLarge: TextStyle(color: Color(0xFF1A1A1A)), // より濃い色
+        displayMedium: TextStyle(color: Color(0xFF1A1A1A)),
+        displaySmall: TextStyle(color: Color(0xFF1A1A1A)),
+        headlineLarge: TextStyle(color: Color(0xFF1A1A1A)),
+        headlineMedium: TextStyle(color: Color(0xFF1A1A1A)),
+        headlineSmall: TextStyle(color: Color(0xFF1A1A1A)),
+        titleLarge: TextStyle(color: Color(0xFF1A1A1A)),
+        titleMedium: TextStyle(color: Color(0xFF1A1A1A)),
+        titleSmall: TextStyle(color: Color(0xFF1A1A1A)),
+        bodyLarge: TextStyle(color: Color(0xFF2C2C2C)), // より濃い色で視認性向上
+        bodyMedium: TextStyle(color: Color(0xFF2C2C2C)), // より濃い色で視認性向上
+        bodySmall: TextStyle(color: Color(0xFF5A5A5A)), // 適度なグレーで階層化
+        labelLarge: TextStyle(color: Color(0xFF1A1A1A)),
+        labelMedium: TextStyle(color: Color(0xFF2C2C2C)),
+        labelSmall: TextStyle(color: Color(0xFF5A5A5A)),
       ),
-      dividerColor: const Color(0xFFFFE5CC).withOpacity(0.5),
+      dividerColor: const Color(0xFFE0E0E0), // より明確な区切り線
       dividerTheme: DividerThemeData(
-        color: const Color(0xFFFFE5CC).withOpacity(0.5),
+        color: const Color(0xFFE0E0E0), // より明確な区切り線
         thickness: 1,
         space: 1,
       ),
@@ -123,13 +124,13 @@ class ThemeProvider with ChangeNotifier {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: const Color(0xFFFF6B35).withOpacity(0.3),
+            color: const Color(0xFFFF6B35).withOpacity(0.4), // より明確なボーダー
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: const Color(0xFFFF6B35).withOpacity(0.2),
+            color: const Color(0xFFE0E0E0), // より明確なボーダー
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -156,9 +157,9 @@ class ThemeProvider with ChangeNotifier {
         elevation: 4,
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFFFE5CC),
+        backgroundColor: const Color(0xFFF5F5F5), // より明るいグレーで視認性向上
         labelStyle: const TextStyle(
-          color: Color(0xFF2C2C2C),
+          color: Color(0xFF1A1A1A), // より濃い色でコントラスト向上
         ),
         selectedColor: const Color(0xFFFF6B35),
         checkmarkColor: Colors.white,
@@ -207,7 +208,7 @@ class ThemeProvider with ChangeNotifier {
     if (theme.brightness == Brightness.dark) {
       return const Color(0xFF1E1E1E);
     } else {
-      return const Color(0xFFFFF5E6);
+      return Colors.white; // 純白で視認性向上
     }
   }
 
@@ -217,7 +218,7 @@ class ThemeProvider with ChangeNotifier {
     if (theme.brightness == Brightness.dark) {
       return const Color(0xFF2A2A2A);
     } else {
-      return Colors.white;
+      return const Color(0xFFF5F5F5); // より明るいグレーで階層化
     }
   }
 
@@ -225,14 +226,14 @@ class ThemeProvider with ChangeNotifier {
   Color getTextColor(BuildContext context) {
     final theme = Theme.of(context);
     return theme.textTheme.bodyLarge?.color ?? 
-           (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C));
+           (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF1A1A1A));
   }
 
   // セカンダリテキスト色を取得（テーマに応じた色を返す）
   Color getSecondaryTextColor(BuildContext context) {
     final theme = Theme.of(context);
     return theme.textTheme.bodyMedium?.color ?? 
-           (theme.brightness == Brightness.dark ? Colors.grey[400]! : Colors.grey[600]!);
+           (theme.brightness == Brightness.dark ? Colors.grey[400]! : const Color(0xFF5A5A5A));
   }
 }
 

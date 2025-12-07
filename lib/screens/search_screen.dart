@@ -240,10 +240,16 @@ class _SearchScreenState extends State<SearchScreen> {
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color ?? const Color(0xFF2C2C2C),
+                ),
                 decoration: InputDecoration(
                   hintText: '検索',
-                  hintStyle: TextStyle(color: Colors.grey[400]),
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.grey[400] 
+                        : Colors.grey[600],
+                  ),
                   border: InputBorder.none,
                   prefixIcon: const Icon(
                     Icons.search,

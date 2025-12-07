@@ -3118,16 +3118,22 @@ class _HomeScreenState extends State<HomeScreen>
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.error_outline,
-                              color: Colors.white70,
+                              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
+                                     (Theme.of(context).brightness == Brightness.dark 
+                                         ? Colors.white70 
+                                         : Colors.grey[600]),
                               size: 64,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               _errorMessage!,
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
+                                       (Theme.of(context).brightness == Brightness.dark 
+                                           ? Colors.white70 
+                                           : Colors.grey[600]),
                                 fontSize: 16,
                               ),
                             ),
@@ -3157,24 +3163,30 @@ class _HomeScreenState extends State<HomeScreen>
                         physics: const AlwaysScrollableScrollPhysics(),
                         child: SizedBox(
                           height: MediaQuery.of(context).size.height,
-                          child: const Center(
+                          child: Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
                                   Icons.post_add,
                                   size: 64,
-                                  color: Colors.white38,
+                                  color: Theme.of(context).textTheme.bodySmall?.color ?? 
+                                         (Theme.of(context).brightness == Brightness.dark 
+                                             ? Colors.white38 
+                                             : Colors.grey[400]),
                                 ),
-                                SizedBox(height: 16),
+                                const SizedBox(height: 16),
                                 Text(
                                   '投稿がありません',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
+                                           (Theme.of(context).brightness == Brightness.dark 
+                                               ? Colors.white70 
+                                               : Colors.grey[600]),
                                     fontSize: 16,
                                   ),
                                 ),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 8),
                                 Text(
                                   '引き下げて更新',
                                   style: TextStyle(

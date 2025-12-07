@@ -855,33 +855,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              const Text(
-                '自分の投稿',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SpotlightListScreen(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '自分の投稿',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
                     ),
-                  );
-                },
-                child: const Text(
-                  '全て表示',
-                  style: TextStyle(
-                    color: Color(0xFFFF6B35),
-                    fontSize: 14,
                   ),
-                ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SpotlightListScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      '全て表示',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B35),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.grey[800] 
+                    : Colors.grey[300],
+                indent: 0,
+                endIndent: 0,
               ),
             ],
           ),
@@ -1350,8 +1364,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 20, // タイトル部分の高さを固定
               child: Text(
                 _getTruncatedTitle(_getSafeTitle(post.title)),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium?.color ?? const Color(0xFF2C2C2C),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1371,33 +1385,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              const Text(
-                '視聴履歴',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const HistoryListScreen(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '視聴履歴',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
                     ),
-                  );
-                },
-                child: const Text(
-                  '全て表示',
-                  style: TextStyle(
-                    color: Color(0xFFFF6B35),
-                    fontSize: 14,
                   ),
-                ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HistoryListScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      '全て表示',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B35),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.grey[800] 
+                    : Colors.grey[300],
+                indent: 0,
+                endIndent: 0,
               ),
             ],
           ),
@@ -1673,8 +1701,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 8),
             Text(
               playlist.title,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color ?? const Color(0xFF2C2C2C),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1693,33 +1721,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              const Text(
-                '再生リスト',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const PlaylistListScreen(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '再生リスト',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
                     ),
-                  );
-                },
-                child: const Text(
-                  '全て表示',
-                  style: TextStyle(
-                    color: Color(0xFFFF6B35),
-                    fontSize: 14,
                   ),
-                ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PlaylistListScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      '全て表示',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B35),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.grey[800] 
+                    : Colors.grey[300],
+                indent: 0,
+                endIndent: 0,
               ),
             ],
           ),
@@ -1799,23 +1841,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
                 children: [
-                  const Text(
-                    'バッジ',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'バッジ',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      Text(
+                        '${unlockedBadges.length + (isAdmin ? 1 : 0)}/${displayBadges.length}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '${unlockedBadges.length + (isAdmin ? 1 : 0)}/${displayBadges.length}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).textTheme.bodyMedium?.color,
-                    ),
+                  const SizedBox(height: 8),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.grey[800] 
+                        : Colors.grey[300],
+                    indent: 0,
+                    endIndent: 0,
                   ),
                 ],
               ),
@@ -1899,8 +1955,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             badge.name,
                             style: TextStyle(
-                              color:
-                                  isUnlocked ? Colors.white : Colors.grey[600],
+                              color: isUnlocked
+                                  ? (Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white
+                                      : const Color(0xFF2C2C2C))
+                                  : (Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.grey[600]
+                                      : Colors.grey[700]),
                               fontSize: 10,
                             ),
                             textAlign: TextAlign.center,
@@ -2077,7 +2138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 8),
+                    _buildMenuDivider(context),
                   ],
                 );
               }
@@ -2098,6 +2159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
 
           // ヘルプ・フィードバック
           _buildMenuTile(
@@ -2112,6 +2174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
           _buildMenuTile(
             icon: Icons.feedback_outlined,
             title: 'フィードバック',
@@ -2124,6 +2187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
           _buildMenuTile(
             icon: Icons.info_outline,
             title: 'アプリについて',
@@ -2136,6 +2200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
           _buildMenuTile(
             icon: Icons.description_outlined,
             title: '利用規約',
@@ -2148,6 +2213,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
           _buildMenuTile(
             icon: Icons.privacy_tip_outlined,
             title: 'プライバシーポリシー',
@@ -2170,29 +2236,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(
           icon,
-          color: Theme.of(context).textTheme.bodyMedium?.color,
+          color: theme.textTheme.bodyLarge?.color ?? 
+                 (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
           size: 24,
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: theme.textTheme.bodyLarge?.color ?? 
+                   (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
             fontSize: 16,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.chevron_right,
-          color: Colors.grey,
+          color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
           size: 20,
         ),
         onTap: onTap,
         contentPadding: EdgeInsets.zero,
       ),
+    );
+  }
+
+  Widget _buildMenuDivider(BuildContext context) {
+    final theme = Theme.of(context);
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: theme.brightness == Brightness.dark 
+          ? Colors.grey[800] 
+          : Colors.grey[300],
+      indent: 0,
+      endIndent: 0,
     );
   }
 
@@ -2203,24 +2286,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context, authProvider, _) {
           final isGuest = authProvider.currentUser?.id == 'guest';
 
+          final theme = Theme.of(context);
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: Icon(
                 isGuest ? Icons.exit_to_app : Icons.logout_rounded,
-                color: Colors.grey[400],
+                color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
                 size: 24,
               ),
               title: Text(
                 isGuest ? 'ログイン画面へ戻る' : 'ログアウト',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: theme.textTheme.bodyLarge?.color ?? 
+                         (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
                   fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              trailing: const Icon(
+              trailing: Icon(
                 Icons.chevron_right,
-                color: Colors.grey,
+                color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
                 size: 20,
               ),
               onTap: () async {

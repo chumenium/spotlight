@@ -111,7 +111,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.done_all, color: Colors.white),
+                icon: Icon(
+                  Icons.done_all,
+                  color: Theme.of(context).appBarTheme.iconTheme?.color ?? 
+                         (Theme.of(context).brightness == Brightness.dark 
+                             ? Colors.white 
+                             : const Color(0xFF1A1A1A)),
+                ),
                 onPressed: () {
                   setState(() {
                     notifications = notifications
@@ -145,7 +151,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               isScrollable: true,
               indicatorColor: SpotLightColors.primaryOrange,
               indicatorWeight: 3,
-              labelColor: Colors.white,
+              labelColor: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.white 
+                  : const Color(0xFF1A1A1A),
               unselectedLabelColor: Colors.grey,
               labelStyle: const TextStyle(
                 fontSize: 14,
@@ -387,7 +395,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                                   ? FontWeight.normal
                                   : FontWeight.bold,
                               fontSize: 14,
-                              color: Colors.white,
+                              color: Theme.of(context).textTheme.bodyLarge?.color ?? 
+                                     (Theme.of(context).brightness == Brightness.dark 
+                                         ? Colors.white 
+                                         : const Color(0xFF2C2C2C)),
                             ),
                           ),
                         ),
@@ -409,7 +420,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       notification.message,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[300],
+                        color: Theme.of(context).textTheme.bodySmall?.color ?? 
+                               (Theme.of(context).brightness == Brightness.dark 
+                                   ? Colors.grey[300] 
+                                   : Colors.grey[600]),
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

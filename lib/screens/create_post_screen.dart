@@ -560,10 +560,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 0,
-        title: const Text(
+        title: Text(
           '新しい投稿',
           style: TextStyle(
-            color: Colors.white,
+            color: Theme.of(context).appBarTheme.foregroundColor ?? const Color(0xFF1A1A1A),
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
