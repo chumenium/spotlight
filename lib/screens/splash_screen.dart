@@ -251,9 +251,8 @@ class _SplashScreenState extends State<SplashScreen> {
           width: size.width,
           height: size.height,
           fit: BoxFit.cover,
-          // 画像の読み込みを最適化
-          cacheWidth: size.width.toInt(),
-          cacheHeight: size.height.toInt(),
+          // 元画像の解像度を維持（cacheWidth/cacheHeightを削除）
+          filterQuality: FilterQuality.high,
           errorBuilder: (context, error, stackTrace) {
             // 画像が見つからない場合のフォールバック
             return Container(

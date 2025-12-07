@@ -823,19 +823,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// バッジアイコンを生成するヘルパーメソッド
   Widget _buildBadgeIcon(Badge badge) {
     return Container(
-      width: 24,
-      height: 24,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: SpotLightColors.getGradient(badge.id),
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
             color: badge.badgeColor.withOpacity(0.3),
-            blurRadius: 4,
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -843,7 +843,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Icon(
         badge.icon,
         color: Colors.white,
-        size: 16,
+        size: 24,  //名前横バッジサイズ
       ),
     );
   }

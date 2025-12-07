@@ -700,18 +700,19 @@ class PostService {
     final List<Post> posts = [];
     final Set<String> fetchedIds = {}; // 重複を避けるため
 
-    // 直近で視聴した5件のIDを取得（ランダム選択から除外するため）
+    // 直近で視聴した50件のIDを取得（ランダム選択から除外するため）
+    // 【重要】直近表示コンテンツが再選択されるのを防ぐため、除外範囲を拡大
     final Set<String> recentPlayHistoryIds = {};
     try {
       final playHistory = await getPlayHistory();
-      // 直近5件のIDを取得（視聴履歴は既に最新順でソート済み）
-      final recentHistory = playHistory.take(5).toList();
+      // 直近50件のIDを取得（視聴履歴は既に最新順でソート済み）
+      final recentHistory = playHistory.take(50).toList();
       for (final historyPost in recentHistory) {
         recentPlayHistoryIds.add(historyPost.id);
       }
 
       if (kDebugMode) {
-        debugPrint('🎲 [ランダム取得複数] 直近視聴5件を除外: ${recentPlayHistoryIds.toList()}');
+        debugPrint('🎲 [ランダム取得複数] 直近視聴50件を除外: ${recentPlayHistoryIds.length}件');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -753,7 +754,7 @@ class PostService {
           if (fetchedIds.contains(post.id)) {
             debugPrint('🎲 [ランダム取得複数] 重複スキップ: contentID=${post.id}');
           } else if (recentPlayHistoryIds.contains(post.id)) {
-            debugPrint('🎲 [ランダム取得複数] 直近視聴5件のため除外: contentID=${post.id}');
+            debugPrint('🎲 [ランダム取得複数] 直近視聴50件のため除外: contentID=${post.id}');
           }
         }
       }
