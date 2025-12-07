@@ -38,6 +38,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String? _iconUrl;
   bool? _isAdmin;
   int _spotlightCount = 0;
+  String? _bio; // 自己紹介文
   bool _isLoadingProfile = true;
   bool _isLoadingPosts = false;
   String? _errorMessage;
@@ -150,6 +151,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final resolvedUsername = userData['username'] as String? ?? widget.username ?? '';
         final userIcon = userData['usericon'] as String? ?? widget.userIconPath;
         final spotlightNum = userData['spotlightnum'] as int? ?? 0;
+        final bio = userData['bio'] as String?;
         final contents = userData['contents'] as List<dynamic>? ?? [];
         
         if (kDebugMode) {
@@ -215,6 +217,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _iconPath = userIcon;
             _spotlightCount = spotlightNum;
             _isAdmin = userData['admin'] as bool? ?? false;
+            _bio = bio;
             _userPosts = posts;
             
             // アイコンURLを生成
@@ -315,6 +318,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       SliverToBoxAdapter(
                         child: _buildProfileHeader(),
                       ),
+                      // 自己紹介文
+                      if (_bio != null && _bio!.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: _buildBioSection(),
+                        ),
                       // バッジ一覧
                       SliverToBoxAdapter(
                         child: _buildBadgeSection(),
@@ -442,6 +450,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         adminBadge.icon,
         color: Colors.white,
         size: 16,
+      ),
+    );
+  }
+
+  /// 自己紹介文セクションを構築
+  Widget _buildBioSection() {
+    if (_bio == null || _bio!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+      child: Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          _bio!,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
