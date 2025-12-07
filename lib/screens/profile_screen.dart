@@ -15,6 +15,7 @@ import 'about_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'admin_screen.dart';
+import 'settings_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
@@ -56,6 +57,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoadingPlaylists = false;
   // 前回のナビゲーションインデックス（リロード制御用）
   int? _lastNavigationIndex;
+  // 自己紹介文
+  String? _bio;
   // 画像のアスペクト比をキャッシュ（URL -> アスペクト比）
   final Map<String, double> _imageAspectRatios = {};
   // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
@@ -174,6 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchMyPosts();
     _fetchHistory();
     _fetchPlaylists();
+    _fetchBio();
 
     // 初期化時に前回のspotlight数を設定（初回は0）
     _previousSpotlightCount = 0;
@@ -197,10 +201,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _fetchMyPosts(),
       _fetchHistory(),
       _fetchPlaylists(),
+      _fetchBio(),
     ]);
 
     if (kDebugMode) {
       debugPrint('✅ プロフィールデータのリフレッシュ完了');
+    }
+  }
+
+  /// 自己紹介文を取得
+  Future<void> _fetchBio() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) return;
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.id;
+      if (userId == null) return;
+
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/api/users/getusername'),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'firebase_uid': userId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success' && responseData['data'] != null) {
+          final userData = responseData['data'] as Map<String, dynamic>;
+          final bio = userData['bio'] as String?;
+          
+          if (mounted) {
+            setState(() {
+              _bio = bio;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 自己紹介文取得エラー: $e');
+      }
     }
   }
 
@@ -438,6 +484,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _fetchMyPosts();
               _fetchHistory();
               _fetchPlaylists();
+              _fetchBio();
             }
           });
         } else if (currentIndex != profileIndex) {
@@ -488,6 +535,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 // プロフィールヘッダー
                 _buildProfileHeader(),
+
+                // 自己紹介文セクション
+                _buildBioSection(),
 
                 const SizedBox(height: 20),
 
@@ -697,6 +747,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// 自己紹介文セクションを構築
+  Widget _buildBioSection() {
+    if (_bio == null || _bio!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+      child: Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          _bio!,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
@@ -2002,6 +2079,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               }
               return const SizedBox.shrink();
+            },
+          ),
+
+          // 設定
+          _buildMenuTile(
+            icon: Icons.settings_outlined,
+            title: '設定',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              );
             },
           ),
 

@@ -36,7 +36,37 @@ import UserNotifications
     // FlutterFire プラグイン登録
     GeneratedPluginRegistrant.register(with: self)
 
+    // MethodChannel設定（windowが設定された後に実行）
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self,
+            let controller = self.window?.rootViewController as? FlutterViewController else {
+        return
+      }
+      
+      let settingsChannel = FlutterMethodChannel(
+        name: "com.example.spotlight/settings",
+        binaryMessenger: controller.binaryMessenger
+      )
+      
+      settingsChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+        guard call.method == "openAppSettings" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self?.openAppSettings()
+        result(nil)
+      }
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+  
+  private func openAppSettings() {
+    if let url = URL(string: UIApplication.openSettingsURLString) {
+      if UIApplication.shared.canOpenURL(url) {
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+      }
+    }
   }
 
   // MARK: - APNs Token
