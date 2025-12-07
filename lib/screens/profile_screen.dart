@@ -498,10 +498,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildScaffold(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         toolbarHeight: 60,
         leadingWidth: 160,
@@ -730,10 +731,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Text(
                           displayName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: Theme.of(context).textTheme.titleLarge?.color,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -762,13 +763,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.all(16.0),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           _bio!,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color,
             fontSize: 14,
             height: 1.5,
           ),
@@ -911,7 +912,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '投稿がありません',
                             style: TextStyle(
-                              color: Colors.grey[400],
+                              color: Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1427,7 +1428,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '視聴履歴がありません',
                             style: TextStyle(
-                              color: Colors.grey[400],
+                              color: Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1749,7 +1750,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '再生リストがありません',
                             style: TextStyle(
-                              color: Colors.grey[400],
+                              color: Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1813,7 +1814,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     '${unlockedBadges.length + (isAdmin ? 1 : 0)}/${displayBadges.length}',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[400],
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                   ),
                 ],
@@ -1947,7 +1948,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: popupWidth,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
@@ -1989,8 +1990,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // バッジ名
                   Text(
                     badge.name,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.titleLarge?.color,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
@@ -2001,15 +2002,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.grey[800],
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[800]
+                          : Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
                       children: [
-                        const Text(
+                        Text(
                           '獲得条件',
                           style: TextStyle(
-                            color: Colors.grey,
+                            color: Theme.of(context).textTheme.bodySmall?.color,
                             fontSize: 12,
                           ),
                         ),
@@ -2018,8 +2021,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           badge.id == 999
                               ? '管理者権限を持つユーザー'
                               : '${badge.requiredSpotlights}個のスポットライトを獲得',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -2172,7 +2175,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: ListTile(
         leading: Icon(
           icon,
-          color: Colors.grey[400],
+          color: Theme.of(context).textTheme.bodyMedium?.color,
           size: 24,
         ),
         title: Text(
@@ -2225,14 +2228,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    backgroundColor: const Color(0xFF2A2A2A),
-                    title: const Text(
+                    backgroundColor: Theme.of(context).cardColor,
+                    title: Text(
                       'ログアウト',
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
                     ),
                     content: Text(
                       isGuest ? 'ログイン画面に戻りますか？' : 'ログアウトしてログイン画面に戻りますか？',
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
                     ),
                     actions: [
                       TextButton(
@@ -2305,13 +2308,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 20),
               ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.image_outlined,
-                  color: Colors.white,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
                 ),
-                title: const Text(
+                title: Text(
                   'アイコンを設定',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -3102,33 +3105,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // 確認ダイアログを表示
     final confirmed = await _showSafeDialog<bool>(
       Builder(
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: const Color(0xFF2A2A2A),
-          title: const Text(
-            'アイコンを削除',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: const Text(
-            'アイコンを削除しますか？',
-            style: TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(
-                'キャンセル',
-                style: TextStyle(color: Colors.grey),
-              ),
+        builder: (dialogContext) {
+          final theme = Theme.of(dialogContext);
+          return AlertDialog(
+            backgroundColor: theme.cardColor,
+            title: Text(
+              'アイコンを削除',
+              style: TextStyle(color: theme.textTheme.titleLarge?.color),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text(
-                '削除',
-                style: TextStyle(color: Colors.red),
-              ),
+            content: Text(
+              'アイコンを削除しますか？',
+              style: TextStyle(color: theme.textTheme.bodyMedium?.color),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text(
+                  'キャンセル',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text(
+                  '削除',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
 

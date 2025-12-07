@@ -13,20 +13,22 @@ class CustomBottomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return SizedBox(
       height: 80,
       child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.only(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black26,
+              color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
               blurRadius: 10,
-              offset: Offset(0, -5),
+              offset: const Offset(0, -5),
             ),
           ],
         ),
@@ -39,6 +41,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
               children: [
                 Expanded(
                   child: _buildNavItem(
+                    context: context,
                     icon: Icons.flashlight_on_outlined,
                     activeIcon: Icons.flashlight_on,
                     index: 0,
@@ -46,6 +49,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildNavItem(
+                    context: context,
                     icon: Icons.search_outlined,
                     activeIcon: Icons.search,
                     index: 1,
@@ -53,6 +57,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildNavItem(
+                    context: context,
                     icon: Icons.add_outlined,
                     activeIcon: Icons.add_circle_sharp,
                     index: 2,
@@ -61,6 +66,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildNavItem(
+                    context: context,
                     icon: Icons.notifications_outlined,
                     activeIcon: Icons.notifications,
                     index: 3,
@@ -68,6 +74,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildNavItem(
+                    context: context,
                     icon: Icons.person_outline,
                     activeIcon: Icons.person,
                     index: 4,
@@ -82,12 +89,16 @@ class CustomBottomNavigationBar extends StatelessWidget {
   }
 
   Widget _buildNavItem({
+    required BuildContext context,
     required IconData icon,
     required IconData activeIcon,
     required int index,
     bool isCenter = false,
   }) {
     final isSelected = currentIndex == index;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final inactiveColor = isDark ? Colors.grey[400] : Colors.grey[600];
 
     return GestureDetector(
       onTap: () => onTap(index),
@@ -103,7 +114,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                   isSelected ? activeIcon : icon,
                   color: isSelected
                       ? SpotLightColors.getSpotlightColor(index)
-                      : Colors.grey[400],
+                      : inactiveColor,
                   size: 36,
                 ),
               )
@@ -115,7 +126,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                     isSelected ? activeIcon : icon,
                     color: isSelected
                         ? SpotLightColors.getSpotlightColor(index)
-                        : Colors.grey[400],
+                        : inactiveColor,
                     size: 26,
                   ),
                   const SizedBox(height: 2),
@@ -124,7 +135,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
                     style: TextStyle(
                       color: isSelected
                           ? SpotLightColors.getSpotlightColor(index)
-                          : Colors.grey[400],
+                          : inactiveColor,
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),

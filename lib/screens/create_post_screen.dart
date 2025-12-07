@@ -556,9 +556,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 0,
         title: const Text(
           '新しい投稿',
@@ -1285,10 +1285,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
           '背景を変更',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1897,26 +1897,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   void _showAudioFeatureDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Row(
-          children: [
-            Icon(Icons.mic, color: Color(0xFFFF6B35)),
-            SizedBox(width: 8),
-            Text(
-              '音声機能',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-        content: Column(
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          title: Row(
+            children: [
+              const Icon(Icons.mic, color: Color(0xFFFF6B35)),
+              const SizedBox(width: 8),
+              Text(
+                '音声機能',
+                style: TextStyle(color: theme.textTheme.titleLarge?.color),
+              ),
+            ],
+          ),
+          content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Android端末でのみ利用可能です！',
-              style:
-                  TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1933,16 +1937,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             _buildFeatureItem('🎵 FLAC'),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              '了解',
-              style: TextStyle(color: Color(0xFFFF6B35)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                '了解',
+                style: TextStyle(color: Color(0xFFFF6B35)),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -1951,7 +1956,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Text(
         '• $text',
-        style: const TextStyle(color: Colors.white70, fontSize: 14),
+        style: TextStyle(
+          color: Theme.of(context).textTheme.bodyMedium?.color,
+          fontSize: 14,
+        ),
       ),
     );
   }
@@ -2037,36 +2045,39 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<bool?> _showContentConflictDialog(String title, String message) {
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          title: Text(
+            title,
+            style: TextStyle(color: theme.textTheme.titleLarge?.color),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              '続行',
-              style: TextStyle(
-                color: SpotLightColors.primaryOrange,
-                fontWeight: FontWeight.w600,
+          content: Text(
+            message,
+            style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text(
+                'キャンセル',
+                style: TextStyle(color: Colors.grey),
               ),
             ),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                '続行',
+                style: TextStyle(
+                  color: SpotLightColors.primaryOrange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

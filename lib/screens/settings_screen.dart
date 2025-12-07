@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
-import '../utils/spotlight_colors.dart';
+import '../providers/theme_provider.dart';
 import 'profile_edit_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -9,19 +10,23 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(
+            Icons.arrow_back,
+            color: theme.appBarTheme.foregroundColor,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           '設定',
           style: TextStyle(
-            color: Colors.white,
+            color: theme.appBarTheme.foregroundColor,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -31,8 +36,9 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         children: [
           // 通知設定セクション
-          _buildSectionHeader('通知'),
+          _buildSectionHeader(context, '通知'),
           _buildSettingsTile(
+            context: context,
             icon: Icons.notifications_outlined,
             title: 'プッシュ通知',
             subtitle: '新着投稿やお知らせを受け取る',
@@ -45,8 +51,9 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // アカウント設定セクション
-          _buildSectionHeader('アカウント'),
+          _buildSectionHeader(context, 'アカウント'),
           _buildSettingsTile(
+            context: context,
             icon: Icons.person_outline,
             title: 'プロフィール編集',
             onTap: () async {
@@ -63,6 +70,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           _buildSettingsTile(
+            context: context,
             icon: Icons.lock_outline,
             title: 'パスワード変更',
             onTap: () {
@@ -73,20 +81,68 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // アプリ設定セクション
-          _buildSectionHeader('アプリ'),
-          _buildSettingsTile(
-            icon: Icons.dark_mode_outlined,
-            title: 'ダークモード',
-            subtitle: '常にダークモードで表示',
-            trailing: Switch(
-              value: true,
-              onChanged: (value) {
-                // TODO: ダークモード設定の実装
-              },
-              activeColor: SpotLightColors.primaryOrange,
-            ),
+          _buildSectionHeader(context, 'アプリ'),
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) {
+              String getThemeSubtitle() {
+                switch (themeProvider.themeMode) {
+                  case AppThemeMode.light:
+                    return 'ライト';
+                  case AppThemeMode.dark:
+                    return 'ダーク';
+                  case AppThemeMode.system:
+                    return '端末の設定';
+                }
+              }
+
+              return _buildSettingsTile(
+                context: context,
+                icon: Icons.palette_outlined,
+                title: 'アプリテーマ',
+                subtitle: getThemeSubtitle(),
+                trailing: DropdownButton<AppThemeMode>(
+                  value: themeProvider.themeMode,
+                  underline: const SizedBox(),
+                  icon: Icon(
+                    Icons.arrow_drop_down,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[400]
+                        : Colors.grey[700],
+                  ),
+                  dropdownColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF1E1E1E)
+                      : Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
+                    fontSize: 14,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: AppThemeMode.light,
+                      child: const Text('ライト'),
+                    ),
+                    DropdownMenuItem(
+                      value: AppThemeMode.dark,
+                      child: const Text('ダーク'),
+                    ),
+                    DropdownMenuItem(
+                      value: AppThemeMode.system,
+                      child: const Text('端末の設定'),
+                    ),
+                  ],
+                  onChanged: (AppThemeMode? newValue) {
+                    if (newValue != null) {
+                      themeProvider.setThemeMode(newValue);
+                    }
+                  },
+                ),
+              );
+            },
           ),
           _buildSettingsTile(
+            context: context,
             icon: Icons.language_outlined,
             title: '言語',
             subtitle: '日本語',
@@ -95,6 +151,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           _buildSettingsTile(
+            context: context,
             icon: Icons.storage_outlined,
             title: 'キャッシュをクリア',
             subtitle: 'アプリのキャッシュを削除',
@@ -106,8 +163,9 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // データ設定セクション
-          _buildSectionHeader('データ'),
+          _buildSectionHeader(context, 'データ'),
           _buildSettingsTile(
+            context: context,
             icon: Icons.download_outlined,
             title: 'データのエクスポート',
             subtitle: 'アカウントデータをダウンロード',
@@ -116,6 +174,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           _buildSettingsTile(
+            context: context,
             icon: Icons.delete_outline,
             title: 'アカウント削除',
             subtitle: 'アカウントとすべてのデータを削除',
@@ -132,13 +191,16 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12, top: 8),
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.grey[400],
+          color: theme.brightness == Brightness.dark
+              ? Colors.grey[400]
+              : Colors.grey[600],
           fontSize: 14,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.5,
@@ -148,6 +210,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildSettingsTile({
+    required BuildContext context,
     required IconData icon,
     required String title,
     String? subtitle,
@@ -156,22 +219,26 @@ class SettingsScreen extends StatelessWidget {
     Color? titleColor,
     Color? iconColor,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: isDark 
+            ? const Color(0xFF1E1E1E) 
+            : const Color(0xFFFFF5E6), // ライトテーマ用の温かみのあるカード背景
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
         leading: Icon(
           icon,
-          color: iconColor ?? Colors.grey[400],
+          color: iconColor ?? (isDark ? Colors.grey[400] : Colors.grey[700]),
           size: 24,
         ),
         title: Text(
           title,
           style: TextStyle(
-            color: titleColor ?? Colors.white,
+            color: titleColor ?? (isDark ? Colors.white : Colors.black),
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
@@ -180,7 +247,7 @@ class SettingsScreen extends StatelessWidget {
             ? Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.grey[500],
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
                   fontSize: 13,
                 ),
               )
@@ -189,7 +256,7 @@ class SettingsScreen extends StatelessWidget {
             (onTap != null
                 ? Icon(
                     Icons.chevron_right,
-                    color: Colors.grey[600],
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
                     size: 20,
                   )
                 : null),

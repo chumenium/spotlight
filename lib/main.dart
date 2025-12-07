@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'providers/navigation_provider.dart';
+import 'providers/theme_provider.dart' show ThemeProvider, AppThemeMode;
 import 'auth/auth_provider.dart';
 import 'services/firebase_service.dart';
 import 'screens/splash_screen.dart';
@@ -56,39 +57,31 @@ class SpotLightApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => NavigationProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
       ],
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-          statusBarBrightness: Brightness.dark,
-        ),
-        child: MaterialApp(
-          title: 'SpotLight',
-          theme: ThemeData(
-            brightness: Brightness.dark,
-            primarySwatch: Colors.orange,
-            primaryColor: const Color(0xFFFF6B35),
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFFFF6B35),
-              brightness: Brightness.dark,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: themeProvider.themeMode == AppThemeMode.light
+                  ? Brightness.dark
+                  : Brightness.light,
+              statusBarBrightness: themeProvider.themeMode == AppThemeMode.light
+                  ? Brightness.light
+                  : Brightness.dark,
             ),
-            scaffoldBackgroundColor: const Color(0xFF121212),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF1E1E1E),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              systemOverlayStyle: SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness: Brightness.light,
-                statusBarBrightness: Brightness.dark,
-              ),
+            child: MaterialApp(
+              title: 'SpotLight',
+              theme: themeProvider.getLightTheme(),
+              darkTheme: themeProvider.getDarkTheme(),
+              themeMode: themeProvider.getMaterialThemeMode(),
+              home: const SplashScreen(), // スプラッシュスクリーンを最初に表示
             ),
-          ),
-          home: const SplashScreen(), // スプラッシュスクリーンを最初に表示
-        ),
+          );
+        },
       ),
     );
   }

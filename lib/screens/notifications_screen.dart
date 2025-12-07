@@ -85,9 +85,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 0,
             toolbarHeight: 60,
             leadingWidth: 160,
@@ -319,8 +319,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return Container(
       decoration: BoxDecoration(
         color: notification.isRead
-            ? const Color(0xFF1E1E1E)
-            : const Color(0xFF2A2A2A),
+            ? Theme.of(context).cardColor
+            : Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF2A2A2A)
+                : Colors.white,
         border: Border(
           bottom: BorderSide(
             color: Colors.grey[800]!,
@@ -350,7 +352,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             SnackBar(
               content: Text('${notification.title}をタップしました'),
               duration: const Duration(seconds: 1),
-              backgroundColor: const Color(0xFF2A2A2A),
+              backgroundColor: Theme.of(context).cardColor,
             ),
           );
         },
@@ -491,7 +493,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 decoration: BoxDecoration(
                   color: SpotLightColors.primaryOrange,
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+                  border: Border.all(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    width: 2,
+                  ),
                 ),
                 child: const Icon(
                   Icons.auto_awesome,
@@ -524,7 +529,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 decoration: BoxDecoration(
                   color: Colors.blue,
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+                  border: Border.all(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    width: 2,
+                  ),
                 ),
                 child: const Icon(
                   Icons.comment,
@@ -557,7 +565,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 decoration: BoxDecoration(
                   color: Colors.green,
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+                  border: Border.all(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    width: 2,
+                  ),
                 ),
                 child: const Icon(
                   Icons.reply,

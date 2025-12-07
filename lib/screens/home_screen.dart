@@ -215,20 +215,24 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
     if (kDebugMode) {
       debugPrint('🚨 _CommentReportDialogState.build が呼ばれました');
     }
+    final theme = Theme.of(context);
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
-      title: const Text(
+      backgroundColor: theme.cardColor,
+      title: Text(
         'コメントを通報',
-        style: TextStyle(color: Colors.white),
+        style: TextStyle(color: theme.textTheme.titleLarge?.color),
       ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '通報理由を選択してください',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 12),
             _buildReasonOption(
@@ -276,9 +280,12 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
               },
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               '詳細（任意）',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -544,20 +551,24 @@ class _ReportDialogState extends State<_ReportDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
-      title: const Text(
+      backgroundColor: theme.cardColor,
+      title: Text(
         '投稿を通報',
-        style: TextStyle(color: Colors.white),
+        style: TextStyle(color: theme.textTheme.titleLarge?.color),
       ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '通報理由を選択してください',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 12),
             // 通報理由の選択肢
@@ -606,9 +617,12 @@ class _ReportDialogState extends State<_ReportDialog> {
               },
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               '詳細（任意）',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -2014,26 +2028,29 @@ class _HomeScreenState extends State<HomeScreen>
   void _showAllContentViewedDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
-          'すべてのコンテンツを視聴済み',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'これ以上表示できるコンテンツはありません。',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Color(0xFFFF6B35)),
-            ),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          title: Text(
+            'すべてのコンテンツを視聴済み',
+            style: TextStyle(color: theme.textTheme.titleLarge?.color),
           ),
-        ],
-      ),
+          content: Text(
+            'これ以上表示できるコンテンツはありません。',
+            style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'OK',
+                style: TextStyle(color: Color(0xFFFF6B35)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -3069,9 +3086,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildScaffold(
       BuildContext context, NavigationProvider navigationProvider) {
+    final theme = Theme.of(context);
     return Scaffold(
-      // 画面の暗転を防ぐため、背景色をグレーに設定
-      backgroundColor: Colors.grey[900],
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
@@ -4588,16 +4605,19 @@ class _HomeScreenState extends State<HomeScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.image_not_supported,
-                color: Colors.white38,
+                color: Theme.of(context).textTheme.bodySmall?.color,
                 size: 80,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 '画像URLが設定されていません',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 16),
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -4650,17 +4670,17 @@ class _HomeScreenState extends State<HomeScreen>
               width: double.infinity,
               height: double.infinity,
               color: Colors.grey[900],
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.broken_image,
-                      color: Colors.white38,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
                       size: 48,
                     ),
-                    SizedBox(height: 8),
-                    Text(
+                    const SizedBox(height: 8),
+                    const Text(
                       '画像の読み込みに失敗',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white38, fontSize: 12),

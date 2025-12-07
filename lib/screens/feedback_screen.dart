@@ -114,29 +114,32 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   void _showSuccessDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
-          '送信完了',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'フィードバックを送信しました。\nご意見ありがとうございます。',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop(); // フィードバック画面も閉じる
-            },
-            child: Text(
-              'OK',
-              style: TextStyle(color: SpotLightColors.primaryOrange),
-            ),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          title: Text(
+            '送信完了',
+            style: TextStyle(color: theme.textTheme.titleLarge?.color),
           ),
-        ],
-      ),
+          content: Text(
+            'フィードバックを送信しました。\nご意見ありがとうございます。',
+            style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // フィードバック画面も閉じる
+              },
+              child: Text(
+                'OK',
+                style: TextStyle(color: SpotLightColors.primaryOrange),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -150,10 +153,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       _emailController.text = user!.email;
     }
 
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
