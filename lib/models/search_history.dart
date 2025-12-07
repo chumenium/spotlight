@@ -18,7 +18,7 @@ class SearchHistory {
       return SearchHistory(
         id: json,
         query: json,
-        searchedAt: DateTime.now(), // 履歴には日時情報がないため現在時刻を使用
+        searchedAt: DateTime.now().toLocal(), // 履歴には日時情報がないため現在時刻を使用
         resultCount: null,
       );
     }
@@ -29,7 +29,7 @@ class SearchHistory {
         id: json['id']?.toString() ?? json['query']?.toString() ?? '',
         query: json['query']?.toString() ?? json.toString(),
         searchedAt: json['searched_at'] != null
-            ? DateTime.tryParse(json['searched_at']) ?? DateTime.now()
+            ? DateTime.tryParse(json['searched_at'])?.toLocal() ?? DateTime.now().toLocal()
             : DateTime.now(),
         resultCount: json['result_count']?.toString(),
       );
@@ -39,7 +39,7 @@ class SearchHistory {
     return SearchHistory(
       id: json.toString(),
       query: json.toString(),
-      searchedAt: DateTime.now(),
+      searchedAt: DateTime.now().toLocal(),
       resultCount: null,
     );
   }
