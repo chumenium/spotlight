@@ -898,16 +898,23 @@ class AuthProvider extends ChangeNotifier {
 
       if (iconPath != null) {
         if (iconPath.isEmpty) {
-          // 空文字列の場合はアイコンを削除
-          finalIconPath = null;
-          fullIconUrl = null;
+          // 空文字列の場合はdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
+          finalIconPath = '/icon/default_icon.png';
+          final baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+          fullIconUrl = _addIconCacheKey(baseIconUrl);
         } else {
           // iconPathの形式を確認
           finalIconPath = iconPath;
           String baseIconUrl;
 
+          // default_icon.pngの場合はS3のCloudFront URLを使用
+          if (iconPath == 'default_icon.png' || 
+              iconPath == '/icon/default_icon.png' ||
+              iconPath.endsWith('/default_icon.png')) {
+            baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+          }
           // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
-          if (iconPath.startsWith('http://') ||
+          else if (iconPath.startsWith('http://') ||
               iconPath.startsWith('https://')) {
             baseIconUrl = iconPath;
           }
@@ -923,8 +930,14 @@ class AuthProvider extends ChangeNotifier {
         finalIconPath = _currentUser!.iconPath;
         String baseIconUrl;
 
+        // default_icon.pngの場合はS3のCloudFront URLを使用
+        if (_currentUser!.iconPath == 'default_icon.png' || 
+            _currentUser!.iconPath == '/icon/default_icon.png' ||
+            _currentUser!.iconPath!.endsWith('/default_icon.png')) {
+          baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+        }
         // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
-        if (_currentUser!.iconPath!.startsWith('http://') ||
+        else if (_currentUser!.iconPath!.startsWith('http://') ||
             _currentUser!.iconPath!.startsWith('https://')) {
           baseIconUrl = _currentUser!.iconPath!;
         }
@@ -935,7 +948,10 @@ class AuthProvider extends ChangeNotifier {
 
         fullIconUrl = _addIconCacheKey(baseIconUrl);
       } else {
-        finalIconPath = _currentUser!.iconPath;
+        // iconPathがnullまたは空の場合はdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
+        finalIconPath = '/icon/default_icon.png';
+        final baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+        fullIconUrl = _addIconCacheKey(baseIconUrl);
       }
 
       _currentUser = User(

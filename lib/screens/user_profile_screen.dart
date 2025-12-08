@@ -350,7 +350,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           iconUrl = '${AppConfig.backendUrl}$_iconPath';
         }
       } else {
-        iconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+        iconUrl = '${AppConfig.backendUrl}/icon/default_icon.png';
       }
     }
 

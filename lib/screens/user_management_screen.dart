@@ -77,7 +77,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     final iconPath = user['iconimgpath']?.toString() ?? '';
     
     if (iconPath.isEmpty) {
-      return '${AppConfig.backendUrl}/icon/default_icon.jpg';
+      return '${AppConfig.backendUrl}/icon/default_icon.png';
     }
 
     if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {

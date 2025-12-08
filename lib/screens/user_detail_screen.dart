@@ -118,7 +118,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     final iconPath = widget.user['iconimgpath']?.toString() ?? '';
     
     if (iconPath.isEmpty) {
-      return '${AppConfig.backendUrl}/icon/default_icon.jpg';
+      return '${AppConfig.backendUrl}/icon/default_icon.png';
     }
 
     if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {

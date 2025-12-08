@@ -81,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // デフォルトアイコンのキャッシュもクリア
       await CachedNetworkImage.evictFromCache(
-          '${AppConfig.backendUrl}/icon/default_icon.jpg');
+          '${AppConfig.backendUrl}/icon/default_icon.png');
 
       if (kDebugMode) {
         debugPrint('🗑️ アイコンキャッシュをクリアしました');
@@ -601,8 +601,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           // iconPathを優先的に使用（バックエンドから取得した最新の値）
           if (iconPath.isNotEmpty) {
+            // default_icon.pngの場合はS3のCloudFront URLを使用
+            if (iconPath == 'default_icon.png' || 
+                iconPath == '/icon/default_icon.png' ||
+                iconPath.endsWith('/default_icon.png')) {
+              baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+              if (kDebugMode) {
+                debugPrint(
+                    '🖼️ プロフィール: S3のデフォルトアイコンを使用: $baseIconUrl (iconPath: $iconPath)');
+              }
+            }
             // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
-            if (iconPath.startsWith('http://') ||
+            else if (iconPath.startsWith('http://') ||
                 iconPath.startsWith('https://')) {
               baseIconUrl = iconPath;
               if (kDebugMode) {
@@ -635,11 +645,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
             }
           } else {
-            // iconPathがない場合はデフォルトアイコンを使用
-            baseIconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+            // iconPathがない場合はS3のデフォルトアイコンを使用
+            baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
             if (kDebugMode) {
-              debugPrint('🖼️ プロフィール: デフォルトアイコンを使用 (iconPath: $iconPath)');
+              debugPrint('🖼️ プロフィール: S3のデフォルトアイコンを使用 (iconPath: $iconPath)');
             }
           }
 
@@ -708,13 +718,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           debugPrint('  - baseIconUrl: $baseIconUrl');
                           debugPrint('  - iconPath: $iconPath');
                           debugPrint('  - error: $error');
+                          debugPrint('  - S3のdefault_icon.pngをフォールバックとして使用');
                         }
-                        return Container(
-                          color: const Color(0xFFFF6B35),
-                          child: const Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: 40,
+                        // エラー時はS3のdefault_icon.pngを表示
+                        return CachedNetworkImage(
+                          imageUrl: '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png',
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          httpHeaders: const {
+                            'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
+                            'User-Agent': 'Flutter-Spotlight/1.0',
+                          },
+                          placeholder: (context, url) => Container(
+                            color: const Color(0xFFFF6B35),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: const Color(0xFFFF6B35),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 40,
+                            ),
                           ),
                         );
                       },
@@ -2607,6 +2638,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (kDebugMode) {
           debugPrint('🔗 古いアイコンURL: $oldIconUrl');
+          if (user?.iconPath != null) {
+            final oldIconPath = user!.iconPath!;
+            if (oldIconPath.contains('default_icon') || 
+                oldIconPath.endsWith('default_icon.png')) {
+              debugPrint('ℹ️ 古いアイコンはdefault_iconのため、バックエンド側で削除されません');
+            } else {
+              debugPrint('ℹ️ 古いアイコンファイルはバックエンド側で自動削除されます: $oldIconPath');
+            }
+          }
         }
 
         // 古いキャッシュをクリア（古いURLとデフォルトアイコン）
@@ -2664,7 +2704,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 '${AppConfig.backendUrl}/icon/$refreshedIconPath';
           }
         } else {
-          refreshedIconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+          refreshedIconUrl = '${AppConfig.backendUrl}/icon/default_icon.png';
         }
         if (!allIconUrls.contains(refreshedIconUrl)) {
           allIconUrls.add(refreshedIconUrl);
@@ -3271,14 +3311,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (kDebugMode) {
         debugPrint(
-            '📤 アイコン削除通知を送信: username=$username, iconPath=/icon/default_icon.jpg');
+            '📤 アイコン削除通知を送信: username=$username, iconPath=/icon/default_icon.png');
       }
 
       // 他の画面にアイコン削除を通知（ホーム画面など）
-      // nullの代わりに/icon/default_icon.jpgを明示的に指定
+      // nullの代わりに/icon/default_icon.pngを明示的に指定
       IconUpdateService().notifyIconUpdate(
         username,
-        iconPath: '/icon/default_icon.jpg', // デフォルトアイコンを明示的に指定
+        iconPath: '/icon/default_icon.png', // デフォルトアイコンを明示的に指定
       );
 
       if (mounted) {
@@ -3305,44 +3345,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// デフォルトアイコンを設定
   Future<void> _setDefaultIcon(AuthProvider authProvider) async {
-    // バックエンドのデフォルトアイコンパスを設定
-    const defaultIconPath = '/icon/default_icon.jpg';
-    final defaultIconUrl = '${AppConfig.backendUrl}$defaultIconPath';
+    // S3のCloudFront URLからデフォルトアイコンを読み込む
+    // DB上ではdefault_icon.pngになっているが、S3のspotlight-contents/icon/default_icon.pngを使用
+    const defaultIconPath = '/icon/default_icon.png';
+    final defaultIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
     if (kDebugMode) {
-      debugPrint('🖼️ デフォルトアイコン確認中: $defaultIconUrl');
+      debugPrint('🖼️ S3のデフォルトアイコン確認中: $defaultIconUrl');
+      debugPrint('🖼️ DB上のiconPath: $defaultIconPath');
     }
 
     try {
-      // バックエンドのデフォルトアイコンが利用可能かを確認
+      // S3のデフォルトアイコンが利用可能かを確認
       final response = await http.head(Uri.parse(defaultIconUrl)).timeout(
             const Duration(seconds: 3),
             onTimeout: () => http.Response('', 404),
           );
 
-      if (response.statusCode == 200) {
-        // デフォルトアイコンが存在する場合は設定
-        await authProvider.updateUserInfo(iconPath: defaultIconPath);
+      // エラー時でも常にdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
+      // DB上ではdefault_icon.pngを設定（バックエンド側で認識される形式）
+      // 実際の読み込みはCloudFront URLから行う
+      await authProvider.updateUserInfo(iconPath: defaultIconPath);
 
+      if (response.statusCode == 200) {
         if (kDebugMode) {
-          debugPrint('✅ バックエンドのデフォルトアイコンを設定: $defaultIconPath');
+          debugPrint('✅ S3のデフォルトアイコンを設定: $defaultIconPath');
+          debugPrint('✅ CloudFront URL: $defaultIconUrl');
         }
       } else {
-        // デフォルトアイコンが存在しない場合はnullを設定（ローカルのPersonアイコンを表示）
-        await authProvider.updateUserInfo(iconPath: '');
-
         if (kDebugMode) {
-          debugPrint('⚠️ バックエンドのデフォルトアイコンが存在しません (${response.statusCode})');
-          debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
+          debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
+          debugPrint('🖼️ それでもS3のdefault_icon.pngを使用します: $defaultIconUrl');
         }
       }
     } catch (e) {
-      // ネットワークエラーの場合もnullを設定（ローカルのPersonアイコンを表示）
-      await authProvider.updateUserInfo(iconPath: '');
+      // ネットワークエラーの場合でもdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
+      await authProvider.updateUserInfo(iconPath: defaultIconPath);
 
       if (kDebugMode) {
         debugPrint('❌ デフォルトアイコン確認エラー: $e');
-        debugPrint('🖼️ ローカルのデフォルトアイコン（Person）を使用します');
+        debugPrint('🖼️ それでもS3のdefault_icon.pngを使用します: $defaultIconUrl');
       }
     }
 

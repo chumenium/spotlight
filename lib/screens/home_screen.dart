@@ -2638,7 +2638,7 @@ class _HomeScreenState extends State<HomeScreen>
         iconUrl = '${AppConfig.backendUrl}/icon/$userIconPath';
       }
     } else {
-      iconUrl = '${AppConfig.backendUrl}/icon/default_icon.jpg';
+      iconUrl = '${AppConfig.backendUrl}/icon/default_icon.png';
     }
 
     // 1時間ごとのキャッシュキーを追加（YYYYMMDDHH形式）
@@ -2717,7 +2717,7 @@ class _HomeScreenState extends State<HomeScreen>
     String? baseIconUrl;
 
     if (event.iconPath == null || event.iconPath!.isEmpty) {
-      newIconPath = 'default_icon.jpg';
+      newIconPath = 'default_icon.png';
       baseIconUrl = '${AppConfig.backendUrl}/icon/$newIconPath';
     } else if (event.iconPath!.startsWith('http://') ||
         event.iconPath!.startsWith('https://')) {

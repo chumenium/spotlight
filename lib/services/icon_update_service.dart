@@ -35,7 +35,7 @@ class IconUpdateService {
   void notifyIconUpdate(String username, {String? iconPath}) {
     if (kDebugMode) {
       if (iconPath == null) {
-        debugPrint('🔔 アイコン更新通知: $username -> default_icon.jpg (削除)');
+        debugPrint('🔔 アイコン更新通知: $username -> default_icon.png (削除)');
       } else {
         debugPrint('🔔 アイコン更新通知: $username -> $iconPath (変更)');
       }
