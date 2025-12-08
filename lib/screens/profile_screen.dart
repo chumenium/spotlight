@@ -2150,13 +2150,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuTile(
             icon: Icons.settings_outlined,
             title: '設定',
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SettingsScreen(),
                 ),
               );
+              // プロフィール編集が成功した場合は、プロフィール情報を更新
+              if (result == true && mounted) {
+                if (kDebugMode) {
+                  debugPrint('🔄 プロフィール編集が完了したため、プロフィール情報を更新します...');
+                }
+                // プロフィール情報を更新
+                _refreshProfileData();
+              }
             },
           ),
           _buildMenuDivider(context),

@@ -63,9 +63,9 @@ class SettingsScreen extends StatelessWidget {
                   builder: (context) => const ProfileEditScreen(),
                 ),
               );
-              // 保存成功時は何か処理が必要な場合に使用
-              if (result == true) {
-                // プロフィール情報を再取得する場合はここで処理
+              // 保存成功時は設定画面からもtrueを返す
+              if (result == true && context.mounted) {
+                Navigator.of(context).pop(true);
               }
             },
           ),
