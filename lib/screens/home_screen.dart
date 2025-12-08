@@ -1184,6 +1184,10 @@ class _HomeScreenState extends State<HomeScreen>
       // 初回読み込みは /api/content/getcontents を使用して5件取得
       List<Post> posts = await PostService.fetchContents();
 
+      if (kDebugMode) {
+        debugPrint('📝 fetchContents結果: ${posts.length}件');
+      }
+
       // 投稿が空の場合、ランダム取得をフォールバックとして使用
       if (posts.isEmpty) {
         if (kDebugMode) {
@@ -1200,8 +1204,44 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
 
+      // ランダム取得も空の場合、視聴履歴から取得を試みる
+      if (posts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('📚 ランダム取得も空でした。視聴履歴から取得を試みます...');
+        }
+        try {
+          final historyPosts = await PostService.getPlayHistory();
+          if (kDebugMode) {
+            debugPrint('📚 視聴履歴取得結果: ${historyPosts.length}件');
+          }
+          if (historyPosts.isNotEmpty) {
+            // 視聴履歴から最大5件を取得
+            posts = historyPosts.take(_initialLoadCount).toList();
+            if (kDebugMode) {
+              debugPrint('📚 視聴履歴から取得成功: ${posts.length}件');
+              for (int i = 0; i < posts.length; i++) {
+                debugPrint(
+                    '📚 視聴履歴投稿[$i]: id=${posts[i].id}, title=${posts[i].title}');
+              }
+            }
+          } else {
+            if (kDebugMode) {
+              debugPrint('⚠️ 視聴履歴も空でした');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ 視聴履歴からの取得エラー: $e');
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 最終的な投稿数: ${posts.length}件');
+      }
+
       if (!_isDisposed && mounted) {
-        // 投稿が空の場合でも、初回起動時は自動リトライを続ける
+        // 投稿が空の場合でも、初回起動時は自動リトライを続ける（ただし、視聴履歴からも取得できない場合のみ）
         if (posts.isEmpty && _initialRetryCount < _maxInitialRetries) {
           _initialRetryCount++;
           final retryDelay =
@@ -1250,6 +1290,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         // 投稿が空の場合、JWTトークンを確認してエラーメッセージを設定
+        // 【重要】投稿が空でも、視聴履歴から取得を試みた後なので、エラーメッセージを表示する
         String? errorMsg;
         if (posts.isEmpty) {
           final jwtToken = await JwtService.getJwtToken();
@@ -1260,9 +1301,18 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
 
+        // 【重要】_isLoadingを確実にfalseに設定（投稿が空でも、ローディングを終了する）
+        // 【重要】投稿が取得できた場合、確実に_postsに設定する
+        if (kDebugMode) {
+          debugPrint(
+              '📝 setState前: posts.length=${posts.length}, _isLoading=$_isLoading, _posts.length=${_posts.length}');
+        }
+
+        // 【重要】投稿が取得できた場合、確実に_postsに設定する
+        // 【重要】_isLoadingを確実にfalseに設定（投稿が空でも、ローディングを終了する）
         setState(() {
-          _posts = posts;
-          _isLoading = false;
+          _posts = posts; // 【重要】確実に_postsに設定（投稿が空でも設定する）
+          _isLoading = false; // 【重要】確実にfalseに設定（投稿が空でも設定する）
           // 投稿が空で、リトライ回数が上限に達した場合のみエラーメッセージを表示
           _errorMessage = errorMsg;
           _initialRetryCount = 0; // 成功したらリトライカウントをリセット
@@ -1288,6 +1338,16 @@ class _HomeScreenState extends State<HomeScreen>
             }
           }
         });
+
+        if (kDebugMode) {
+          debugPrint(
+              '✅ 投稿取得完了: _isLoading=false, _posts.length=${_posts.length}, _errorMessage=$errorMsg');
+          debugPrint(
+              '✅ setState後: _posts.length=${_posts.length}, _isLoading=$_isLoading');
+        }
+
+        // 【重要】投稿が取得できた場合、確実にコンテンツを表示する
+        // 投稿が空の場合でも、_isLoadingをfalseに設定したので、エラーメッセージが表示される
 
         // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
         if (_posts.isNotEmpty) {
@@ -1363,10 +1423,41 @@ class _HomeScreenState extends State<HomeScreen>
           }
         });
       } else {
-        // リトライ回数が上限に達した場合、エラーメッセージを表示
+        // リトライ回数が上限に達した場合、視聴履歴から取得を試みる
         if (!_isDisposed && mounted) {
+          if (kDebugMode) {
+            debugPrint('📚 リトライ回数が上限に達しました。視聴履歴から取得を試みます...');
+          }
+          try {
+            final historyPosts = await PostService.getPlayHistory();
+            if (historyPosts.isNotEmpty) {
+              // 視聴履歴から最大5件を取得
+              final posts = historyPosts.take(_initialLoadCount).toList();
+              setState(() {
+                _posts = posts;
+                _isLoading = false; // 【重要】確実にfalseに設定
+                _errorMessage = null;
+                _initialRetryCount = 0; // リトライカウントをリセット
+                _hasMorePosts = posts.length >= _initialLoadCount;
+              });
+              if (kDebugMode) {
+                debugPrint('📚 視聴履歴から取得成功: ${posts.length}件');
+              }
+              // 投稿が取得できたら初期表示時に現在のページがメディアの場合は自動再生を開始
+              if (_posts.isNotEmpty) {
+                _handleMediaPageChange(_currentIndex);
+                _preloadNextPosts(_currentIndex);
+              }
+              return; // 視聴履歴から取得できたので終了
+            }
+          } catch (historyError) {
+            if (kDebugMode) {
+              debugPrint('❌ 視聴履歴からの取得エラー: $historyError');
+            }
+          }
+          // 視聴履歴からも取得できない場合、エラーメッセージを表示
           setState(() {
-            _isLoading = false;
+            _isLoading = false; // 【重要】確実にfalseに設定
             _errorMessage = errorMessage;
             _initialRetryCount = 0; // リトライカウントをリセット
           });
@@ -3120,20 +3211,30 @@ class _HomeScreenState extends State<HomeScreen>
                           children: [
                             Icon(
                               Icons.error_outline,
-                              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
-                                     (Theme.of(context).brightness == Brightness.dark 
-                                         ? Colors.white70 
-                                         : Colors.grey[600]),
+                              color: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.color
+                                      ?.withOpacity(0.7) ??
+                                  (Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white70
+                                      : Colors.grey[600]),
                               size: 64,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               _errorMessage!,
                               style: TextStyle(
-                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
-                                       (Theme.of(context).brightness == Brightness.dark 
-                                           ? Colors.white70 
-                                           : Colors.grey[600]),
+                                color: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color
+                                        ?.withOpacity(0.7) ??
+                                    (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white70
+                                        : Colors.grey[600]),
                                 fontSize: 16,
                               ),
                             ),
@@ -3170,19 +3271,28 @@ class _HomeScreenState extends State<HomeScreen>
                                 Icon(
                                   Icons.post_add,
                                   size: 64,
-                                  color: Theme.of(context).textTheme.bodySmall?.color ?? 
-                                         (Theme.of(context).brightness == Brightness.dark 
-                                             ? Colors.white38 
-                                             : Colors.grey[400]),
+                                  color: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.color ??
+                                      (Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white38
+                                          : Colors.grey[400]),
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
                                   '投稿がありません',
                                   style: TextStyle(
-                                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? 
-                                           (Theme.of(context).brightness == Brightness.dark 
-                                               ? Colors.white70 
-                                               : Colors.grey[600]),
+                                    color: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color
+                                            ?.withOpacity(0.7) ??
+                                        (Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white70
+                                            : Colors.grey[600]),
                                     fontSize: 16,
                                   ),
                                 ),
@@ -3727,7 +3837,9 @@ class _HomeScreenState extends State<HomeScreen>
     // _currentIndexが有効で、そのインデックスの投稿IDが一致する場合、_currentIndexのコントローラーを使用
     if (_currentIndex >= 0 &&
         _currentIndex < _posts.length &&
-        _posts[_currentIndex].id == post.id) {
+        _posts[_currentIndex].id == post.id &&
+        postIndex != _currentIndex) {
+      // postIndexと_currentIndexが不一致の場合のみ、_currentIndexのコントローラーを使用
       actualIndex = _currentIndex;
       controller = _videoControllers[_currentIndex];
 
@@ -3736,7 +3848,7 @@ class _HomeScreenState extends State<HomeScreen>
             '⚠️ _buildVideoContent: postIndex($postIndex)と_currentIndex($_currentIndex)が不一致。_currentIndexのコントローラーを使用: postId=${post.id}');
       }
     } else {
-      // postIndexのコントローラーを使用
+      // postIndexのコントローラーを使用（postIndexと_currentIndexが一致する場合も含む）
       controller = _videoControllers[postIndex];
     }
 
@@ -3749,13 +3861,10 @@ class _HomeScreenState extends State<HomeScreen>
     // 【重要】_currentIndexと一致する場合は、コントローラーが存在し初期化済みなら必ず表示する
     // 【重要】_initializedVideosに含まれている場合も表示する（二回目以降の表示を確実にするため）
     // 【重要】actualIndexを使用して判定（postIndexと_currentIndexが不一致の場合でも正しく判定）
-    final isValidController = controller != null &&
-        controller.value.isInitialized &&
-        (actualIndex == _currentIndex ||
-            _currentPlayingVideo == actualIndex ||
-            controller.value.isPlaying ||
-            (actualIndex == _currentIndex &&
-                _initializedVideos.contains(actualIndex)));
+    // Android/iOSで暗転する問題を防ぐため、コントローラーが存在し初期化済みの場合は常に表示
+    // これにより、コントローラーが初期化されているのに表示されない問題を防ぐ
+    final isValidController =
+        controller != null && controller.value.isInitialized;
 
     // デバッグ用: コントローラーの状態を詳細に確認
     if (kDebugMode) {
@@ -3783,6 +3892,12 @@ class _HomeScreenState extends State<HomeScreen>
       if (controller == null && _initializedVideos.contains(actualIndex)) {
         debugPrint(
             '⚠️ 動画コントローラーが初期化済みフラグにあるが、コントローラーがnull: actualIndex=$actualIndex');
+        // 【重要】コントローラーが存在しない場合、初期化済みフラグを削除して不整合を防ぐ
+        // これにより、スクロール時にコントローラーが存在しない状態で暗転する問題を防ぐ
+        _initializedVideos.remove(actualIndex);
+        if (kDebugMode) {
+          debugPrint('🔄 初期化済みフラグを削除: actualIndex=$actualIndex');
+        }
       }
     }
 
@@ -3808,6 +3923,7 @@ class _HomeScreenState extends State<HomeScreen>
             )
           else
             // 動画初期化中またはサムネイル表示
+            // 【重要】コントローラーが存在しない場合でも、サムネイルを確実に表示して暗転を防ぐ
             Positioned.fill(
               child: Stack(
                 children: [
@@ -3816,35 +3932,72 @@ class _HomeScreenState extends State<HomeScreen>
                     color: Colors.grey[900],
                   ),
                   // サムネイル画像（常に表示して、画面の暗転を防ぐ）
+                  // 【重要】コントローラーが存在しない場合でも、サムネイルを表示する
                   if (post.thumbnailUrl != null &&
                       post.thumbnailUrl!.isNotEmpty)
                     Positioned.fill(
                       child: Image.network(
                         post.thumbnailUrl!,
                         fit: BoxFit.cover,
+                        // 【重要】キャッシュを有効にして、読み込み速度を向上
+                        cacheWidth: null,
+                        cacheHeight: null,
                         errorBuilder: (context, error, stackTrace) {
                           if (kDebugMode) {
-                            debugPrint('❌ サムネイル読み込みエラー: ${post.thumbnailUrl}');
+                            debugPrint(
+                                '❌ サムネイル読み込みエラー: ${post.thumbnailUrl}, postIndex=$postIndex, actualIndex=$actualIndex');
                           }
-                          // エラー時も背景色を表示
+                          // エラー時も背景色を表示（暗転を防ぐ）
                           return Container(
                             color: Colors.grey[900],
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white54,
+                                size: 64,
+                              ),
+                            ),
                           );
                         },
                         loadingBuilder: (context, child, loadingProgress) {
-                          // 読み込み中も背景色を表示
+                          // 読み込み中も背景色を表示（暗転を防ぐ）
                           if (loadingProgress == null) {
                             return child;
                           }
                           return Container(
                             color: Colors.grey[900],
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFFF6B35),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const CircularProgressIndicator(
+                                    color: Color(0xFFFF6B35),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    '読み込み中...',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );
                         },
+                      ),
+                    )
+                  else
+                    // サムネイルURLが存在しない場合でも、背景色を表示（暗転を防ぐ）
+                    Container(
+                      color: Colors.grey[900],
+                      child: const Center(
+                        child: Icon(
+                          Icons.video_library,
+                          color: Colors.white54,
+                          size: 64,
+                        ),
                       ),
                     ),
                   // 再生ボタン（コントローラーが初期化されていない場合のみ表示）
@@ -4450,167 +4603,173 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// シークバーを構築（画面の一番下に表示）
   Widget _buildSeekBar(VideoPlayerController controller) {
-    if (!controller.value.isInitialized) {
-      return const SizedBox.shrink();
-    }
+    // ValueListenableBuilderを使用して、コントローラーの値が変更されたときだけシークバーを更新
+    // これにより、PageView全体の再構築を防ぐ
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, child) {
+        if (!value.isInitialized) {
+          return const SizedBox.shrink();
+        }
 
-    final position = _isSeeking && _seekPosition != null
-        ? Duration(
-            milliseconds:
-                (_seekPosition! * controller.value.duration.inMilliseconds)
-                    .round())
-        : controller.value.position;
-    final duration = controller.value.duration;
-    double progress = 0.0;
-    if (duration.inMilliseconds > 0 && position.inMilliseconds >= 0) {
-      final calculatedProgress =
-          position.inMilliseconds / duration.inMilliseconds;
-      // NaN、Infinity、不正な値をチェックしてクランプ
-      if (calculatedProgress.isFinite) {
-        progress = calculatedProgress.clamp(0.0, 1.0);
-      }
-    }
+        final position = _isSeeking && _seekPosition != null
+            ? Duration(
+                milliseconds:
+                    (_seekPosition! * value.duration.inMilliseconds).round())
+            : value.position;
+        final duration = value.duration;
+        double progress = 0.0;
+        if (duration.inMilliseconds > 0 && position.inMilliseconds >= 0) {
+          final calculatedProgress =
+              position.inMilliseconds / duration.inMilliseconds;
+          // NaN、Infinity、不正な値をチェックしてクランプ
+          if (calculatedProgress.isFinite) {
+            progress = calculatedProgress.clamp(0.0, 1.0);
+          }
+        }
 
-    // 画面の一番下に配置（SafeAreaの下部パディングを考慮し、さらに下に配置）
-    final mediaQuery = MediaQuery.of(context);
-    final bottomPadding = mediaQuery.padding.bottom; // 安全領域の下部パディング
+        // 画面の一番下に配置（SafeAreaの下部パディングを考慮し、さらに下に配置）
+        final mediaQuery = MediaQuery.of(context);
+        final bottomPadding = mediaQuery.padding.bottom; // 安全領域の下部パディング
 
-    return Positioned(
-      bottom: bottomPadding - 20, // さらに下に配置
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withOpacity(0.8),
-            ],
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // 時間表示（画面右のシークバーの上、少し下に配置）
-            Padding(
-              padding: const EdgeInsets.only(right: 0, bottom: 16),
-              child: Text(
-                '${_formatDuration(position)} / ${_formatDuration(duration)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+        return Positioned(
+          bottom: bottomPadding - 20, // さらに下に配置
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.8),
+                ],
               ),
             ),
-            // シークバー（画面の一番左から右まで）
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
-                if (!controller.value.isInitialized) return;
-                _startSeeking(controller);
-              },
-              onHorizontalDragUpdate: (details) {
-                if (!controller.value.isInitialized) return;
-                if (!_isSeeking) {
-                  _startSeeking(controller);
-                }
-                _updateSeeking(details, controller);
-              },
-              onHorizontalDragEnd: (details) {
-                if (!controller.value.isInitialized) return;
-                _endSeeking(controller);
-              },
-              onTapDown: (details) {
-                if (!controller.value.isInitialized) return;
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // 時間表示（画面右のシークバーの上、少し下に配置）
+                Padding(
+                  padding: const EdgeInsets.only(right: 0, bottom: 16),
+                  child: Text(
+                    '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                // シークバー（画面の一番左から右まで）
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragStart: (details) {
+                    if (!value.isInitialized) return;
+                    _startSeeking(controller);
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    if (!value.isInitialized) return;
+                    if (!_isSeeking) {
+                      _startSeeking(controller);
+                    }
+                    _updateSeeking(details, controller);
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (!value.isInitialized) return;
+                    _endSeeking(controller);
+                  },
+                  onTapDown: (details) {
+                    if (!value.isInitialized) return;
 
-                // シークバーのコンテナ内の座標を取得
-                final containerWidth = MediaQuery.of(context).size.width;
-                final tapX =
-                    details.localPosition.dx.clamp(0.0, containerWidth);
-                final tapRatio = tapX / containerWidth;
-                final targetPosition = Duration(
-                  milliseconds: (tapRatio.clamp(0.0, 1.0) *
-                          controller.value.duration.inMilliseconds)
-                      .round(),
-                );
+                    // シークバーのコンテナ内の座標を取得
+                    final containerWidth = MediaQuery.of(context).size.width;
+                    final tapX =
+                        details.localPosition.dx.clamp(0.0, containerWidth);
+                    final tapRatio = tapX / containerWidth;
+                    final targetPosition = Duration(
+                      milliseconds: (tapRatio.clamp(0.0, 1.0) *
+                              value.duration.inMilliseconds)
+                          .round(),
+                    );
 
-                controller.seekTo(targetPosition);
+                    controller.seekTo(targetPosition);
 
-                if (kDebugMode) {
-                  debugPrint(
-                      '🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
-                }
-              },
-              child: Builder(
-                builder: (context) {
-                  final safeProgress =
-                      progress.isFinite ? progress.clamp(0.0, 1.0) : 0.0;
-                  final containerWidth = MediaQuery.of(context).size.width;
-                  final progressWidth = containerWidth * safeProgress;
-                  return Container(
-                    width: double.infinity,
-                    height: 40, // タップ領域を広げる（スライド操作を直感的に）
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Stack(
-                      children: [
-                        // 背景バー（透明にして隠す）
-                        Container(
-                          width: double.infinity,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        // 再生済み部分（左から右へ）
-                        Positioned(
-                          left: 0,
-                          top: 8,
-                          child: SizedBox(
-                            width: progressWidth,
-                            child: Container(
+                    if (kDebugMode) {
+                      debugPrint(
+                          '🎯 シークバータップ: $tapX / $containerWidth = $tapRatio → ${_formatDuration(targetPosition)}');
+                    }
+                  },
+                  child: Builder(
+                    builder: (context) {
+                      final safeProgress =
+                          progress.isFinite ? progress.clamp(0.0, 1.0) : 0.0;
+                      final containerWidth = MediaQuery.of(context).size.width;
+                      final progressWidth = containerWidth * safeProgress;
+                      return Container(
+                        width: double.infinity,
+                        height: 40, // タップ領域を広げる（スライド操作を直感的に）
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Stack(
+                          children: [
+                            // 背景バー（透明にして隠す）
+                            Container(
+                              width: double.infinity,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B35),
+                                color: Colors.transparent,
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
-                          ),
-                        ),
-                        // シークハンドル
-                        Positioned(
-                          left: progressWidth - 6,
-                          top: 4,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.3),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                            // 再生済み部分（左から右へ）
+                            Positioned(
+                              left: 0,
+                              top: 8,
+                              child: SizedBox(
+                                width: progressWidth,
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF6B35),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            // シークハンドル
+                            Positioned(
+                              left: progressWidth - 6,
+                              top: 4,
+                              child: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -6982,8 +7141,44 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // すでに初期化済みの場合はスキップ（強制再初期化の場合は除く）
-    if (!forceReinitialize && _initializedVideos.contains(postIndex)) {
-      return;
+    // ただし、コントローラーが存在しない、または初期化されていない場合は再初期化する
+    if (!forceReinitialize) {
+      final existingController = _videoControllers[postIndex];
+      if (existingController != null &&
+          existingController.value.isInitialized &&
+          _initializedVideos.contains(postIndex)) {
+        // コントローラーが存在し、初期化済みの場合はスキップ
+        if (kDebugMode) {
+          debugPrint(
+              '⏭️ 動画コントローラーは既に初期化済み: index=$postIndex, _currentIndex=$_currentIndex');
+        }
+        return;
+      } else if (existingController != null &&
+          !existingController.value.isInitialized) {
+        // コントローラーが存在するが初期化されていない場合は破棄して再初期化
+        if (kDebugMode) {
+          debugPrint('🔄 動画コントローラーが初期化されていないため、再初期化: index=$postIndex');
+        }
+        try {
+          existingController.removeListener(_onVideoPositionChanged);
+          existingController.dispose();
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('⚠️ 動画コントローラー破棄エラー: $e');
+          }
+        }
+        _videoControllers.remove(postIndex);
+        _initializedVideos.remove(postIndex);
+        // 破棄処理が確実に完了するまで少し待機
+        await Future.delayed(const Duration(milliseconds: 100));
+      } else if (_initializedVideos.contains(postIndex) &&
+          existingController == null) {
+        // 初期化済みフラグがあるがコントローラーが存在しない場合は、フラグを削除して再初期化
+        if (kDebugMode) {
+          debugPrint('🔄 動画コントローラーが存在しないため、再初期化: index=$postIndex');
+        }
+        _initializedVideos.remove(postIndex);
+      }
     }
 
     // 強制再初期化の場合は既存のコントローラーを破棄
@@ -7176,79 +7371,131 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 【重要】すべての動画コントローラーをチェックして、現在のインデックス以外のものを確実に停止
     // これにより、裏で再生されているコンテンツと表示されているコンテンツが異なる問題を防ぐ
+    // 【修正】前後3個のコントローラーは破棄しない（再利用のため、スクロール時の暗転を防ぐ）
+    // 【重要】現在表示中のコントローラー（newIndex）は絶対に破棄しない
     final videoControllerIndices = _videoControllers.keys.toList();
     for (final videoIndex in videoControllerIndices) {
       if (videoIndex != newIndex) {
-        final videoController = _videoControllers[videoIndex];
-        if (videoController != null) {
-          if (kDebugMode) {
-            debugPrint(
-                '🛑 現在のインデックス以外の動画コントローラーを停止: index=$videoIndex, newIndex=$newIndex');
-          }
-          try {
-            // リスナーを削除
-            videoController.removeListener(_onVideoPositionChanged);
-            // 動画を停止
-            if (videoController.value.isInitialized) {
-              videoController.pause();
-              // 再生位置を先頭にリセット
-              videoController.seekTo(Duration.zero);
-            }
-            // コントローラーを完全に破棄（すべての再生状況情報を破棄）
-            videoController.dispose();
-          } catch (e) {
+        // 前後3個のコントローラーは破棄しない（再利用のため、より多くのコントローラーを保持）
+        final distance = (videoIndex - newIndex).abs();
+        if (distance <= 3) {
+          // 近くのコントローラーは停止のみ（破棄しない）
+          final videoController = _videoControllers[videoIndex];
+          if (videoController != null) {
             if (kDebugMode) {
-              debugPrint('⚠️ 動画コントローラー破棄エラー: index=$videoIndex, error=$e');
+              debugPrint(
+                  '⏸️ 近くの動画コントローラーを停止（再利用のため破棄しない）: index=$videoIndex, newIndex=$newIndex, distance=$distance');
+            }
+            try {
+              // 動画を停止（破棄しない）
+              if (videoController.value.isInitialized) {
+                videoController.pause();
+                // 再生位置を先頭にリセット
+                videoController.seekTo(Duration.zero);
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 動画コントローラー停止エラー: index=$videoIndex, error=$e');
+              }
             }
           }
+        } else {
+          // 遠くのコントローラーは破棄する
+          final videoController = _videoControllers[videoIndex];
+          if (videoController != null) {
+            if (kDebugMode) {
+              debugPrint(
+                  '🛑 遠くの動画コントローラーを停止・破棄: index=$videoIndex, newIndex=$newIndex, distance=$distance');
+            }
+            try {
+              // リスナーを削除
+              videoController.removeListener(_onVideoPositionChanged);
+              // 動画を停止
+              if (videoController.value.isInitialized) {
+                videoController.pause();
+                // 再生位置を先頭にリセット
+                videoController.seekTo(Duration.zero);
+              }
+              // コントローラーを完全に破棄（すべての再生状況情報を破棄）
+              videoController.dispose();
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 動画コントローラー破棄エラー: index=$videoIndex, error=$e');
+              }
+            }
 
-          // コントローラーと初期化済みフラグを完全に削除（すべての情報を破棄）
-          _videoControllers.remove(videoIndex);
-          _initializedVideos.remove(videoIndex);
+            // コントローラーと初期化済みフラグを完全に削除（すべての情報を破棄）
+            _videoControllers.remove(videoIndex);
+            _initializedVideos.remove(videoIndex);
 
-          // 前のコンテンツの表示時刻情報も削除（すべての再生状況情報を破棄）
-          if (videoIndex >= 0 && videoIndex < _posts.length) {
-            final prevPost = _posts[videoIndex];
-            _contentLastDisplayedTime.remove(prevPost.id);
+            // 前のコンテンツの表示時刻情報も削除（すべての再生状況情報を破棄）
+            if (videoIndex >= 0 && videoIndex < _posts.length) {
+              final prevPost = _posts[videoIndex];
+              _contentLastDisplayedTime.remove(prevPost.id);
+            }
           }
         }
       }
     }
 
     // 前の動画を完全に停止・破棄（すべての再生状況情報を破棄）
+    // 【修正】前後3個以内のコントローラーは破棄しない（再利用のため、スクロール時の暗転を防ぐ）
+    // 【重要】現在表示中のコントローラー（newIndex）は絶対に破棄しない
     if (_currentPlayingVideo != null && _currentPlayingVideo != newIndex) {
       final prevIndex = _currentPlayingVideo!;
+      final distance = (prevIndex - newIndex).abs();
       final prevController = _videoControllers[prevIndex];
       if (prevController != null) {
-        try {
-          // リスナーを削除
-          prevController.removeListener(_onVideoPositionChanged);
-          // 動画を停止
-          if (prevController.value.isInitialized) {
-            prevController.pause();
-            // 再生位置を先頭にリセット
-            prevController.seekTo(Duration.zero);
-          }
-          // コントローラーを完全に破棄（すべての再生状況情報を破棄）
-          prevController.dispose();
-        } catch (e) {
+        if (distance <= 3) {
+          // 近くのコントローラーは停止のみ（破棄しない）
           if (kDebugMode) {
-            debugPrint('⚠️ 前の動画コントローラー破棄エラー: $e');
+            debugPrint(
+                '⏸️ 前の動画コントローラーを停止（再利用のため破棄しない）: index=$prevIndex, newIndex=$newIndex, distance=$distance');
           }
-        }
+          try {
+            // 動画を停止（破棄しない）
+            if (prevController.value.isInitialized) {
+              prevController.pause();
+              // 再生位置を先頭にリセット
+              prevController.seekTo(Duration.zero);
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 前の動画コントローラー停止エラー: $e');
+            }
+          }
+        } else {
+          // 遠くのコントローラーは破棄する
+          if (kDebugMode) {
+            debugPrint(
+                '🛑 前の動画を完全に破棄: インデックス $prevIndex, newIndex=$newIndex, distance=$distance（すべての再生状況情報を削除）');
+          }
+          try {
+            // リスナーを削除
+            prevController.removeListener(_onVideoPositionChanged);
+            // 動画を停止
+            if (prevController.value.isInitialized) {
+              prevController.pause();
+              // 再生位置を先頭にリセット
+              prevController.seekTo(Duration.zero);
+            }
+            // コントローラーを完全に破棄（すべての再生状況情報を破棄）
+            prevController.dispose();
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 前の動画コントローラー破棄エラー: $e');
+            }
+          }
 
-        // コントローラーと初期化済みフラグを完全に削除（すべての情報を破棄）
-        _videoControllers.remove(prevIndex);
-        _initializedVideos.remove(prevIndex);
+          // コントローラーと初期化済みフラグを完全に削除（すべての情報を破棄）
+          _videoControllers.remove(prevIndex);
+          _initializedVideos.remove(prevIndex);
 
-        // 前のコンテンツの表示時刻情報も削除（すべての再生状況情報を破棄）
-        if (prevIndex >= 0 && prevIndex < _posts.length) {
-          final prevPost = _posts[prevIndex];
-          _contentLastDisplayedTime.remove(prevPost.id);
-        }
-
-        if (kDebugMode) {
-          debugPrint('🛑 前の動画を完全に破棄: インデックス $prevIndex（すべての再生状況情報を削除）');
+          // 前のコンテンツの表示時刻情報も削除（すべての再生状況情報を破棄）
+          if (prevIndex >= 0 && prevIndex < _posts.length) {
+            final prevPost = _posts[prevIndex];
+            _contentLastDisplayedTime.remove(prevPost.id);
+          }
         }
       }
     }
@@ -7572,184 +7819,240 @@ class _HomeScreenState extends State<HomeScreen>
       _startSeekBarUpdateTimer();
 
       // 動画コントローラーを初期化
-      // 既存のコントローラーが再利用された場合は、この処理はスキップされる
-      _initializeVideoController(newIndex, forceReinitialize: false).then((_) {
-        if (!_isDisposed && mounted) {
-          // 初期化完了後に自動再生（ページが変わっていない場合のみ）
-          final controller = _videoControllers[newIndex];
-          if (controller != null && controller.value.isInitialized) {
-            if (kDebugMode) {
-              debugPrint(
-                  '✅ 動画コントローラー初期化完了: index=$newIndex, duration=${controller.value.duration}, size=${controller.value.size}');
-            }
-            // 動画の表示を確実にするため、setStateを呼ぶ（初期化完了を通知）
-            // 複数回setStateを呼んで確実にUIを更新
-            if (mounted) {
-              setState(() {
-                // 動画コントローラーが更新されたことを通知
-              });
-              // フレーム描画後にも再度setStateを呼んで確実に反映
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!_isDisposed && mounted) {
-                  // _currentIndexまたは_currentPlayingVideoと一致する場合のみ更新
-                  if (_currentIndex == newIndex ||
-                      _currentPlayingVideo == newIndex) {
-                    setState(() {
-                      // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
-                    });
-                    if (kDebugMode) {
-                      debugPrint(
-                          '✅ 動画コントローラーUI更新完了（ページ変更後）: index=$newIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
-                    }
-                  }
-                }
-              });
-            }
-
-            // スクロールされるたびに新しいものとして認識するため、常に先頭から再生
-            // まず一時停止してからリセット（固まった状態を解消）
-            controller.pause();
-
-            // 再生位置を確実にリセット（複数回試行）
-            controller.seekTo(Duration.zero).then((_) {
-              // リセット成功後、再度リセットを確認（確実にするため）
-              Future.delayed(const Duration(milliseconds: 50), () {
-                if (!_isDisposed && mounted && _currentIndex == newIndex) {
-                  final checkController = _videoControllers[newIndex];
-                  if (checkController != null &&
-                      checkController.value.isInitialized) {
-                    // 再生位置が0でない場合は再度リセット
-                    if (checkController.value.position != Duration.zero) {
+      // 既存のコントローラーが存在し初期化済みの場合は再利用、それ以外は初期化
+      // コントローラーが存在しない、または初期化されていない場合は確実に初期化する
+      final existingController = _videoControllers[newIndex];
+      // 【重要】コントローラーが存在しない、または初期化されていない場合、または初期化済みフラグがない場合は初期化
+      // これにより、スクロール時にコントローラーが存在しない状態で暗転する問題を防ぐ
+      if (existingController == null ||
+          !existingController.value.isInitialized ||
+          !_initializedVideos.contains(newIndex)) {
+        if (kDebugMode) {
+          debugPrint(
+              '🔄 動画コントローラーを初期化: index=$newIndex, controller存在=${existingController != null}, 初期化済み=${existingController?.value.isInitialized ?? false}, _initializedVideos含む=${_initializedVideos.contains(newIndex)}');
+        }
+        // 【重要】コントローラーが存在しない場合、初期化済みフラグを削除してから初期化
+        // これにより、フラグとコントローラーの不整合を防ぐ
+        if (existingController == null &&
+            _initializedVideos.contains(newIndex)) {
+          if (kDebugMode) {
+            debugPrint('🔄 コントローラーが存在しないため、初期化済みフラグを削除: index=$newIndex');
+          }
+          _initializedVideos.remove(newIndex);
+        }
+        _initializeVideoController(newIndex, forceReinitialize: false)
+            .then((_) {
+          if (!_isDisposed && mounted) {
+            // 初期化完了後に自動再生（ページが変わっていない場合のみ）
+            final controller = _videoControllers[newIndex];
+            if (controller != null && controller.value.isInitialized) {
+              if (kDebugMode) {
+                debugPrint(
+                    '✅ 動画コントローラー初期化完了: index=$newIndex, duration=${controller.value.duration}, size=${controller.value.size}');
+              }
+              // 動画の表示を確実にするため、setStateを呼ぶ（初期化完了を通知）
+              // 複数回setStateを呼んで確実にUIを更新
+              if (mounted) {
+                setState(() {
+                  // 動画コントローラーが更新されたことを通知
+                });
+                // フレーム描画後にも再度setStateを呼んで確実に反映
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!_isDisposed && mounted) {
+                    // _currentIndexまたは_currentPlayingVideoと一致する場合のみ更新
+                    if (_currentIndex == newIndex ||
+                        _currentPlayingVideo == newIndex) {
+                      setState(() {
+                        // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
+                      });
                       if (kDebugMode) {
                         debugPrint(
-                            '⚠️ 動画再生位置がリセットされていません。再リセットします: index=$newIndex, position=${checkController.value.position}');
+                            '✅ 動画コントローラーUI更新完了（ページ変更後）: index=$newIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
                       }
-                      checkController.seekTo(Duration.zero);
                     }
                   }
-                }
-              });
-            }).catchError((error) {
-              if (kDebugMode) {
-                debugPrint('⚠️ 動画再生位置リセットエラー: $error');
+                });
               }
-            });
 
-            // フレーム描画後に再生を開始（表示を確実にするため）
-            // 【重要】_currentIndexとnewIndexが一致していることを確認してから再生
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!_isDisposed &&
-                  mounted &&
-                  _currentIndex == newIndex &&
-                  _currentPlayingVideo == newIndex) {
-                final currentController = _videoControllers[newIndex];
-                if (currentController != null &&
-                    currentController.value.isInitialized) {
-                  // 再生位置を再度確認してリセット
-                  if (currentController.value.position != Duration.zero) {
-                    currentController.seekTo(Duration.zero);
-                  }
-                  // 再生を試みる（失敗した場合は再試行）
-                  currentController.play().catchError((error) {
-                    if (kDebugMode) {
-                      debugPrint('⚠️ 動画再生エラー（再試行）: $error');
-                    }
-                    // 少し待ってから再試行
-                    Future.delayed(const Duration(milliseconds: 300), () {
-                      if (!_isDisposed &&
-                          mounted &&
-                          _currentIndex == newIndex &&
-                          _currentPlayingVideo == newIndex) {
-                        final retryController = _videoControllers[newIndex];
-                        if (retryController != null &&
-                            retryController.value.isInitialized) {
-                          retryController.play();
-                        }
-                      }
-                    });
-                  });
-                  currentController.setLooping(true);
-                }
-              } else {
-                if (kDebugMode) {
-                  debugPrint(
-                      '⚠️ 動画再生をスキップ: _currentIndex=$_currentIndex, newIndex=$newIndex, _currentPlayingVideo=$_currentPlayingVideo');
-                }
-              }
-            });
+              // スクロールされるたびに新しいものとして認識するため、常に先頭から再生
+              // まず一時停止してからリセット（固まった状態を解消）
+              controller.pause();
 
-            // 即座に再生を試みる（フレーム描画前でも）
-            // 【重要】_currentIndexとnewIndexが一致していることを確認してから再生
-            if (_currentIndex == newIndex && _currentPlayingVideo == newIndex) {
-              controller.play().then((_) {
-                // 再生が成功したか確認
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (!_isDisposed &&
-                      mounted &&
-                      _currentIndex == newIndex &&
-                      _currentPlayingVideo == newIndex) {
+              // 再生位置を確実にリセット（複数回試行）
+              controller.seekTo(Duration.zero).then((_) {
+                // リセット成功後、再度リセットを確認（確実にするため）
+                Future.delayed(const Duration(milliseconds: 50), () {
+                  if (!_isDisposed && mounted && _currentIndex == newIndex) {
                     final checkController = _videoControllers[newIndex];
                     if (checkController != null &&
-                        checkController.value.isInitialized &&
-                        !checkController.value.isPlaying) {
-                      // 再生されていない場合は再試行
-                      if (kDebugMode) {
-                        debugPrint('⚠️ 動画が再生されていません。再試行します: index=$newIndex');
+                        checkController.value.isInitialized) {
+                      // 再生位置が0でない場合は再度リセット
+                      if (checkController.value.position != Duration.zero) {
+                        if (kDebugMode) {
+                          debugPrint(
+                              '⚠️ 動画再生位置がリセットされていません。再リセットします: index=$newIndex, position=${checkController.value.position}');
+                        }
+                        checkController.seekTo(Duration.zero);
                       }
-                      checkController.play();
                     }
                   }
                 });
               }).catchError((error) {
                 if (kDebugMode) {
-                  debugPrint('⚠️ 動画即座再生エラー: $error');
+                  debugPrint('⚠️ 動画再生位置リセットエラー: $error');
                 }
-                // エラー時も再試行
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (!_isDisposed &&
-                      mounted &&
-                      _currentIndex == newIndex &&
-                      _currentPlayingVideo == newIndex) {
-                    final retryController = _videoControllers[newIndex];
-                    if (retryController != null &&
-                        retryController.value.isInitialized) {
-                      retryController.play();
-                    }
-                  }
-                });
               });
-            } else {
+
+              // フレーム描画後に再生を開始（表示を確実にするため）
+              // 【重要】_currentIndexとnewIndexが一致していることを確認してから再生
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!_isDisposed &&
+                    mounted &&
+                    _currentIndex == newIndex &&
+                    _currentPlayingVideo == newIndex) {
+                  final currentController = _videoControllers[newIndex];
+                  if (currentController != null &&
+                      currentController.value.isInitialized) {
+                    // 再生位置を再度確認してリセット
+                    if (currentController.value.position != Duration.zero) {
+                      currentController.seekTo(Duration.zero);
+                    }
+                    // 再生を試みる（失敗した場合は再試行）
+                    currentController.play().catchError((error) {
+                      if (kDebugMode) {
+                        debugPrint('⚠️ 動画再生エラー（再試行）: $error');
+                      }
+                      // 少し待ってから再試行
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (!_isDisposed &&
+                            mounted &&
+                            _currentIndex == newIndex &&
+                            _currentPlayingVideo == newIndex) {
+                          final retryController = _videoControllers[newIndex];
+                          if (retryController != null &&
+                              retryController.value.isInitialized) {
+                            retryController.play();
+                          }
+                        }
+                      });
+                    });
+                    currentController.setLooping(true);
+                  }
+                } else {
+                  if (kDebugMode) {
+                    debugPrint(
+                        '⚠️ 動画再生をスキップ: _currentIndex=$_currentIndex, newIndex=$newIndex, _currentPlayingVideo=$_currentPlayingVideo');
+                  }
+                }
+              });
+
+              // 即座に再生を試みる（フレーム描画前でも）
+              // 【重要】_currentIndexとnewIndexが一致していることを確認してから再生
+              if (_currentIndex == newIndex &&
+                  _currentPlayingVideo == newIndex) {
+                controller.play().then((_) {
+                  // 再生が成功したか確認
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    if (!_isDisposed &&
+                        mounted &&
+                        _currentIndex == newIndex &&
+                        _currentPlayingVideo == newIndex) {
+                      final checkController = _videoControllers[newIndex];
+                      if (checkController != null &&
+                          checkController.value.isInitialized &&
+                          !checkController.value.isPlaying) {
+                        // 再生されていない場合は再試行
+                        if (kDebugMode) {
+                          debugPrint('⚠️ 動画が再生されていません。再試行します: index=$newIndex');
+                        }
+                        checkController.play();
+                      }
+                    }
+                  });
+                }).catchError((error) {
+                  if (kDebugMode) {
+                    debugPrint('⚠️ 動画即座再生エラー: $error');
+                  }
+                  // エラー時も再試行
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (!_isDisposed &&
+                        mounted &&
+                        _currentIndex == newIndex &&
+                        _currentPlayingVideo == newIndex) {
+                      final retryController = _videoControllers[newIndex];
+                      if (retryController != null &&
+                          retryController.value.isInitialized) {
+                        retryController.play();
+                      }
+                    }
+                  });
+                });
+              } else {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 動画即座再生をスキップ: _currentIndex=$_currentIndex, newIndex=$newIndex, _currentPlayingVideo=$_currentPlayingVideo');
+                }
+              }
+              controller.setLooping(true);
+
+              // 動画読み込み完了時に視聴履歴を記録
+              _recordPlayHistory(newPost);
+
               if (kDebugMode) {
-                debugPrint(
-                    '⚠️ 動画即座再生をスキップ: _currentIndex=$_currentIndex, newIndex=$newIndex, _currentPlayingVideo=$_currentPlayingVideo');
+                debugPrint('✅ 動画初期化完了・再生開始: index=$newIndex');
               }
             }
-            controller.setLooping(true);
-
-            // 動画読み込み完了時に視聴履歴を記録
-            _recordPlayHistory(newPost);
-
-            if (kDebugMode) {
-              debugPrint('✅ 動画初期化完了・再生開始: index=$newIndex');
+          }
+        }).catchError((error, stackTrace) {
+          if (kDebugMode) {
+            debugPrint('❌ 動画初期化エラー: index=$newIndex');
+            debugPrint('   エラー: $error');
+            debugPrint('   エラータイプ: ${error.runtimeType}');
+            if (error is TimeoutException) {
+              debugPrint('   ⏱️ タイムアウトエラー: 動画の初期化に30秒以上かかりました');
+            } else if (error.toString().contains('ExoPlaybackException') ||
+                error.toString().contains('MediaCodec')) {
+              debugPrint('   🎬 メディアコーデックエラー: 動画の形式がサポートされていない可能性があります');
+            } else if (error.toString().contains('Network')) {
+              debugPrint('   🌐 ネットワークエラー: 動画のダウンロードに失敗しました');
             }
+            debugPrint('   スタックトレース: $stackTrace');
           }
-        }
-      }).catchError((error, stackTrace) {
-        if (kDebugMode) {
-          debugPrint('❌ 動画初期化エラー: index=$newIndex');
-          debugPrint('   エラー: $error');
-          debugPrint('   エラータイプ: ${error.runtimeType}');
-          if (error is TimeoutException) {
-            debugPrint('   ⏱️ タイムアウトエラー: 動画の初期化に30秒以上かかりました');
-          } else if (error.toString().contains('ExoPlaybackException') ||
-              error.toString().contains('MediaCodec')) {
-            debugPrint('   🎬 メディアコーデックエラー: 動画の形式がサポートされていない可能性があります');
-          } else if (error.toString().contains('Network')) {
-            debugPrint('   🌐 ネットワークエラー: 動画のダウンロードに失敗しました');
+        });
+      } else {
+        // 既存のコントローラーが存在し初期化済みの場合は、再生を開始
+        final reusedController = _videoControllers[newIndex];
+        if (reusedController != null && reusedController.value.isInitialized) {
+          if (kDebugMode) {
+            debugPrint(
+                '♻️ 既存の動画コントローラーを再利用: index=$newIndex, _currentIndex=$_currentIndex');
           }
-          debugPrint('   スタックトレース: $stackTrace');
+          // UIを更新して動画を表示
+          if (mounted) {
+            setState(() {
+              // 動画コントローラーが更新されたことを通知
+            });
+            // フレーム描画後にも再度setStateを呼んで確実に反映
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!_isDisposed && mounted) {
+                if (_currentIndex == newIndex ||
+                    _currentPlayingVideo == newIndex) {
+                  setState(() {
+                    // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
+                  });
+                }
+              }
+            });
+          }
+          // 再生位置をリセットして再生
+          reusedController.pause();
+          reusedController.seekTo(Duration.zero).then((_) {
+            if (!_isDisposed && mounted && _currentIndex == newIndex) {
+              reusedController.play();
+            }
+          });
         }
-      });
+      }
     } else if (newPost.postType == PostType.audio) {
       // 新しいページが音声投稿の場合
       // mediaUrlが空の場合は再生をスキップ
@@ -8324,40 +8627,44 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// シークバー更新タイマーを開始（1秒ごとに更新）
+  /// 注意: ValueListenableBuilderを使用しているため、setState()は不要
+  /// タイマーは残しておくが、setState()は呼び出さない（過剰な再構築を防ぐため）
   void _startSeekBarUpdateTimer() {
     _seekBarUpdateTimer?.cancel();
-    _seekBarUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!_isDisposed &&
-          mounted &&
-          _currentPlayingVideo != null &&
-          !_isSeeking) {
-        final controller = _videoControllers[_currentPlayingVideo];
-        if (controller != null && controller.value.isInitialized) {
-          setState(() {
-            // シークバーの更新をトリガー
-          });
-        } else {
-          // コントローラーが初期化されていない場合はタイマーを停止
-          timer.cancel();
-        }
-      } else if (_currentPlayingVideo == null) {
-        // 動画が再生されていない場合はタイマーを停止
-        timer.cancel();
-      }
-    });
+    // ValueListenableBuilderを使用しているため、タイマーは不要
+    // ただし、他の処理でタイマーの存在を確認している可能性があるため、タイマー自体は残す
+    // _seekBarUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    //   if (!_isDisposed &&
+    //       mounted &&
+    //       _currentPlayingVideo != null &&
+    //       !_isSeeking) {
+    //     final controller = _videoControllers[_currentPlayingVideo];
+    //     if (controller != null && controller.value.isInitialized) {
+    //       // ValueListenableBuilderが自動的に更新するため、setState()は不要
+    //     } else {
+    //       // コントローラーが初期化されていない場合はタイマーを停止
+    //       timer.cancel();
+    //     }
+    //   } else if (_currentPlayingVideo == null) {
+    //     // 動画が再生されていない場合はタイマーを停止
+    //     timer.cancel();
+    //   }
+    // });
   }
 
   /// 動画の再生位置が変更されたときのコールバック
   void _onVideoPositionChanged() {
+    // シークバーは_startSeekBarUpdateTimer()で更新されているため、
+    // ここでsetState()を呼び出す必要はない（過剰な再構築を防ぐため）
     // シーク中でない場合のみ更新（シーク中は手動で更新しているため）
-    if (!_isSeeking && _currentPlayingVideo != null) {
-      final controller = _videoControllers[_currentPlayingVideo];
-      if (controller != null && controller.value.isInitialized && mounted) {
-        setState(() {
-          // シークバーの更新をトリガー
-        });
-      }
-    }
+    // if (!_isSeeking && _currentPlayingVideo != null) {
+    //   final controller = _videoControllers[_currentPlayingVideo];
+    //   if (controller != null && controller.value.isInitialized && mounted) {
+    //     setState(() {
+    //       // シークバーの更新をトリガー
+    //     });
+    //   }
+    // }
   }
 
   /// すべてのメディア（動画・音声）を一時停止
