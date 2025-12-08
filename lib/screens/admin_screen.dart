@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
 import 'user_management_screen.dart';
 import 'report_management_screen.dart';
+import 'post_management_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -120,11 +121,10 @@ class AdminScreen extends StatelessWidget {
             title: '投稿管理',
             subtitle: '投稿の確認・削除',
             onTap: () {
-              // TODO: 投稿管理画面を実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('投稿管理機能は今後実装予定です'),
-                  backgroundColor: Colors.orange,
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PostManagementScreen(),
                 ),
               );
             },
