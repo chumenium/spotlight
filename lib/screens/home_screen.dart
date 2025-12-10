@@ -86,7 +86,7 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
+                color: Colors.orange.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -178,7 +178,7 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFFFF6B35).withOpacity(0.2)
+              ? const Color(0xFFFF6B35).withValues(alpha: 0.2)
               : Colors.grey[900],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -345,10 +345,10 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
                   if (currentUserIdStr.isNotEmpty &&
                       commentUserId.isNotEmpty &&
                       currentUserIdStr == commentUserId) {
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                        if (mounted) {
+                        if (mounted && context.mounted) {
                           _showErrorDialogInDialog(context, '自分のコメントは通報できません');
                         }
                       });
@@ -388,7 +388,9 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
                   if (!mounted) return;
 
                   if (result.success) {
-                    Navigator.of(context).pop(true);
+                    if (mounted && context.mounted) {
+                      Navigator.of(context).pop(true);
+                    }
                   } else {
                     if (mounted) {
                       final errorMessage =
@@ -396,21 +398,25 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
                       if (errorMessage.contains('自分の') ||
                           errorMessage.contains('own') ||
                           errorMessage.contains('self')) {
-                        Navigator.of(context).pop();
+                        if (mounted && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
                         Future.delayed(const Duration(milliseconds: 100), () {
-                          if (mounted) {
+                          if (mounted && context.mounted) {
                             _showErrorDialogInDialog(
                                 context, '自分のコメントは通報できません');
                           }
                         });
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(errorMessage),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 3),
-                          ),
-                        );
+                        if (mounted && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(errorMessage),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
                       }
                     }
                   }
@@ -470,7 +476,7 @@ class _ReportDialogState extends State<_ReportDialog> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
+                color: Colors.orange.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -542,9 +548,9 @@ class _ReportDialogState extends State<_ReportDialog> {
         // 自分の投稿の場合はダイアログを閉じてエラーダイアログを表示
         Navigator.of(context).pop();
         Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-          }
+                    if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
         });
       }
     });
@@ -693,12 +699,12 @@ class _ReportDialogState extends State<_ReportDialog> {
                     if (kDebugMode) {
                       debugPrint('🚨 自分の投稿への通報をブロックしました');
                     }
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                        if (mounted) {
-                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                        }
+                    if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
                       });
                     }
                     return; // ここで必ずreturnして送信をブロック
@@ -709,12 +715,12 @@ class _ReportDialogState extends State<_ReportDialog> {
                     if (kDebugMode) {
                       debugPrint('🚨 二重チェック: 自分の投稿への通報をブロックしました');
                     }
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                        if (mounted) {
-                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                        }
+                    if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
                       });
                     }
                     return;
@@ -749,12 +755,12 @@ class _ReportDialogState extends State<_ReportDialog> {
                     setState(() {
                       _isSubmitting = false;
                     });
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                        if (mounted) {
-                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                        }
+                    if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
                       });
                     }
                     return;
@@ -785,6 +791,7 @@ class _ReportDialogState extends State<_ReportDialog> {
 
                   if (result.success) {
                     // 送信成功後も念のためチェック（バックエンドが自分の投稿を通報させた場合）
+                    if (!mounted) return;
                     final postCheckAuthProvider =
                         Provider.of<AuthProvider>(context, listen: false);
                     final postCheckCurrentUserId =
@@ -801,18 +808,20 @@ class _ReportDialogState extends State<_ReportDialog> {
                       if (kDebugMode) {
                         debugPrint('🚨 送信後チェック: 自分の投稿だったため、成功を無効化しました');
                       }
-                      if (mounted) {
+                      if (mounted && context.mounted) {
                         Navigator.of(context).pop();
                         Future.delayed(const Duration(milliseconds: 100), () {
-                          if (mounted) {
-                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                          }
+                          if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
                         });
                       }
                       return;
                     }
 
-                    Navigator.of(context).pop(true);
+                    if (mounted && context.mounted) {
+                      Navigator.of(context).pop(true);
+                    }
                   } else {
                     if (mounted) {
                       // エラーメッセージを表示
@@ -824,11 +833,13 @@ class _ReportDialogState extends State<_ReportDialog> {
                           errorMessage.contains('own') ||
                           errorMessage.contains('self')) {
                         // 自分の投稿に関するエラーの場合は、エラーダイアログを表示
-                        Navigator.of(context).pop();
+                        if (mounted && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
                         Future.delayed(const Duration(milliseconds: 100), () {
-                          if (mounted) {
-                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                          }
+                          if (mounted && context.mounted) {
+                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                    }
                         });
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -874,7 +885,7 @@ class _ReportDialogState extends State<_ReportDialog> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFFFF6B35).withOpacity(0.2)
+              ? const Color(0xFFFF6B35).withValues(alpha: 0.2)
               : Colors.grey[900],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -923,7 +934,7 @@ class _AudioBackgroundPainter extends CustomPainter {
       final center = Offset(size.width / 2, size.height / 2);
       for (int i = 0; i < 3; i++) {
         paint.color =
-            SpotLightColors.getSpotlightColor(2).withOpacity(0.1 - (i * 0.03));
+            SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.1 - (i * 0.03));
         canvas.drawCircle(
           center,
           size.width * 0.3 + (i * 30),
@@ -938,7 +949,7 @@ class _AudioBackgroundPainter extends CustomPainter {
         center: Alignment.topLeft,
         radius: 1.5,
         colors: [
-          SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+          SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.2),
           Colors.transparent,
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
@@ -1271,10 +1282,12 @@ class _HomeScreenState extends State<HomeScreen>
           }
 
           // リトライ前にローディング状態を維持
-          setState(() {
-            _isLoading = true;
-            _errorMessage = null;
-          });
+          if (mounted) {
+            setState(() {
+              _isLoading = true;
+              _errorMessage = null;
+            });
+          }
 
           // 遅延後に自動リトライ
           Future.delayed(retryDelay, () {
@@ -1328,34 +1341,36 @@ class _HomeScreenState extends State<HomeScreen>
 
         // 【重要】投稿が取得できた場合、確実に_postsに設定する
         // 【重要】_isLoadingを確実にfalseに設定（投稿が空でも、ローディングを終了する）
-        setState(() {
-          _posts = posts; // 【重要】確実に_postsに設定（投稿が空でも設定する）
-          _isLoading = false; // 【重要】確実にfalseに設定（投稿が空でも設定する）
-          // 投稿が空で、リトライ回数が上限に達した場合のみエラーメッセージを表示
-          _errorMessage = errorMsg;
-          _initialRetryCount = 0; // 成功したらリトライカウントをリセット
+        if (mounted) {
+          setState(() {
+            _posts = posts; // 【重要】確実に_postsに設定（投稿が空でも設定する）
+            _isLoading = false; // 【重要】確実にfalseに設定（投稿が空でも設定する）
+            // 投稿が空で、リトライ回数が上限に達した場合のみエラーメッセージを表示
+            _errorMessage = errorMsg;
+            _initialRetryCount = 0; // 成功したらリトライカウントをリセット
 
-          // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
-          _hasMorePosts = posts.length >= _initialLoadCount;
+            // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
+            _hasMorePosts = posts.length >= _initialLoadCount;
+          });
+        }
 
-          // 取得済みコンテンツIDを記録
-          _fetchedContentIds.clear();
-          for (final post in posts) {
-            _addFetchedContentId(post.id);
-            if (kDebugMode) {
-              debugPrint('📝 取得済みIDを記録: ${post.id}');
-            }
+        // 取得済みコンテンツIDを記録
+        _fetchedContentIds.clear();
+        for (final post in posts) {
+          _addFetchedContentId(post.id);
+          if (kDebugMode) {
+            debugPrint('📝 取得済みIDを記録: ${post.id}');
           }
+        }
 
-          // 初回読み込み時は、最初の投稿のIDを_currentDisplayedPostIdに設定
-          if (posts.isNotEmpty && _currentIndex < posts.length) {
-            _currentDisplayedPostId = posts[_currentIndex].id;
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 初回読み込み: _currentDisplayedPostId=${_currentDisplayedPostId}');
-            }
+        // 初回読み込み時は、最初の投稿のIDを_currentDisplayedPostIdに設定
+        if (posts.isNotEmpty && _currentIndex < posts.length) {
+          _currentDisplayedPostId = posts[_currentIndex].id;
+          if (kDebugMode) {
+            debugPrint(
+                '📝 初回読み込み: _currentDisplayedPostId=$_currentDisplayedPostId');
           }
-        });
+        }
 
         if (kDebugMode) {
           debugPrint(
@@ -1375,6 +1390,7 @@ class _HomeScreenState extends State<HomeScreen>
           _preloadNextPosts(_currentIndex);
 
           // ターゲット投稿IDが設定されている場合はジャンプ
+          if (!mounted) return;
           final navigationProvider =
               Provider.of<NavigationProvider>(context, listen: false);
           final targetPostId = navigationProvider.targetPostId;
@@ -1625,9 +1641,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
 
-        setState(() {
-          _posts[index] = updatedPost;
-        });
+        if (mounted) {
+          setState(() {
+            _posts[index] = updatedPost;
+          });
+        }
 
         // setStateの完了を待ってからジャンプ（PageViewのitemCountが更新されるまで待つ）
         await Future.delayed(const Duration(milliseconds: 100));
@@ -1847,17 +1865,19 @@ class _HomeScreenState extends State<HomeScreen>
           // 投稿を追加する前のインデックスを記録
           final newIndex = _posts.length;
 
-          setState(() {
-            _posts.add(targetPost);
+          if (mounted) {
+            setState(() {
+              _posts.add(targetPost);
 
-            // 取得済みコンテンツIDを記録
-            _addFetchedContentId(postId);
+              // 取得済みコンテンツIDを記録
+              _addFetchedContentId(postId);
 
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 [fetchAndJumpToPost] 投稿を追加完了: インデックス $newIndex, 合計${_posts.length}件');
-            }
-          });
+              if (kDebugMode) {
+                debugPrint(
+                    '📝 [fetchAndJumpToPost] 投稿を追加完了: インデックス $newIndex, 合計${_posts.length}件');
+              }
+            });
+          }
 
           // setStateの完了を待ってからジャンプ（PageViewのitemCountが更新されるまで待つ）
           await Future.delayed(const Duration(milliseconds: 100));
@@ -2214,10 +2234,12 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint(
                 '⚠️ バックエンドが${newPosts.length}件（5件未満）を返しました。これ以上コンテンツがありません');
           }
-          setState(() {
-            _hasMorePosts = false;
-            _noMoreContent = true;
-          });
+          if (mounted) {
+            setState(() {
+              _hasMorePosts = false;
+              _noMoreContent = true;
+            });
+          }
         } else {
           // バックエンドが5件を返している（newPosts.length >= 5）
           // 重複を防ぐために、既に取得済みの投稿を除外
@@ -2335,24 +2357,24 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('✅ 新しいコンテンツを発見: ${newPosts.length}件');
           }
 
-          setState(() {
-            // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
-            final insertIndex = _currentIndex + 1;
-            _posts.insertAll(insertIndex, newPosts);
-            _noMoreContent = false;
-            _hasMorePosts = true;
+          if (mounted) {
+            setState(() {
+              // 現在の位置の後ろに新しいコンテンツを追加（現在の位置を維持）
+              final insertIndex = _currentIndex + 1;
+              _posts.insertAll(insertIndex, newPosts);
+              _noMoreContent = false;
+              _hasMorePosts = true;
 
-            // 取得済みコンテンツIDを記録
-            for (final post in newPosts) {
-              _addFetchedContentId(post.id);
-            }
-            // 既存のIDも記録
-            for (final post in _posts) {
-              _addFetchedContentId(post.id);
-            }
-
-            // 現在のインデックスは変更しない（現在の位置を維持）
-          });
+              // 取得済みコンテンツIDを記録
+              for (final post in newPosts) {
+                _addFetchedContentId(post.id);
+              }
+              // 既存のIDも記録
+              for (final post in _posts) {
+                _addFetchedContentId(post.id);
+              }
+            });
+          }
 
           if (kDebugMode) {
             debugPrint(
@@ -2418,24 +2440,26 @@ class _HomeScreenState extends State<HomeScreen>
             debugPrint('✅ 視聴履歴から${selectedPosts.length}件を選択しました（視聴履歴順）');
           }
 
-          setState(() {
-            // 現在の位置の後ろに選択したコンテンツを追加（現在の位置を維持）
-            final insertIndex = _currentIndex + 1;
-            _posts.insertAll(insertIndex, selectedPosts);
-            _noMoreContent = false;
-            _hasMorePosts = true;
+          if (mounted) {
+            setState(() {
+              // 現在の位置の後ろに選択したコンテンツを追加（現在の位置を維持）
+              final insertIndex = _currentIndex + 1;
+              _posts.insertAll(insertIndex, selectedPosts);
+              _noMoreContent = false;
+              _hasMorePosts = true;
 
-            // 取得済みコンテンツIDを記録
-            for (final post in selectedPosts) {
-              _addFetchedContentId(post.id);
-            }
-            // 既存のIDも記録
-            for (final post in _posts) {
-              _addFetchedContentId(post.id);
-            }
+              // 取得済みコンテンツIDを記録
+              for (final post in selectedPosts) {
+                _addFetchedContentId(post.id);
+              }
+              // 既存のIDも記録
+              for (final post in _posts) {
+                _addFetchedContentId(post.id);
+              }
 
-            // 現在のインデックスは変更しない（現在の位置を維持）
-          });
+              // 現在のインデックスは変更しない（現在の位置を維持）
+            });
+          }
 
           if (kDebugMode) {
             debugPrint(
@@ -2609,7 +2633,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       // 必要な件数分を読み込む（常に3件読み込む）
-      final loadCount = _preloadAheadCount;
+      const loadCount = _preloadAheadCount;
 
       // 次のIDから追加読み込み
       List<Post> morePosts = await PostService.fetchPosts(
@@ -2652,17 +2676,23 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         if (finalNewPosts.isNotEmpty) {
-          setState(() {
-            _posts.addAll(finalNewPosts);
+          if (mounted) {
+            setState(() {
+              _posts.addAll(finalNewPosts);
 
-            // 取得済みコンテンツIDを記録
-            for (final post in finalNewPosts) {
-              _addFetchedContentId(post.id);
-            }
+              // 取得済みコンテンツIDを記録
+              for (final post in finalNewPosts) {
+                _addFetchedContentId(post.id);
+              }
+            });
+          }
 
-            // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
-            _hasMorePosts = finalNewPosts.length >= loadCount;
-          });
+          // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
+          if (mounted) {
+            setState(() {
+              _hasMorePosts = finalNewPosts.length >= loadCount;
+            });
+          }
 
           if (kDebugMode) {
             debugPrint(
@@ -2673,14 +2703,18 @@ class _HomeScreenState extends State<HomeScreen>
           if (kDebugMode) {
             debugPrint('📝 全て重複していたため、次のIDから再試行');
           }
-          setState(() {
-            _hasMorePosts = true; // 再試行のためtrueに設定
-          });
+          if (mounted) {
+            setState(() {
+              _hasMorePosts = true; // 再試行のためtrueに設定
+            });
+          }
         }
       } else {
-        setState(() {
-          _hasMorePosts = false;
-        });
+        if (mounted) {
+          setState(() {
+            _hasMorePosts = false;
+          });
+        }
 
         if (kDebugMode) {
           debugPrint('📝 これ以上投稿がありません');
@@ -3168,9 +3202,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Consumer<NavigationProvider>(
       builder: (context, navigationProvider, child) {
         // ナビゲーションインデックスを初期化（初回のみ）
-        if (_lastNavigationIndex == null) {
-          _lastNavigationIndex = navigationProvider.currentIndex;
-        }
+        _lastNavigationIndex ??= navigationProvider.currentIndex;
 
         // ナビゲーションインデックスが変更された場合、動画/音声の再生を制御
         final currentNavIndex = navigationProvider.currentIndex;
@@ -3246,7 +3278,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       .textTheme
                                       .bodyMedium
                                       ?.color
-                                      ?.withOpacity(0.7) ??
+                                      ?.withValues(alpha: 0.7) ??
                                   (Theme.of(context).brightness ==
                                           Brightness.dark
                                       ? Colors.white70
@@ -3261,7 +3293,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         .textTheme
                                         .bodyMedium
                                         ?.color
-                                        ?.withOpacity(0.7) ??
+                                        ?.withValues(alpha: 0.7) ??
                                     (Theme.of(context).brightness ==
                                             Brightness.dark
                                         ? Colors.white70
@@ -3319,7 +3351,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             .textTheme
                                             .bodyMedium
                                             ?.color
-                                            ?.withOpacity(0.7) ??
+                                            ?.withValues(alpha: 0.7) ??
                                         (Theme.of(context).brightness ==
                                                 Brightness.dark
                                             ? Colors.white70
@@ -3328,7 +3360,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
+                                const Text(
                                   '引き下げて更新',
                                   style: TextStyle(
                                     color: Colors.white38,
@@ -3414,7 +3446,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       final needsUpdate = _currentIndex != index || 
                                           _currentDisplayedPostId != displayedPost.id;
                                       
-                                      if (needsUpdate) {
+                                      if (needsUpdate && mounted) {
                                         setState(() {
                                           _currentIndex = index;
                                           _currentDisplayedPostId = displayedPost
@@ -3485,9 +3517,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   _currentIndex != index) {
                                                 // 動画コンテンツの場合は、_currentIndexを更新してから処理を続行
                                                 // ただし、値が変わった場合のみsetStateを呼ぶ
-                                                setState(() {
-                                                  _currentIndex = index;
-                                                });
+                                                if (mounted) {
+                                                  setState(() {
+                                                    _currentIndex = index;
+                                                  });
+                                                }
                                               }
 
                                               // 現在のインデックスと一致する場合のみ処理を実行
@@ -3753,7 +3787,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         radius: 1.5,
                                         colors: [
                                           SpotLightColors.getSpotlightColor(0)
-                                              .withOpacity(0.3 *
+                                              .withValues(alpha: 0.3 *
                                                   _ambientOpacityAnimation!
                                                       .value),
                                           Colors.transparent,
@@ -3920,16 +3954,16 @@ class _HomeScreenState extends State<HomeScreen>
       }
       return Container(
         color: Colors.grey[900],
-        child: Center(
+        child: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline,
                 color: Colors.white54,
                 size: 64,
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(
                 'コンテンツの表示に失敗しました',
                 style: TextStyle(
@@ -4168,7 +4202,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   Text(
                                     '読み込み中...',
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color: Colors.white.withValues(alpha: 0.7),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -4651,7 +4685,7 @@ class _HomeScreenState extends State<HomeScreen>
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withOpacity(0.8),
+                  Colors.black.withValues(alpha: 0.8),
                 ],
               ),
             ),
@@ -4770,7 +4804,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.3),
+                                      color: Colors.black.withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -4835,7 +4869,7 @@ class _HomeScreenState extends State<HomeScreen>
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withOpacity(0.8),
+                  Colors.black.withValues(alpha: 0.8),
                 ],
               ),
             ),
@@ -4942,7 +4976,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.3),
+                                      color: Colors.black.withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -5078,8 +5112,8 @@ class _HomeScreenState extends State<HomeScreen>
           end: Alignment.bottomRight,
           colors: [
             Colors.black,
-            SpotLightColors.getSpotlightColor(0).withOpacity(0.15),
-            SpotLightColors.getSpotlightColor(1).withOpacity(0.15),
+            SpotLightColors.getSpotlightColor(0).withValues(alpha: 0.15),
+            SpotLightColors.getSpotlightColor(1).withValues(alpha: 0.15),
             Colors.black,
           ],
         ),
@@ -5192,8 +5226,8 @@ class _HomeScreenState extends State<HomeScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                SpotLightColors.getSpotlightColor(2).withOpacity(0.4),
-                SpotLightColors.getSpotlightColor(1).withOpacity(0.3),
+                SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.4),
+                SpotLightColors.getSpotlightColor(1).withValues(alpha: 0.3),
                 Colors.black,
                 Colors.black,
               ],
@@ -5221,16 +5255,16 @@ class _HomeScreenState extends State<HomeScreen>
                         gradient: RadialGradient(
                           colors: [
                             SpotLightColors.getSpotlightColor(2)
-                                .withOpacity(0.6),
+                                .withValues(alpha: 0.6),
                             SpotLightColors.getSpotlightColor(2)
-                                .withOpacity(0.2),
+                                .withValues(alpha: 0.2),
                             Colors.transparent,
                           ],
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: SpotLightColors.getSpotlightColor(2)
-                                .withOpacity(0.5),
+                                .withValues(alpha: 0.5),
                             blurRadius: isPlaying ? 40 : 20,
                             spreadRadius: isPlaying ? 10 : 5,
                           ),
@@ -5240,10 +5274,10 @@ class _HomeScreenState extends State<HomeScreen>
                         duration: const Duration(milliseconds: 300),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           border: Border.all(
                             color: SpotLightColors.getSpotlightColor(2)
-                                .withOpacity(0.8),
+                                .withValues(alpha: 0.8),
                             width: 3,
                           ),
                         ),
@@ -5266,7 +5300,7 @@ class _HomeScreenState extends State<HomeScreen>
                         letterSpacing: 1.2,
                         shadows: [
                           Shadow(
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withValues(alpha: 0.5),
                             blurRadius: 10,
                             offset: const Offset(0, 2),
                           ),
@@ -5310,8 +5344,8 @@ class _HomeScreenState extends State<HomeScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                SpotLightColors.getSpotlightColor(2).withOpacity(0.4),
-                SpotLightColors.getSpotlightColor(1).withOpacity(0.3),
+                SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.4),
+                SpotLightColors.getSpotlightColor(1).withValues(alpha: 0.3),
                 Colors.black,
                 Colors.black,
               ],
@@ -5329,8 +5363,8 @@ class _HomeScreenState extends State<HomeScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        SpotLightColors.getSpotlightColor(2).withOpacity(0.6),
-                        SpotLightColors.getSpotlightColor(2).withOpacity(0.2),
+                        SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.6),
+                        SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.2),
                         Colors.transparent,
                       ],
                     ),
@@ -5368,7 +5402,7 @@ class _HomeScreenState extends State<HomeScreen>
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            Colors.black.withOpacity(0.8),
+            Colors.black.withValues(alpha: 0.8),
           ],
         ),
       ),
@@ -5532,7 +5566,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: Container(
         width: 50,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
+          color: Colors.black.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(25),
         ),
         child: Column(
@@ -5543,7 +5577,7 @@ class _HomeScreenState extends State<HomeScreen>
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(25),
               ),
               child: Icon(
@@ -5912,12 +5946,12 @@ class _HomeScreenState extends State<HomeScreen>
 
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.85),
+                    color: Colors.black.withValues(alpha: 0.85),
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(20),
                     ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
@@ -5954,7 +5988,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     const Duration(milliseconds: 100));
 
                                 // その後、モーダルを閉じる
-                                if (mounted) {
+                                if (mounted && context.mounted) {
                                   Navigator.pop(context);
                                 }
                               },
@@ -6050,7 +6084,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                     color: const Color(0xFFFF6B35)
-                                        .withOpacity(0.3),
+                                        .withValues(alpha: 0.3),
                                     width: 1,
                                   ),
                                 ),
@@ -6138,10 +6172,10 @@ class _HomeScreenState extends State<HomeScreen>
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              CircleAvatar(
+                              const CircleAvatar(
                                 radius: 16,
-                                backgroundColor: const Color(0xFFFF6B35),
-                                child: const Icon(Icons.person,
+                                backgroundColor: Color(0xFFFF6B35),
+                                child: Icon(Icons.person,
                                     size: 16, color: Colors.white),
                               ),
                               const SizedBox(width: 10),
@@ -6623,7 +6657,7 @@ class _HomeScreenState extends State<HomeScreen>
         builder: (context) {
           return Container(
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.9),
+              color: Colors.black.withValues(alpha: 0.9),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(20),
               ),
@@ -6724,7 +6758,7 @@ class _HomeScreenState extends State<HomeScreen>
                             debugPrint('📋 [ホーム画面] 追加結果: $success');
                           }
 
-                          if (mounted) {
+                          if (mounted && context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
@@ -7128,7 +7162,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -7215,7 +7249,7 @@ class _HomeScreenState extends State<HomeScreen>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
+                color: Colors.orange.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -7284,7 +7318,7 @@ class _HomeScreenState extends State<HomeScreen>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.2),
+                color: Colors.green.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -7571,9 +7605,11 @@ class _HomeScreenState extends State<HomeScreen>
               '⚠️ _handleMediaPageChange: _currentIndex($_currentIndex)とnewIndex($newIndex)が一致しませんが、動画コンテンツのため処理を続行します。');
         }
         // 動画コンテンツの場合は、_currentIndexを更新して処理を続行
-        setState(() {
-          _currentIndex = newIndex;
-        });
+        if (mounted) {
+          setState(() {
+            _currentIndex = newIndex;
+          });
+        }
       } else {
         if (kDebugMode) {
           debugPrint(
@@ -8757,7 +8793,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       try {
-        final sampleUrl =
+        const sampleUrl =
             'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
         final player = AudioPlayer();
         await player.setUrl(sampleUrl);
@@ -8800,9 +8836,11 @@ class _HomeScreenState extends State<HomeScreen>
       await _initializeAudioPlayer(postIndex);
       final newPlayer = _audioPlayers[postIndex];
       if (newPlayer != null) {
-        setState(() {
-          _currentPlayingAudio = postIndex;
-        });
+        if (mounted) {
+          setState(() {
+            _currentPlayingAudio = postIndex;
+          });
+        }
         await newPlayer.play();
       }
       return;
@@ -8820,15 +8858,19 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
 
-        setState(() {
-          _currentPlayingAudio = postIndex;
-        });
+        if (mounted) {
+          setState(() {
+            _currentPlayingAudio = postIndex;
+          });
+        }
         await player.play();
         // シークバー更新タイマーを開始
         _startSeekBarUpdateTimerAudio();
       }
     } catch (e) {
-      print('音声の再生に失敗: $e');
+      if (kDebugMode) {
+        debugPrint('音声の再生に失敗: $e');
+      }
     }
   }
 
@@ -9002,7 +9044,7 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
       // 最後の文字が左端を完全に通過したら、右端から最初の文字が出てくる
       // テキストを右端から始めて、左にスクロールさせる
       // スクロール距離 = テキスト幅 + 隙間（最初のテキストが完全に流れるまで）
-      final gap = 100.0; // テキスト間の隙間
+      const gap = 100.0; // テキスト間の隙間
       final scrollDistance = textWidth + gap;
       // 右端から始めるために、初期位置をコンテナ幅に設定
       _animation = Tween<double>(
@@ -9069,7 +9111,7 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
                     builder: (context, child) {
                       // ループさせるために、テキストを2回繰り返して表示
                       // 最後の文字が左端を完全に通過したら、右端から最初の文字が出てくる
-                      final gap = 100.0; // テキスト間の隙間
+                      const gap = 100.0; // テキスト間の隙間
                       return Transform.translate(
                         offset: Offset(_animation!.value, 0),
                         child: OverflowBox(
