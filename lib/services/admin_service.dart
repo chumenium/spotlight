@@ -25,8 +25,7 @@ class AdminService {
       }
 
       // 管理者APIエンドポイント: /api/admin/getuser
-      // バックエンドの実装に合わせて /admin/getuser を使用
-      final url = '${AppConfig.apiBaseUrl}/admin/getuser';
+      final url = '${AppConfig.backendUrl}/api/admin/getuser';
 
       if (kDebugMode) {
         debugPrint('👤 管理者API: 全ユーザー取得URL: $url');
@@ -105,7 +104,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/enableadmin';
+      final url = '${AppConfig.backendUrl}/api/admin/enableadmin';
 
       if (kDebugMode) {
         debugPrint('👤 管理者API: 管理者権限有効化URL: $url');
@@ -171,7 +170,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/disableadmin';
+      final url = '${AppConfig.backendUrl}/api/admin/disableadmin';
 
       if (kDebugMode) {
         debugPrint('👤 管理者API: 管理者権限無効化URL: $url');
@@ -257,7 +256,7 @@ class AdminService {
         return null;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/report';
+      final url = '${AppConfig.backendUrl}/api/admin/report';
 
       if (kDebugMode) {
         debugPrint('📋 管理者API: 通報取得URL: $url');
@@ -376,7 +375,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/processreport';
+      final url = '${AppConfig.backendUrl}/api/admin/processreport';
 
       if (kDebugMode) {
         debugPrint('📋 管理者API: 通報処理済みURL: $url');
@@ -446,7 +445,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/unprocessreport';
+      final url = '${AppConfig.backendUrl}/api/admin/unprocessreport';
 
       if (kDebugMode) {
         debugPrint('📋 管理者API: 通報未処理URL: $url');
@@ -514,7 +513,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/deletecontent';
+      final url = '${AppConfig.backendUrl}/api/admin/deletecontent';
 
       if (kDebugMode) {
         debugPrint('🗑️ 管理者API: コンテンツ削除URL: $url');
@@ -581,7 +580,7 @@ class AdminService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/admin/deletecomment';
+      final url = '${AppConfig.backendUrl}/api/admin/deletecomment';
 
       if (kDebugMode) {
         debugPrint('🗑️ 管理者API: コメント削除URL: $url');
@@ -630,6 +629,122 @@ class AdminService {
     }
 
     return false;
+  }
+
+  /// 全コンテンツ情報を取得（管理者用）
+  ///
+  /// パラメータ:
+  /// - offset: 取得開始位置（デフォルト: 0、300件ずつ取得）
+  ///
+  /// 戻り値:
+  /// - List<Map<String, dynamic>>?: コンテンツデータのリスト、失敗時はnull
+  static Future<List<Map<String, dynamic>>?> getAllContents({
+    int offset = 0,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/admin/content';
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: コンテンツ取得URL: $url');
+        debugPrint('📋 管理者API: offset: $offset');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'offset': offset,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('📋 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (kDebugMode) {
+          debugPrint('📋 管理者API: レスポンスデータ: ${responseData.toString()}');
+        }
+
+        if (responseData['status'] == 'success') {
+          // contentsがnullの場合は空のリストとして扱う
+          final contents = responseData['contents'];
+          if (contents != null && contents is List) {
+            final List<dynamic> contentsList = contents;
+            if (kDebugMode) {
+              debugPrint('✅ 管理者API: ${contentsList.length}件のコンテンツデータを取得');
+              // 最初のコンテンツデータのフィールドを確認
+              if (contentsList.isNotEmpty) {
+                final firstContent = contentsList[0] as Map<String, dynamic>;
+                debugPrint('📋 コンテンツデータのフィールド: ${firstContent.keys.toList()}');
+              }
+            }
+            return contentsList
+                .map((content) => content as Map<String, dynamic>)
+                .toList();
+          } else {
+            // contentsがnullまたはリストでない場合は空のリストを返す
+            if (kDebugMode) {
+              debugPrint('⚠️ 管理者API: contentsがnullまたはリストではありません');
+              debugPrint('  contentsの型: ${contents.runtimeType}');
+              debugPrint('  空のリストを返します');
+            }
+            return [];
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: レスポンス形式が不正');
+            debugPrint('  status: ${responseData['status']}');
+            debugPrint('  message: ${responseData['message'] ?? 'なし'}');
+            debugPrint('  contents存在: ${responseData['contents'] != null}');
+            debugPrint('  空のリストを返します');
+          }
+          // エラーでも空のリストを返す（nullではなく）
+          return [];
+        }
+      } else if (response.statusCode == 400) {
+        // 管理者以外からのアクセスなど
+        final responseData = jsonDecode(response.body);
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: アクセス拒否 (400)');
+          debugPrint('  message: ${responseData['message'] ?? '管理者以外からのアクセス'}');
+        }
+        return null;
+      } else if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エンドポイントが見つかりません (404)');
+          debugPrint('  コンテンツ管理APIエンドポイントが実装されていない可能性があります');
+        }
+        // 404の場合はnullを返して、画面側でエラーメッセージを表示
+        return null;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return null;
   }
 }
 
