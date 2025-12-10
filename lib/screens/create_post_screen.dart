@@ -5,11 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'dart:io' if (dart.library.html) 'dart:html' as io;
 import 'dart:io' show File, Directory, Platform;
 import 'dart:async';
 import 'dart:ui';
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
@@ -457,7 +455,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       try {
         thumbnailPath = await VideoThumbnail.thumbnailFile(
           video: videoPath,
-          thumbnailPath: (await Directory.systemTemp).path,
+          thumbnailPath: Directory.systemTemp.path,
           imageFormat: ImageFormat.JPEG,
           maxWidth: 240, // 最大幅を240pxに削減（バッファ使用量削減）
           maxHeight: 240, // 最大高さを240pxに削減
@@ -537,8 +535,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         color: img.ColorRgb8(255, 107, 53));
     final font = img.arial24;
     // BitmapFontにmeasure APIがないため、おおよその文字幅/高さでセンタリング
-    final approxCharWidth = 14; // arial24 推定
-    final approxHeight = 24; // arial24 高さ
+    const approxCharWidth = 14; // arial24 推定
+    const approxHeight = 24; // arial24 高さ
     final textWidth = approxCharWidth * label.runes.length;
     final tx = ((width - textWidth) / 2).round();
     final ty = ((height - approxHeight) / 2).round();
@@ -581,7 +579,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
                     ),
                   )
-                : Text(
+                : const Text(
                     '投稿',
                     style: TextStyle(
                       color: SpotLightColors.primaryOrange,
@@ -832,7 +830,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           if (_isPosting)
             AbsorbPointer(
               child: Container(
-                color: Colors.black.withOpacity(0.7),
+                color: Colors.black.withValues(alpha: 0.7),
                 child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -944,7 +942,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
+          const Icon(
             Icons.audiotrack,
             size: 80,
             color: SpotLightColors.primaryOrange,
@@ -1142,8 +1140,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
           decoration: BoxDecoration(
             color: overlay.isFocused
-                ? Colors.white.withOpacity(0.95)
-                : Colors.black.withOpacity(0.7),
+                ? Colors.white.withValues(alpha: 0.95)
+                : Colors.black.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(8),
             border: overlay.isFocused
                 ? Border.all(color: SpotLightColors.primaryOrange, width: 2)
@@ -1223,7 +1221,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
+                        color: Colors.black.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: Colors.white70, width: 1),
                       ),
@@ -1733,7 +1731,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         children: [
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.audiotrack,
                 color: SpotLightColors.primaryOrange,
                 size: 32,
@@ -2002,7 +2000,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             onTap: _toggleVideoPlayback,
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
@@ -2067,7 +2065,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(
+              child: const Text(
                 '続行',
                 style: TextStyle(
                   color: SpotLightColors.primaryOrange,

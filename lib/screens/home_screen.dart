@@ -3410,58 +3410,65 @@ class _HomeScreenState extends State<HomeScreen>
 
                                       // _currentIndexを更新する前に、実際に表示されている投稿のIDを保存
                                       // これにより、_buildBottomControlsなどで使用している_posts[_currentIndex]が正しい投稿を参照することを保証
-                                      setState(() {
-                                        _currentIndex = index;
-                                        _currentDisplayedPostId = displayedPost
-                                            .id; // 実際に表示されている投稿のIDを保存
-                                        _resetSpotlightState();
+                                      // 【重要】値が変わった場合のみsetStateを呼ぶ（スクロール中の過剰な再ビルドを防ぐ）
+                                      final needsUpdate = _currentIndex != index || 
+                                          _currentDisplayedPostId != displayedPost.id;
+                                      
+                                      if (needsUpdate) {
+                                        setState(() {
+                                          _currentIndex = index;
+                                          _currentDisplayedPostId = displayedPost
+                                              .id; // 実際に表示されている投稿のIDを保存
+                                          _resetSpotlightState();
 
-                                        // データの整合性を再確認（_currentIndexが更新された後の_posts[_currentIndex]と、表示されている投稿が一致していることを確認）
-                                        if (_currentIndex >= 0 &&
-                                            _currentIndex < _posts.length) {
-                                          final currentPost =
-                                              _posts[_currentIndex];
-                                          if (currentPost.id !=
-                                              displayedPost.id) {
-                                            if (kDebugMode) {
-                                              debugPrint(
-                                                  '⚠️ onPageChanged: データの不一致を検出');
-                                              debugPrint(
-                                                  '  - 表示される投稿ID: ${displayedPost.id}');
-                                              debugPrint(
-                                                  '  - _posts[_currentIndex]の投稿ID: ${currentPost.id}');
-                                              debugPrint(
-                                                  '  - 表示される投稿username: ${displayedPost.username}');
-                                              debugPrint(
-                                                  '  - _posts[_currentIndex]の投稿username: ${currentPost.username}');
-                                            }
-                                            // データの不一致を修正（表示されている投稿のIDと一致する投稿を検索）
-                                            final correctIndex =
-                                                _posts.indexWhere((p) =>
-                                                    p.id == displayedPost.id);
-                                            if (correctIndex >= 0 &&
-                                                correctIndex < _posts.length) {
+                                          // データの整合性を再確認（_currentIndexが更新された後の_posts[_currentIndex]と、表示されている投稿が一致していることを確認）
+                                          if (_currentIndex >= 0 &&
+                                              _currentIndex < _posts.length) {
+                                            final currentPost =
+                                                _posts[_currentIndex];
+                                            if (currentPost.id !=
+                                                displayedPost.id) {
                                               if (kDebugMode) {
                                                 debugPrint(
-                                                    '✅ 正しい投稿を検索: インデックス $correctIndex');
+                                                    '⚠️ onPageChanged: データの不一致を検出');
+                                                debugPrint(
+                                                    '  - 表示される投稿ID: ${displayedPost.id}');
+                                                debugPrint(
+                                                    '  - _posts[_currentIndex]の投稿ID: ${currentPost.id}');
+                                                debugPrint(
+                                                    '  - 表示される投稿username: ${displayedPost.username}');
+                                                debugPrint(
+                                                    '  - _posts[_currentIndex]の投稿username: ${currentPost.username}');
                                               }
-                                              // 正しいインデックスに更新
-                                              _currentIndex = correctIndex;
-                                            } else {
-                                              if (kDebugMode) {
-                                                debugPrint(
-                                                    '⚠️ 正しい投稿が見つかりませんでした。表示されている投稿のデータを使用します。');
+                                              // データの不一致を修正（表示されている投稿のIDと一致する投稿を検索）
+                                              final correctIndex =
+                                                  _posts.indexWhere((p) =>
+                                                      p.id == displayedPost.id);
+                                              if (correctIndex >= 0 &&
+                                                  correctIndex < _posts.length) {
+                                                if (kDebugMode) {
+                                                  debugPrint(
+                                                      '✅ 正しい投稿を検索: インデックス $correctIndex');
+                                                }
+                                                // 正しいインデックスに更新
+                                                _currentIndex = correctIndex;
+                                              } else {
+                                                if (kDebugMode) {
+                                                  debugPrint(
+                                                      '⚠️ 正しい投稿が見つかりませんでした。表示されている投稿のデータを使用します。');
+                                                }
                                               }
                                             }
                                           }
-                                        }
+                                        });
 
                                         // 外部画面からの遷移時は再生を開始しない
                                         if (!_isExternalNavigation) {
+                                          // 【重要】スクロール中の過剰な処理を防ぐため、デバウンス処理を追加
                                           // setStateの完了を待ってからメディアページ変更を処理（確実に自動再生するため）
                                           WidgetsBinding.instance
                                               .addPostFrameCallback((_) {
-                                            if (mounted) {
+                                            if (mounted && !_isDisposed) {
                                               // 【重要】_currentIndexとindexが一致していなくても、動画コンテンツの場合は処理を続行
                                               // これにより、動画コンテンツが表示される際に確実に初期化処理が実行される
                                               final displayedPost =
@@ -3469,21 +3476,26 @@ class _HomeScreenState extends State<HomeScreen>
                                                           index < _posts.length
                                                       ? _posts[index]
                                                       : null;
+                                              
+                                              // 【重要】_currentIndexが既に更新されている場合は、追加のsetStateを呼ばない
+                                              // これにより、スクロール中の過剰な再ビルドを防ぐ
                                               if (displayedPost != null &&
                                                   displayedPost.postType ==
-                                                      PostType.video) {
+                                                      PostType.video &&
+                                                  _currentIndex != index) {
                                                 // 動画コンテンツの場合は、_currentIndexを更新してから処理を続行
-                                                if (_currentIndex != index) {
-                                                  setState(() {
-                                                    _currentIndex = index;
-                                                  });
-                                                }
+                                                // ただし、値が変わった場合のみsetStateを呼ぶ
+                                                setState(() {
+                                                  _currentIndex = index;
+                                                });
                                               }
 
+                                              // 現在のインデックスと一致する場合のみ処理を実行
                                               if (_currentIndex == index ||
                                                   (displayedPost != null &&
                                                       displayedPost.postType ==
-                                                          PostType.video)) {
+                                                          PostType.video &&
+                                                      _currentIndex == index)) {
                                                 _handleMediaPageChange(
                                                     _currentIndex);
 
@@ -3505,7 +3517,7 @@ class _HomeScreenState extends State<HomeScreen>
                                           // フラグをリセット（次回の通常スクロール時は再生を開始する）
                                           _isExternalNavigation = false;
                                         }
-                                      });
+                                      }
 
                                       // 最後から2番目のコンテンツが表示された時に追加取得（無限スクロール）
                                       // indexが有効な範囲内で、かつ最後から2番目以上の場合のみ
@@ -3533,26 +3545,36 @@ class _HomeScreenState extends State<HomeScreen>
                                       _preloadNextPosts(index);
                                     },
                                     itemCount: () {
+                                      // 【重要】スクロール中のリスト更新に対応するため、ローカル変数に保存
+                                      final postsLength = _posts.length;
+                                      final noMoreContent = _noMoreContent;
+                                      final hasMorePosts = _hasMorePosts;
+                                      final isLoadingMore = _isLoadingMore;
+                                      
                                       // 投稿数が0の場合は0を返す
-                                      if (_posts.isEmpty) {
+                                      if (postsLength == 0) {
                                         return 0;
                                       }
                                       // これ以上コンテンツがない場合は、投稿数 + 1（メッセージ表示用）
-                                      if (_noMoreContent) {
-                                        return _posts.length + 1;
+                                      if (noMoreContent) {
+                                        return postsLength + 1;
                                       }
                                       // まだコンテンツがある場合は、投稿数 + 1（ローディング表示用）
-                                      if (_hasMorePosts && !_isLoadingMore) {
-                                        return _posts.length + 1;
+                                      if (hasMorePosts && !isLoadingMore) {
+                                        return postsLength + 1;
                                       }
                                       // その他の場合は投稿数のみ
-                                      return _posts.length;
+                                      return postsLength;
                                     }(),
                                     itemBuilder: (context, index) {
+                                      // 【重要】スクロール中のリスト更新に対応するため、範囲チェックを強化
+                                      // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
+                                      final postsLength = _posts.length;
+                                      
                                       // インデックスの範囲チェック
-                                      if (index < 0 || index >= _posts.length) {
+                                      if (index < 0 || index >= postsLength) {
                                         // 最後の項目（ローディングまたはメッセージ）
-                                        if (index >= _posts.length) {
+                                        if (index >= postsLength) {
                                           if (_noMoreContent) {
                                             // これ以上コンテンツがない場合はメッセージを表示
                                             return Container(
@@ -3631,21 +3653,63 @@ class _HomeScreenState extends State<HomeScreen>
                                             );
                                           }
                                         }
-                                        // 無効なインデックスの場合は空のコンテナを返す
+                                        // 無効なインデックスの場合は背景色付きコンテナを返す（真っ白を防ぐ）
                                         if (kDebugMode) {
                                           debugPrint(
-                                              '⚠️ 無効なインデックス: index=$index, _posts.length=${_posts.length}');
+                                              '⚠️ 無効なインデックス: index=$index, _posts.length=$postsLength');
                                         }
                                         return Container(
-                                            color: Colors.grey[900]);
+                                          color: Colors.grey[900],
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              color: Color(0xFFFF6B35),
+                                            ),
+                                          ),
+                                        );
                                       }
 
-                                      // データの整合性チェック
-                                      final post = _posts[index];
+                                      // 【重要】投稿データを安全に取得（リスト更新中の競合を防ぐ）
+                                      Post? post;
+                                      try {
+                                        // 再度範囲チェック（リストが更新された可能性がある）
+                                        if (index >= 0 && index < _posts.length) {
+                                          post = _posts[index];
+                                        } else {
+                                          // 範囲外の場合はローディングを表示
+                                          if (kDebugMode) {
+                                            debugPrint(
+                                                '⚠️ 範囲外アクセス: index=$index, _posts.length=${_posts.length}');
+                                          }
+                                          return Container(
+                                            color: Colors.grey[900],
+                                            child: const Center(
+                                              child: CircularProgressIndicator(
+                                                color: Color(0xFFFF6B35),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        // 例外が発生した場合もローディングを表示
+                                        if (kDebugMode) {
+                                          debugPrint(
+                                              '❌ 投稿データ取得エラー: index=$index, error=$e');
+                                        }
+                                        return Container(
+                                          color: Colors.grey[900],
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              color: Color(0xFFFF6B35),
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      // データの整合性チェック（postは既にnullチェック済み）
                                       if (post.id.isEmpty) {
                                         if (kDebugMode) {
                                           debugPrint(
-                                              '⚠️ 投稿IDが空です: index=$index');
+                                              '⚠️ 投稿データが無効です: index=$index, postId=${post.id}');
                                         }
                                         return Container(
                                           color: Colors.grey[900],
@@ -3666,6 +3730,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             '📝 [itemBuilder] index=$index, postId=${post.id}, username=${post.username}, userId=${post.userId}');
                                       }
 
+                                      // 【重要】postオブジェクトを直接渡す（_postsへの依存を減らす）
                                       return _buildPostContent(post);
                                     },
                                   ),
@@ -3811,21 +3876,71 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPostContent(Post post) {
+    // 【重要】postオブジェクトを直接使用し、_postsへの依存を最小化
+    // スクロール中のリスト更新に対応するため、indexWhereの結果に依存しない
+    
     if (kDebugMode) {
       final postIndex = _posts.indexWhere((p) => p.id == post.id);
       debugPrint(
           '📦 _buildPostContent: postId=${post.id}, postType=${post.postType}, postIndex=$postIndex, _currentIndex=$_currentIndex');
     }
 
-    switch (post.postType) {
-      case PostType.video:
-        return _buildVideoContent(post);
-      case PostType.image:
-        return _buildImageContent(post);
-      case PostType.text:
-        return _buildTextContent(post);
-      case PostType.audio:
-        return _buildAudioContent(post);
+    // postオブジェクトの整合性チェック
+    if (post.id.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ _buildPostContent: 投稿IDが空です');
+      }
+      return Container(
+        color: Colors.grey[900],
+        child: const Center(
+          child: Text(
+            'データの読み込みに失敗しました',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
+    try {
+      switch (post.postType) {
+        case PostType.video:
+          return _buildVideoContent(post);
+        case PostType.image:
+          return _buildImageContent(post);
+        case PostType.text:
+          return _buildTextContent(post);
+        case PostType.audio:
+          return _buildAudioContent(post);
+      }
+    } catch (e, stackTrace) {
+      // エラーが発生した場合も真っ白を防ぐため、フォールバックを表示
+      if (kDebugMode) {
+        debugPrint('❌ _buildPostContentエラー: postId=${post.id}, error=$e');
+        debugPrint('スタックトレース: $stackTrace');
+      }
+      return Container(
+        color: Colors.grey[900],
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.white54,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'コンテンツの表示に失敗しました',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 
@@ -3835,52 +3950,97 @@ class _HomeScreenState extends State<HomeScreen>
           '📹 _buildVideoContent呼び出し: postId=${post.id}, postType=${post.postType}');
     }
 
-    // インデックスを安全に取得（indexOfは見つからない場合-1を返す）
-    final postIndex = _posts.indexWhere((p) => p.id == post.id);
-    if (postIndex < 0 || postIndex >= _posts.length) {
-      if (kDebugMode) {
-        debugPrint(
-            '⚠️ _buildVideoContent: 投稿が見つかりません: postId=${post.id}, _posts.length=${_posts.length}');
+    // 【重要】スクロール中のリスト更新に対応するため、安全にインデックスを取得
+    int? postIndex;
+    Post? actualPost;
+    
+    try {
+      // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
+      final postsLength = _posts.length;
+      
+      // インデックスを安全に取得（indexWhereは見つからない場合-1を返す）
+      final foundIndex = _posts.indexWhere((p) => p.id == post.id);
+      
+      if (foundIndex >= 0 && foundIndex < postsLength) {
+        // 再度範囲チェック（リストが更新された可能性がある）
+        if (foundIndex < _posts.length) {
+          postIndex = foundIndex;
+          actualPost = _posts[foundIndex];
+          
+          // データの整合性を再確認
+          if (actualPost.id != post.id) {
+            if (kDebugMode) {
+              debugPrint('⚠️ _buildVideoContent: データの不一致を検出');
+              debugPrint('  - 期待されるpostId: ${post.id}');
+              debugPrint('  - 実際のpostId: ${actualPost.id}');
+            }
+            // 実際の投稿データを使用（postオブジェクトはそのまま使用）
+            actualPost = post;
+            postIndex = null; // インデックスが無効なのでnullに
+          }
+        } else {
+          // 範囲外になった場合はpostオブジェクトを直接使用
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ _buildVideoContent: インデックスが範囲外になりました: foundIndex=$foundIndex, _posts.length=${_posts.length}');
+          }
+          actualPost = post;
+          postIndex = null;
+        }
+      } else {
+        // 見つからない場合はpostオブジェクトを直接使用
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ _buildVideoContent: 投稿が見つかりません: postId=${post.id}, _posts.length=$postsLength');
+        }
+        actualPost = post;
+        postIndex = null;
       }
-      // フォールバック: 直接postを使用
-      return _buildVideoContentFallback(post);
+    } catch (e) {
+      // 例外が発生した場合もpostオブジェクトを直接使用
+      if (kDebugMode) {
+        debugPrint('❌ _buildVideoContent: インデックス取得エラー: $e');
+      }
+      actualPost = post;
+      postIndex = null;
     }
 
-    // データの整合性を再確認
-    final actualPost = _posts[postIndex];
-    if (actualPost.id != post.id) {
-      if (kDebugMode) {
-        debugPrint('⚠️ _buildVideoContent: データの不一致を検出');
-        debugPrint('  - 期待されるpostId: ${post.id}');
-        debugPrint('  - 実際のpostId: ${actualPost.id}');
-        debugPrint('  - 期待されるusername: ${post.username}');
-        debugPrint('  - 実際のusername: ${actualPost.username}');
-      }
-      // 実際の投稿データを使用
-      return _buildVideoContentFallback(actualPost);
+    // postIndexが無効な場合はフォールバックを使用（actualPostは常にpostが設定されているのでnullチェック不要）
+    if (postIndex == null) {
+      return _buildVideoContentFallback(post);
     }
 
     // 【重要】postIndexと_currentIndexが一致しない場合の処理
     // _currentIndexの投稿IDと一致するコントローラーを優先的に使用
     VideoPlayerController? controller;
-    int actualIndex = postIndex;
+    // postIndexがnullでないことは上で確認済み
+    final validPostIndex = postIndex;
+    int actualIndex = validPostIndex;
 
-    // _currentIndexが有効で、そのインデックスの投稿IDが一致する場合、_currentIndexのコントローラーを使用
-    if (_currentIndex >= 0 &&
-        _currentIndex < _posts.length &&
-        _posts[_currentIndex].id == post.id &&
-        postIndex != _currentIndex) {
-      // postIndexと_currentIndexが不一致の場合のみ、_currentIndexのコントローラーを使用
-      actualIndex = _currentIndex;
-      controller = _videoControllers[_currentIndex];
+    try {
+      // _currentIndexが有効で、そのインデックスの投稿IDが一致する場合、_currentIndexのコントローラーを使用
+      if (_currentIndex >= 0 &&
+          _currentIndex < _posts.length &&
+          _posts[_currentIndex].id == post.id &&
+          validPostIndex != _currentIndex) {
+        // postIndexと_currentIndexが不一致の場合のみ、_currentIndexのコントローラーを使用
+        actualIndex = _currentIndex;
+        controller = _videoControllers[_currentIndex];
 
-      if (kDebugMode) {
-        debugPrint(
-            '⚠️ _buildVideoContent: postIndex($postIndex)と_currentIndex($_currentIndex)が不一致。_currentIndexのコントローラーを使用: postId=${post.id}');
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ _buildVideoContent: postIndex($validPostIndex)と_currentIndex($_currentIndex)が不一致。_currentIndexのコントローラーを使用: postId=${post.id}');
+        }
+      } else {
+        // postIndexのコントローラーを使用（postIndexと_currentIndexが一致する場合も含む）
+        controller = _videoControllers[validPostIndex];
       }
-    } else {
-      // postIndexのコントローラーを使用（postIndexと_currentIndexが一致する場合も含む）
-      controller = _videoControllers[postIndex];
+    } catch (e) {
+      // コントローラー取得でエラーが発生した場合、フォールバックを使用
+      if (kDebugMode) {
+        debugPrint('❌ _buildVideoContent: コントローラー取得エラー: $e');
+      }
+      return _buildVideoContentFallback(post);
     }
 
     // コントローラーが存在し、初期化済みの場合に表示
@@ -3939,8 +4099,8 @@ class _HomeScreenState extends State<HomeScreen>
       color: Colors.grey[900],
       child: Stack(
         children: [
-          // 動画プレイヤー
-          if (isValidController && controller != null)
+          // 動画プレイヤー（isValidControllerがtrueならcontrollerはnullでない）
+          if (isValidController)
             Positioned.fill(
               child: Center(
                 child: AspectRatio(
@@ -4113,7 +4273,7 @@ class _HomeScreenState extends State<HomeScreen>
                     // 既存のコントローラーが存在する場合、UIを更新して再生
                     if (kDebugMode) {
                       debugPrint(
-                          '🔄 タップ時: 既存の動画コントローラーを検出、UIを更新: index=$postIndex');
+                          '🔄 タップ時: 既存の動画コントローラーを検出、UIを更新: index=$actualIndex');
                     }
                     // UIを更新
                     setState(() {
@@ -4122,8 +4282,8 @@ class _HomeScreenState extends State<HomeScreen>
                     // フレーム描画後にも再度setStateを呼んで確実に反映
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (!_isDisposed && mounted) {
-                        if (postIndex == _currentIndex ||
-                            _currentPlayingVideo == postIndex) {
+                        if (actualIndex == _currentIndex ||
+                            _currentPlayingVideo == actualIndex) {
                           setState(() {
                             // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
                           });
@@ -4140,9 +4300,9 @@ class _HomeScreenState extends State<HomeScreen>
                     // 古いコントローラーが残って重複再生されることを防ぐため、forceReinitialize=trueで呼び出す
                     if (kDebugMode) {
                       debugPrint(
-                          '🔄 タップ時: 動画コントローラーを初期化: index=$postIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
+                          '🔄 タップ時: 動画コントローラーを初期化: index=$actualIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
                     }
-                    _initializeVideoController(postIndex,
+                    _initializeVideoController(actualIndex,
                         forceReinitialize: true);
                   }
                 }
@@ -4959,33 +5119,67 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildAudioContent(Post post) {
-    // インデックスを安全に取得（indexOfは見つからない場合-1を返す）
-    final postIndex = _posts.indexWhere((p) => p.id == post.id);
-    if (postIndex < 0 || postIndex >= _posts.length) {
-      if (kDebugMode) {
-        debugPrint(
-            '⚠️ _buildAudioContent: 投稿が見つかりません: postId=${post.id}, _posts.length=${_posts.length}');
+    // 【重要】スクロール中のリスト更新に対応するため、安全にインデックスを取得
+    int postIndex;
+    
+    try {
+      // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
+      final postsLength = _posts.length;
+      
+      // インデックスを安全に取得（indexWhereは見つからない場合-1を返す）
+      final foundIndex = _posts.indexWhere((p) => p.id == post.id);
+      
+      if (foundIndex >= 0 && foundIndex < postsLength) {
+        // 再度範囲チェック（リストが更新された可能性がある）
+        if (foundIndex < _posts.length) {
+          final actualPost = _posts[foundIndex];
+          
+          // データの整合性を再確認
+          if (actualPost.id == post.id) {
+            postIndex = foundIndex;
+          } else {
+            // データが不一致の場合はフォールバックを使用
+            if (kDebugMode) {
+              debugPrint('⚠️ _buildAudioContent: データの不一致を検出');
+              debugPrint('  - 期待されるpostId: ${post.id}');
+              debugPrint('  - 実際のpostId: ${actualPost.id}');
+            }
+            return _buildAudioContentFallback(post);
+          }
+        } else {
+          // 範囲外になった場合はフォールバックを使用
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ _buildAudioContent: インデックスが範囲外になりました: foundIndex=$foundIndex, _posts.length=${_posts.length}');
+          }
+          return _buildAudioContentFallback(post);
+        }
+      } else {
+        // 見つからない場合はフォールバックを使用
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ _buildAudioContent: 投稿が見つかりません: postId=${post.id}, _posts.length=$postsLength');
+        }
+        return _buildAudioContentFallback(post);
       }
-      // フォールバック: 直接postを使用（プレイヤーなし）
+    } catch (e) {
+      // 例外が発生した場合もフォールバックを使用
+      if (kDebugMode) {
+        debugPrint('❌ _buildAudioContent: インデックス取得エラー: $e');
+      }
       return _buildAudioContentFallback(post);
     }
 
-    // データの整合性を再確認
-    final actualPost = _posts[postIndex];
-    if (actualPost.id != post.id) {
-      if (kDebugMode) {
-        debugPrint('⚠️ _buildAudioContent: データの不一致を検出');
-        debugPrint('  - 期待されるpostId: ${post.id}');
-        debugPrint('  - 実際のpostId: ${actualPost.id}');
-        debugPrint('  - 期待されるusername: ${post.username}');
-        debugPrint('  - 実際のusername: ${actualPost.username}');
-      }
-      // 実際の投稿データを使用
-      return _buildAudioContentFallback(actualPost);
-    }
-
+    // postIndexは上記の条件で必ず設定されている（5139行目）
+    // playerがnullの場合はフォールバックを使用
     final player = _audioPlayers[postIndex];
-    final isPlaying = _currentPlayingAudio == postIndex && player != null;
+    if (player == null) {
+      return _buildAudioContentFallback(post);
+    }
+    
+    // postIndexは必ず設定されている
+    final validPostIndex = postIndex;
+    final isPlaying = _currentPlayingAudio == validPostIndex;
 
     return Stack(
       children: [
@@ -5080,9 +5274,9 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                     // 音声初期化中のローディング表示
-                    if (postIndex == _currentIndex &&
+                    if (validPostIndex == _currentIndex &&
                         post.postType == PostType.audio &&
-                        !_initializedAudios.contains(postIndex))
+                        !_initializedAudios.contains(validPostIndex))
                       const Padding(
                         padding: EdgeInsets.only(top: 30),
                         child: CircularProgressIndicator(
@@ -5095,10 +5289,9 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ),
-        // シークバー（音声が初期化されている場合は常に表示）
-        if (postIndex == _currentIndex &&
-            player != null &&
-            _initializedAudios.contains(postIndex))
+        // シークバー（音声が初期化されている場合は常に表示）（playerは既にnullチェック済み）
+        if (validPostIndex == _currentIndex &&
+            _initializedAudios.contains(validPostIndex))
           _buildAudioSeekBar(player),
       ],
     );
@@ -5475,13 +5668,7 @@ class _HomeScreenState extends State<HomeScreen>
       currentPost = _posts[_currentIndex];
     }
 
-    // nullチェック
-    if (currentPost == null) {
-      if (kDebugMode) {
-        debugPrint('⚠️ _executeSpotlight: currentPostがnullです');
-      }
-      return;
-    }
+    // currentPostは_posts[_currentIndex]から取得されているので、nullになることはない
 
     // currentPostがnullでないことを確認したので、非null型として使用
     final post = currentPost;
@@ -7282,29 +7469,25 @@ class _HomeScreenState extends State<HomeScreen>
               '✅ 動画初期化成功: index=$postIndex, duration=${controller.value.duration}, size=${controller.value.size}, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
         }
 
-        // UIを確実に更新（複数回setStateを呼んで確実に反映）
-        // 注意: postIndex == _currentIndex のチェックを外して、常にsetStateを呼ぶ
-        // これにより、_buildVideoContentが呼ばれた際に確実に最新の状態が反映される
-        setState(() {
-          // 動画コントローラーが更新されたことを通知
-        });
-
-        // 動画の表示を確実にするため、フレーム描画後にsetStateを呼ぶ
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_isDisposed && mounted) {
-            // 現在のインデックスと一致する場合、または再生中のインデックスの場合に更新
-            if (postIndex == _currentIndex ||
-                _currentPlayingVideo == postIndex) {
-              setState(() {
-                // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
-              });
-              if (kDebugMode) {
-                debugPrint(
-                    '✅ 動画コントローラーUI更新完了: index=$postIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
-              }
+        // 【重要】現在表示中の動画のみsetStateを呼ぶ（スクロール中の過剰な再ビルドを防ぐ）
+        // これにより、スクロール中に他の動画が初期化されても、現在表示中の動画のみUIを更新
+        if (postIndex == _currentIndex || _currentPlayingVideo == postIndex) {
+          if (mounted) {
+            setState(() {
+              // 動画コントローラーが更新されたことを通知
+            });
+            
+            if (kDebugMode) {
+              debugPrint(
+                  '✅ 動画コントローラーUI更新完了: index=$postIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
             }
           }
-        });
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '⏭️ 動画コントローラー初期化完了（非表示中のためsetStateをスキップ）: index=$postIndex, _currentIndex=$_currentIndex');
+          }
+        }
       }
     } catch (e, stackTrace) {
       // 動画の初期化に失敗した場合、詳細なエラー情報をログ出力
@@ -7881,28 +8064,20 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint(
                     '✅ 動画コントローラー初期化完了: index=$newIndex, duration=${controller.value.duration}, size=${controller.value.size}');
               }
-              // 動画の表示を確実にするため、setStateを呼ぶ（初期化完了を通知）
-              // 複数回setStateを呼んで確実にUIを更新
-              if (mounted) {
+              // 【重要】現在表示中の動画のみsetStateを呼ぶ（スクロール中の過剰な再ビルドを防ぐ）
+              if (mounted && (_currentIndex == newIndex || _currentPlayingVideo == newIndex)) {
                 setState(() {
                   // 動画コントローラーが更新されたことを通知
                 });
-                // フレーム描画後にも再度setStateを呼んで確実に反映
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!_isDisposed && mounted) {
-                    // _currentIndexまたは_currentPlayingVideoと一致する場合のみ更新
-                    if (_currentIndex == newIndex ||
-                        _currentPlayingVideo == newIndex) {
-                      setState(() {
-                        // 動画コントローラーが更新されたことを通知（再ビルドを確実にする）
-                      });
-                      if (kDebugMode) {
-                        debugPrint(
-                            '✅ 動画コントローラーUI更新完了（ページ変更後）: index=$newIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
-                      }
-                    }
-                  }
-                });
+                if (kDebugMode) {
+                  debugPrint(
+                      '✅ 動画コントローラーUI更新完了（ページ変更後）: index=$newIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
+                }
+              } else {
+                if (kDebugMode) {
+                  debugPrint(
+                      '⏭️ 動画コントローラー初期化完了（非表示中のためsetStateをスキップ）: index=$newIndex, _currentIndex=$_currentIndex');
+                }
               }
 
               // スクロールされるたびに新しいものとして認識するため、常に先頭から再生

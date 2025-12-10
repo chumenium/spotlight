@@ -4,7 +4,6 @@ import '../services/post_service.dart';
 import '../services/admin_service.dart';
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
-import '../config/app_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 /// 投稿管理画面（管理者用）
@@ -408,7 +407,7 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
             _selectedType = value;
           });
         },
-        selectedColor: SpotLightColors.primaryOrange.withOpacity(0.3),
+        selectedColor: SpotLightColors.primaryOrange.withValues(alpha: 0.3),
         checkmarkColor: SpotLightColors.primaryOrange,
         labelStyle: TextStyle(
           color: isSelected
@@ -513,12 +512,12 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: SpotLightColors.primaryOrange.withOpacity(0.2),
+                          color: SpotLightColors.primaryOrange.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           _getPostTypeName(post.postType),
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: SpotLightColors.primaryOrange,
                             fontSize: 10,
                           ),
@@ -543,7 +542,7 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.2),
+                            color: Colors.red.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Row(
@@ -689,7 +688,7 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.red, width: 1),
                   ),

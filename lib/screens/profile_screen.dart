@@ -60,7 +60,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // 自己紹介文
   String? _bio;
   // 画像のアスペクト比をキャッシュ（URL -> アスペクト比）
-  final Map<String, double> _imageAspectRatios = {};
   // 再生リストの最初のコンテンツのサムネイルURLをキャッシュ（playlistId -> thumbnailUrl）
   final Map<int, String?> _playlistFirstContentThumbnails = {};
   // バッジポップアップのオーバーレイ
@@ -140,9 +139,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => WillPopScope(
-            onWillPop: () async => false, // バックボタンを無効化
-            child: const Center(
+          builder: (context) => const PopScope(
+            canPop: false, // バックボタンを無効化
+            child: Center(
               child: CircularProgressIndicator(),
             ),
           ),
@@ -215,6 +214,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) return;
 
+      if (!mounted) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final userId = authProvider.currentUser?.id;
       if (userId == null) return;
@@ -866,7 +866,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: badge.badgeColor.withOpacity(0.3),
+            color: badge.badgeColor.withValues(alpha: 0.3),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -994,18 +994,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       return false;
     }
-  }
-
-  /// リストを5件ずつに分割するヘルパーメソッド
-  List<List<T>> _chunkList<T>(List<T> list, int chunkSize) {
-    final chunks = <List<T>>[];
-    for (int i = 0; i < list.length; i += chunkSize) {
-      chunks.add(list.sublist(
-        i,
-        i + chunkSize > list.length ? list.length : i + chunkSize,
-      ));
-    }
-    return chunks;
   }
 
   /// タイトルを安全に取得（null/undefined/空文字列を安全にチェック）
@@ -1175,7 +1163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   boxShadow: [
                     BoxShadow(
                       color: SpotLightColors.getSpotlightColor(index)
-                          .withOpacity(0.3),
+                          .withValues(alpha: 0.3),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -1193,108 +1181,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// 画像のアスペクト比を読み込む
-  void _loadImageAspectRatio(String url) {
-    // URLの検証
-    if (url.isEmpty) {
-      return;
-    }
-
-    // 既にアスペクト比が取得されている場合はスキップ
-    if (_imageAspectRatios.containsKey(url)) {
-      return;
-    }
-
-    // 読み込み中フラグを設定（重複読み込みを防ぐ）
-    if (!mounted) {
-      return;
-    }
-
-    try {
-      // NetworkImageを使用して画像のサイズを取得
-      final imageProvider = NetworkImage(url);
-      final imageStream = imageProvider.resolve(
-        const ImageConfiguration(),
-      );
-
-      late ImageStreamListener listener;
-      listener = ImageStreamListener(
-        (ImageInfo imageInfo, bool synchronousCall) {
-          if (synchronousCall || !mounted) {
-            try {
-              imageStream.removeListener(listener);
-            } catch (e) {
-              // リスナーが既に削除されている場合は無視
-            }
-            return;
-          }
-
-          try {
-            final image = imageInfo.image;
-            final width = image.width.toDouble();
-            final height = image.height.toDouble();
-
-            if (width > 0 && height > 0) {
-              final aspectRatio = width / height;
-
-              if (mounted) {
-                final currentAspectRatio = _imageAspectRatios[url];
-                if (currentAspectRatio == null ||
-                    (currentAspectRatio - aspectRatio).abs() > 0.01) {
-                  setState(() {
-                    _imageAspectRatios[url] = aspectRatio;
-                  });
-                }
-              }
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ アスペクト比計算エラー: $e');
-            }
-          } finally {
-            // リスナーを削除してメモリリークを防ぐ
-            if (mounted) {
-              try {
-                imageStream.removeListener(listener);
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ リスナー削除エラー: $e');
-                }
-              }
-            }
-          }
-        },
-        onError: (exception, stackTrace) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 画像読み込みエラー: $exception');
-          }
-          if (mounted) {
-            try {
-              imageStream.removeListener(listener);
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ リスナー削除エラー: $e');
-              }
-            }
-          }
-        },
-      );
-
-      imageStream.addListener(listener);
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ アスペクト比取得エラー: $e');
-      }
-    }
-  }
-
   /// 投稿のサムネイルを表示
   Widget _buildPostThumbnail(BuildContext context, Post post, int index) {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 15.0; // アイテム間のマージン
-    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    const horizontalPadding = 20.0 * 2; // 左右のパディング
+    const itemMargin = 15.0; // アイテム間のマージン
+    const totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
         (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
@@ -1373,7 +1266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     BoxShadow(
                                       color: SpotLightColors.getSpotlightColor(
                                               index)
-                                          .withOpacity(0.3),
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -1516,9 +1409,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildHistoryThumbnail(BuildContext context, Post post, int index) {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 15.0; // アイテム間のマージン
-    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    const horizontalPadding = 20.0 * 2; // 左右のパディング
+    const itemMargin = 15.0; // アイテム間のマージン
+    const totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
         (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
@@ -1597,7 +1490,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     BoxShadow(
                                       color: SpotLightColors.getSpotlightColor(
                                               index)
-                                          .withOpacity(0.3),
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -1639,9 +1532,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       BuildContext context, Playlist playlist, int index) {
     // 画面幅に応じて5つ分が表示されるようにアイテム幅を計算
     final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPadding = 20.0 * 2; // 左右のパディング
-    final itemMargin = 15.0; // アイテム間のマージン
-    final totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
+    const horizontalPadding = 20.0 * 2; // 左右のパディング
+    const itemMargin = 15.0; // アイテム間のマージン
+    const totalMargin = itemMargin * 4; // 5つのアイテム間のマージン（4箇所）
     final availableWidth = screenWidth - horizontalPadding - totalMargin;
     final itemWidth =
         (availableWidth / 5).clamp(140.0, 220.0); // 最小140px、最大220px
@@ -1958,8 +1851,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               boxShadow: isUnlocked
                                   ? [
                                       BoxShadow(
-                                        color: badge.badgeColor.withOpacity(
-                                            isNewlyUnlocked ? 0.6 : 0.3),
+                                        color: badge.badgeColor.withValues(
+                                            alpha: isNewlyUnlocked ? 0.6 : 0.3),
                                         blurRadius: isNewlyUnlocked ? 12 : 8,
                                         offset: const Offset(0, 4),
                                       ),
@@ -2044,7 +1937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -2066,7 +1959,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(60),
                       boxShadow: [
                         BoxShadow(
-                          color: badge.badgeColor.withOpacity(0.5),
+                          color: badge.badgeColor.withValues(alpha: 0.5),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),
@@ -2489,7 +2382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // 既に正方形の場合はそのまま返す
       if (width == height) {
         if (kDebugMode) {
-          debugPrint('✅ 画像は既に正方形です（${width}x${height}）');
+          debugPrint('✅ 画像は既に正方形です（$width x $height）');
         }
         return imageBytes;
       }
@@ -2503,8 +2396,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (kDebugMode) {
         debugPrint('✂️ 画像を正方形に切り取ります:');
-        debugPrint('  - 元のサイズ: ${width}x${height}');
-        debugPrint('  - 切り取りサイズ: ${size}x${size}');
+        debugPrint('  - 元のサイズ: $width x $height');
+        debugPrint('  - 切り取りサイズ: $size x $size');
         debugPrint('  - 切り取り位置: x=$x, y=$y');
       }
 
@@ -2521,7 +2414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final croppedBytes = Uint8List.fromList(img.encodePng(croppedImage));
 
       if (kDebugMode) {
-        debugPrint('✅ 画像を正方形に切り取りました: ${size}x${size}');
+        debugPrint('✅ 画像を正方形に切り取りました: $size x $size');
       }
 
       return croppedBytes;
@@ -2616,7 +2509,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (user?.avatarUrl != null) {
           oldIconUrl = user!.avatarUrl;
         } else if (user?.iconPath != null && user!.iconPath!.isNotEmpty) {
-          final oldIconPath = user!.iconPath!;
+          final oldIconPath = user.iconPath!;
           // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
           if (oldIconPath.startsWith('http://') ||
               oldIconPath.startsWith('https://')) {
@@ -3355,17 +3248,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       debugPrint('🖼️ DB上のiconPath: $defaultIconPath');
     }
 
+    bool refreshed = false;
+    
     try {
-      // S3のデフォルトアイコンが利用可能かを確認
-      final response = await http.head(Uri.parse(defaultIconUrl)).timeout(
+      // S3のデフォルトアイコンが利用可能かを確認（非同期で実行、エラーは無視）
+      http.head(Uri.parse(defaultIconUrl)).timeout(
             const Duration(seconds: 3),
             onTimeout: () => http.Response('', 404),
-          );
+          ).then((response) {
+            if (kDebugMode) {
+              if (response.statusCode == 200) {
+                debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
+              } else {
+                debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
+              }
+            }
+          }).catchError((e) {
+            // エラーは無視（S3の確認はオプション）
+            if (kDebugMode) {
+              debugPrint('⚠️ S3のデフォルトアイコン確認エラー（無視）: $e');
+            }
+          });
 
       // バックエンドから最新のユーザー情報を再取得して反映（admin情報も含む）
       // refreshUserInfoFromBackendはupdateUserInfoを内部で呼び出すため、
       // バックエンドから取得したadmin情報も正しく反映される
-      final refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
+      refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
 
       if (kDebugMode) {
         if (refreshed) {
@@ -3374,38 +3282,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint('✅ CloudFront URL: $defaultIconUrl');
         } else {
           debugPrint('⚠️ ユーザー情報の再取得に失敗しました。updateUserInfoを使用します');
-          // フォールバック: updateUserInfoを使用（admin情報は保持される）
-          await authProvider.updateUserInfo(iconPath: defaultIconPath);
-        }
-      } else {
-        // デバッグモードでない場合もrefreshUserInfoFromBackendを試す
-        if (!refreshed) {
-          await authProvider.updateUserInfo(iconPath: defaultIconPath);
-        }
-      }
-
-      if (response.statusCode == 200) {
-        if (kDebugMode) {
-          debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
-          debugPrint('🖼️ それでもS3のdefault_icon.pngを使用します: $defaultIconUrl');
         }
       }
     } catch (e) {
-      // ネットワークエラーの場合でもバックエンドから最新情報を取得
-      final refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
-      
-      if (!refreshed) {
-        // フォールバック: updateUserInfoを使用（admin情報は保持される）
-        await authProvider.updateUserInfo(iconPath: defaultIconPath);
-      }
-
       if (kDebugMode) {
-        debugPrint('❌ デフォルトアイコン確認エラー: $e');
+        debugPrint('❌ デフォルトアイコン設定エラー: $e');
         debugPrint('🖼️ それでもS3のdefault_icon.pngを使用します: $defaultIconUrl');
+      }
+    }
+
+    // refreshUserInfoFromBackendが失敗した場合のみ、フォールバックとしてupdateUserInfoを使用
+    if (!refreshed) {
+      try {
+        await authProvider.updateUserInfo(iconPath: defaultIconPath);
+        if (kDebugMode) {
+          debugPrint('✅ フォールバック: updateUserInfoでデフォルトアイコンを設定');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('❌ updateUserInfoエラー: $e');
+        }
       }
     }
 

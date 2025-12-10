@@ -80,27 +80,6 @@ class RobustNetworkImage extends StatelessWidget {
     _recordLoadedUrl(url);
   }
 
-  /// 読み込み中のURLかチェック（重複読み込みを防ぐ）
-  static bool _isLoading(String url) {
-    // 既に読み込み成功したURLの場合は、読み込み中ではない
-    if (_loadedUrls.containsKey(url)) {
-      return false;
-    }
-
-    if (!_loadingUrls.containsKey(url)) {
-      return false;
-    }
-    final loadingTime = _loadingUrls[url]!;
-    final now = DateTime.now();
-    final difference = now.difference(loadingTime);
-    // 5分以上経過した場合は、タイムアウトとして削除
-    if (difference.inMinutes >= 5) {
-      _loadingUrls.remove(url);
-      return false;
-    }
-    return true;
-  }
-
   /// ログを出力するかチェック（同じURLの場合は一定時間内は出力しない）
   static bool _shouldLog(String url,
       {Duration minInterval = const Duration(seconds: 30)}) {
