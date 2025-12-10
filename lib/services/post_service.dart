@@ -2059,6 +2059,246 @@ class PostService {
     return [];
   }
 
+  /// /api/content/getcontents/newest APIを使用して5件のコンテンツを取得（新しい順）
+  /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
+  static Future<List<Post>> fetchContentsNewest() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontents/newest] JWTトークンが取得できません');
+          debugPrint('❌ [getcontents/newest] 認証が必要です。ログインしてください。');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/getcontents/newest';
+
+      if (kDebugMode) {
+        debugPrint('📝 [getcontents/newest] API呼び出し開始: $url');
+        debugPrint('📝 [getcontents/newest] JWTトークン: ${jwtToken.substring(0, 20)}...');
+      }
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents/newest] タイムアウト: 30秒以内にレスポンスがありませんでした');
+            debugPrint('❌ [getcontents/newest] URL: $url');
+          }
+          throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📝 [getcontents/newest] レスポンス受信: statusCode=200');
+            debugPrint('📝 [getcontents/newest] レスポンスステータス: ${responseData['status']}');
+          }
+
+          if (responseData['status'] == 'success' &&
+              responseData['data'] != null) {
+            final List<dynamic> contentsJson = responseData['data'] as List;
+
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents/newest] 取得件数: ${contentsJson.length}件');
+            }
+
+            if (contentsJson.isEmpty) {
+              if (kDebugMode) {
+                debugPrint('⚠️ [getcontents/newest] レスポンスデータが空です');
+              }
+              return [];
+            }
+
+            final List<Post> posts = [];
+            for (int i = 0; i < contentsJson.length; i++) {
+              final contentJson = contentsJson[i] as Map<String, dynamic>;
+
+              final contentId = contentJson['contentID']?.toString() ??
+                  contentJson['contentid']?.toString() ??
+                  contentJson['id']?.toString() ??
+                  '';
+
+              if (contentId.isEmpty) {
+                continue;
+              }
+
+              contentJson['id'] = contentId;
+              contentJson['contentID'] = contentId;
+
+              try {
+                final post = Post.fromJson(contentJson,
+                    backendUrl: AppConfig.backendUrl);
+                posts.add(post);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [getcontents/newest] Post変換エラー: $e, インデックス $i');
+                }
+              }
+            }
+
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents/newest] 変換完了: ${posts.length}件');
+            }
+
+            return posts;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents/newest] レスポンスJSON解析エラー: $e');
+            debugPrint('❌ [getcontents/newest] レスポンスボディ: ${response.body}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontents/newest] HTTPエラー: ${response.statusCode}');
+          debugPrint('❌ [getcontents/newest] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [getcontents/newest] 予期しないエラー: $e');
+        debugPrint('❌ [getcontents/newest] スタックトレース: $stackTrace');
+      }
+    }
+
+    return [];
+  }
+
+  /// /api/content/getcontents/oldest APIを使用して5件のコンテンツを取得（古い順）
+  /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
+  static Future<List<Post>> fetchContentsOldest() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontents/oldest] JWTトークンが取得できません');
+          debugPrint('❌ [getcontents/oldest] 認証が必要です。ログインしてください。');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/getcontents/oldest';
+
+      if (kDebugMode) {
+        debugPrint('📝 [getcontents/oldest] API呼び出し開始: $url');
+        debugPrint('📝 [getcontents/oldest] JWTトークン: ${jwtToken.substring(0, 20)}...');
+      }
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents/oldest] タイムアウト: 30秒以内にレスポンスがありませんでした');
+            debugPrint('❌ [getcontents/oldest] URL: $url');
+          }
+          throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          if (kDebugMode) {
+            debugPrint('📝 [getcontents/oldest] レスポンス受信: statusCode=200');
+            debugPrint('📝 [getcontents/oldest] レスポンスステータス: ${responseData['status']}');
+          }
+
+          if (responseData['status'] == 'success' &&
+              responseData['data'] != null) {
+            final List<dynamic> contentsJson = responseData['data'] as List;
+
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents/oldest] 取得件数: ${contentsJson.length}件');
+            }
+
+            if (contentsJson.isEmpty) {
+              if (kDebugMode) {
+                debugPrint('⚠️ [getcontents/oldest] レスポンスデータが空です');
+              }
+              return [];
+            }
+
+            final List<Post> posts = [];
+            for (int i = 0; i < contentsJson.length; i++) {
+              final contentJson = contentsJson[i] as Map<String, dynamic>;
+
+              final contentId = contentJson['contentID']?.toString() ??
+                  contentJson['contentid']?.toString() ??
+                  contentJson['id']?.toString() ??
+                  '';
+
+              if (contentId.isEmpty) {
+                continue;
+              }
+
+              contentJson['id'] = contentId;
+              contentJson['contentID'] = contentId;
+
+              try {
+                final post = Post.fromJson(contentJson,
+                    backendUrl: AppConfig.backendUrl);
+                posts.add(post);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('⚠️ [getcontents/oldest] Post変換エラー: $e, インデックス $i');
+                }
+              }
+            }
+
+            if (kDebugMode) {
+              debugPrint('📝 [getcontents/oldest] 変換完了: ${posts.length}件');
+            }
+
+            return posts;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ [getcontents/oldest] レスポンスJSON解析エラー: $e');
+            debugPrint('❌ [getcontents/oldest] レスポンスボディ: ${response.body}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontents/oldest] HTTPエラー: ${response.statusCode}');
+          debugPrint('❌ [getcontents/oldest] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [getcontents/oldest] 予期しないエラー: $e');
+        debugPrint('❌ [getcontents/oldest] スタックトレース: $stackTrace');
+      }
+    }
+
+    return [];
+  }
+
   /// /api/content/getcontent APIを使用して1件のコンテンツを取得
   /// 外部画面からホームの特定コンテンツに遷移する際に使用
   /// 戻り値: 成功時はPost、失敗時はnull

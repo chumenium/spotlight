@@ -21,6 +21,7 @@ import '../services/playlist_service.dart';
 import '../models/comment.dart';
 import '../auth/auth_provider.dart';
 import '../services/report_service.dart';
+import '../services/sort_order_service.dart';
 import 'user_profile_screen.dart';
 
 /// 通報ダイアログ（独立したStatefulWidgetとして分離）
@@ -1181,8 +1182,25 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
 
-      // 初回読み込みは /api/content/getcontents を使用して5件取得
-      List<Post> posts = await PostService.fetchContents();
+      // 設定から並び順を取得して適切なAPIを呼び出す
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> posts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          posts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          posts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          posts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      if (kDebugMode) {
+        debugPrint('📝 並び順設定: ${SortOrderService.getSortOrderDisplayName(sortOrder)}');
+      }
 
       if (kDebugMode) {
         debugPrint('📝 fetchContents結果: ${posts.length}件');
@@ -2173,8 +2191,21 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📝 追加コンテンツ取得開始（無限スクロール）...');
       }
 
-      // /api/content/getcontentsを使用して5件取得
-      final newPosts = await PostService.fetchContents();
+      // 設定から並び順を取得して適切なAPIを呼び出す
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> newPosts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          newPosts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          newPosts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          newPosts = await PostService.fetchContentsOldest();
+          break;
+      }
 
       if (!_isDisposed && mounted) {
         // バックエンドが5件未満を返した場合のみ、これ以上コンテンツがないと判断

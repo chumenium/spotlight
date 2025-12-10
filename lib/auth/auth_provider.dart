@@ -883,13 +883,14 @@ class AuthProvider extends ChangeNotifier {
   /// パラメータ:
   /// - username: バックエンドで生成された一意で変更不可なusername（nullの場合は現在の値を維持）
   /// - iconPath: アイコンパス（iconimgpath、nullの場合は現在の値を維持）
+  /// - admin: 管理者フラグ（nullの場合は現在の値を維持）
   ///
   /// 注意:
   /// - iconPathはバックエンドのiconimgpathフィールドに対応
   /// - 空文字列の場合はアイコンを削除
   /// - idはFirebase UIDで変更不可
   /// - backendUsernameはバックエンドで生成された一意で変更不可なusername
-  Future<void> updateUserInfo({String? username, String? iconPath}) async {
+  Future<void> updateUserInfo({String? username, String? iconPath, bool? admin}) async {
     if (_currentUser == null) return;
 
     try {
@@ -962,6 +963,7 @@ class AuthProvider extends ChangeNotifier {
         backendUsername: username ??
             _currentUser!.backendUsername, // バックエンドで生成された一意で変更不可なusername
         iconPath: finalIconPath, // iconimgpath
+        admin: admin ?? _currentUser!.admin, // 管理者フラグを更新または保持
       );
 
       notifyListeners();
@@ -993,9 +995,10 @@ class AuthProvider extends ChangeNotifier {
         final username = userInfo['username'] as String?;
         final iconPath =
             userInfo['iconimgpath'] as String?; // バックエンドで生成（完全なURLまたは相対パス）
+        final admin = userInfo['admin'] as bool? ?? _currentUser!.admin; // 管理者フラグを取得
 
         if (kDebugMode) {
-          debugPrint('🔐 最新ユーザー情報取得: username=$username, iconPath=$iconPath');
+          debugPrint('🔐 最新ユーザー情報取得: username=$username, iconPath=$iconPath, admin=$admin');
           if (iconPath != null) {
             // iconPathの形式を確認してログ出力
             if (iconPath.startsWith('http://') ||
@@ -1007,7 +1010,8 @@ class AuthProvider extends ChangeNotifier {
           }
         }
 
-        await updateUserInfo(username: username, iconPath: iconPath);
+        // admin情報も含めて更新
+        await updateUserInfo(username: username, iconPath: iconPath, admin: admin);
         return true;
       }
     } catch (e) {

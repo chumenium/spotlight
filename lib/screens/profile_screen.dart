@@ -3362,15 +3362,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTimeout: () => http.Response('', 404),
           );
 
-      // エラー時でも常にdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
-      // DB上ではdefault_icon.pngを設定（バックエンド側で認識される形式）
-      // 実際の読み込みはCloudFront URLから行う
-      await authProvider.updateUserInfo(iconPath: defaultIconPath);
+      // バックエンドから最新のユーザー情報を再取得して反映（admin情報も含む）
+      // refreshUserInfoFromBackendはupdateUserInfoを内部で呼び出すため、
+      // バックエンドから取得したadmin情報も正しく反映される
+      final refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
+
+      if (kDebugMode) {
+        if (refreshed) {
+          debugPrint('✅ ユーザー情報を再取得しました（admin情報も含む）');
+          debugPrint('✅ S3のデフォルトアイコンを設定: $defaultIconPath');
+          debugPrint('✅ CloudFront URL: $defaultIconUrl');
+        } else {
+          debugPrint('⚠️ ユーザー情報の再取得に失敗しました。updateUserInfoを使用します');
+          // フォールバック: updateUserInfoを使用（admin情報は保持される）
+          await authProvider.updateUserInfo(iconPath: defaultIconPath);
+        }
+      } else {
+        // デバッグモードでない場合もrefreshUserInfoFromBackendを試す
+        if (!refreshed) {
+          await authProvider.updateUserInfo(iconPath: defaultIconPath);
+        }
+      }
 
       if (response.statusCode == 200) {
         if (kDebugMode) {
-          debugPrint('✅ S3のデフォルトアイコンを設定: $defaultIconPath');
-          debugPrint('✅ CloudFront URL: $defaultIconUrl');
+          debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
         }
       } else {
         if (kDebugMode) {
@@ -3379,8 +3395,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } catch (e) {
-      // ネットワークエラーの場合でもdefault_icon.pngを設定（S3のdefault_icon.pngを使用）
-      await authProvider.updateUserInfo(iconPath: defaultIconPath);
+      // ネットワークエラーの場合でもバックエンドから最新情報を取得
+      final refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
+      
+      if (!refreshed) {
+        // フォールバック: updateUserInfoを使用（admin情報は保持される）
+        await authProvider.updateUserInfo(iconPath: defaultIconPath);
+      }
 
       if (kDebugMode) {
         debugPrint('❌ デフォルトアイコン確認エラー: $e');

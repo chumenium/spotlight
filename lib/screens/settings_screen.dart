@@ -3,10 +3,44 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/theme_provider.dart';
+import '../services/sort_order_service.dart';
 import 'profile_edit_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  SortOrder _currentSortOrder = SortOrder.random;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSortOrder();
+  }
+
+  Future<void> _loadSortOrder() async {
+    final sortOrder = await SortOrderService.getSortOrder();
+    if (mounted) {
+      setState(() {
+        _currentSortOrder = sortOrder;
+      });
+    }
+  }
+
+  Future<void> _updateSortOrder(SortOrder? newValue) async {
+    if (newValue != null && newValue != _currentSortOrder) {
+      final success = await SortOrderService.setSortOrder(newValue);
+      if (success && mounted) {
+        setState(() {
+          _currentSortOrder = newValue;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +174,46 @@ class SettingsScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          _buildSettingsTile(
+            context: context,
+            icon: Icons.sort_outlined,
+            title: '投稿の並び順',
+            subtitle: SortOrderService.getSortOrderDisplayName(_currentSortOrder),
+            trailing: DropdownButton<SortOrder>(
+              value: _currentSortOrder,
+              underline: const SizedBox(),
+              icon: Icon(
+                Icons.arrow_drop_down,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[400]
+                    : Colors.grey[700],
+              ),
+              dropdownColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF1E1E1E)
+                  : Colors.white,
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                fontSize: 14,
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: SortOrder.random,
+                  child: const Text('ランダム'),
+                ),
+                DropdownMenuItem(
+                  value: SortOrder.newest,
+                  child: const Text('新しい順'),
+                ),
+                DropdownMenuItem(
+                  value: SortOrder.oldest,
+                  child: const Text('古い順'),
+                ),
+              ],
+              onChanged: _updateSortOrder,
+            ),
           ),
           _buildSettingsTile(
             context: context,
