@@ -4,9 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/theme_provider.dart';
 import '../services/sort_order_service.dart';
-import '../services/maintenance_service.dart';
 import 'profile_edit_screen.dart';
-import 'maintenance_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 class SettingsScreen extends StatefulWidget {
@@ -18,13 +16,11 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   SortOrder _currentSortOrder = SortOrder.random;
-  bool _isMaintenanceModeEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _loadSortOrder();
-    _loadMaintenanceModeStatus();
   }
 
   Future<void> _loadSortOrder() async {
@@ -33,105 +29,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _currentSortOrder = sortOrder;
       });
-    }
-  }
-
-  Future<void> _loadMaintenanceModeStatus() async {
-    final isEnabled = await MaintenanceService.isMaintenanceModeEnabled();
-    if (mounted) {
-      setState(() {
-        _isMaintenanceModeEnabled = isEnabled;
-      });
-    }
-  }
-
-  Future<void> _refreshRemoteConfig() async {
-    await MaintenanceService.refreshRemoteConfig();
-    await _loadMaintenanceModeStatus();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Remote Configを再取得しました'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  Future<void> _toggleMaintenanceMode() async {
-    final newStatus = !_isMaintenanceModeEnabled;
-    
-    // 確認ダイアログを表示
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          newStatus ? 'メンテナンスモードを有効化' : 'メンテナンスモードを無効化',
-        ),
-        content: Text(
-          newStatus
-              ? 'メンテナンスモードを有効化すると、アプリ起動時にメンテナンス画面が表示されます。\n\n続行しますか？'
-              : 'メンテナンスモードを無効化すると、アプリが通常通り使用できるようになります。\n\n続行しますか？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('キャンセル'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: newStatus ? Colors.orange : Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(newStatus ? '有効化' : '無効化'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    // メンテナンスモードを切り替え
-    final success = newStatus
-        ? await MaintenanceService.enableMaintenanceMode()
-        : await MaintenanceService.disableMaintenanceMode();
-
-    if (success && mounted) {
-      setState(() {
-        _isMaintenanceModeEnabled = newStatus;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            newStatus
-                ? 'メンテナンスモードを有効化しました。次回起動時から適用されます。'
-                : 'メンテナンスモードを無効化しました。',
-          ),
-          backgroundColor: newStatus ? Colors.orange : Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-
-      // メンテナンスモードを有効化した場合は、メンテナンス画面に遷移
-      if (newStatus) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MaintenanceScreen()),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('メンテナンスモードの切り替えに失敗しました。'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
     }
   }
 
@@ -368,34 +265,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // 開発者向け設定セクション（デバッグモード時のみ表示）
           if (kDebugMode) ...[
             _buildSectionHeader(context, '開発者向け'),
-            _buildSettingsTile(
-              context: context,
-              icon: _isMaintenanceModeEnabled
-                  ? Icons.build
-                  : Icons.build_outlined,
-              title: 'メンテナンスモード',
-              subtitle: _isMaintenanceModeEnabled
-                  ? '有効（アプリ起動時にメンテナンス画面を表示）\n※Remote Config優先、このデバイスのみの設定も可能'
-                  : '無効\n※Remote Configで全ユーザーに表示可能',
-              titleColor: _isMaintenanceModeEnabled
-                  ? Colors.orange
-                  : null,
-              iconColor: _isMaintenanceModeEnabled
-                  ? Colors.orange
-                  : null,
-              trailing: Switch(
-                value: _isMaintenanceModeEnabled,
-                onChanged: (_) => _toggleMaintenanceMode(),
-                activeColor: Colors.orange,
-              ),
-            ),
-            _buildSettingsTile(
-              context: context,
-              icon: Icons.refresh,
-              title: 'Remote Configを再取得',
-              subtitle: 'Firebase Remote Configから最新の設定を取得',
-              onTap: _refreshRemoteConfig,
-            ),
           ],
 
           const SizedBox(height: 40),

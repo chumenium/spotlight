@@ -12,8 +12,6 @@ import 'profile_screen.dart';
 import '../auth/social_login_screen.dart';
 import '../services/fcm_service.dart';
 import '../services/jwt_service.dart';
-import '../services/maintenance_service.dart';
-import 'maintenance_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// 静止画スプラッシュスクリーン
@@ -66,20 +64,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
   /// 認証状態をチェックしてから画面遷移
   Future<void> _initializeAndNavigate() async {
-    // 【重要】メンテナンスモードを最初にチェック
-    final isMaintenanceMode = await MaintenanceService.isMaintenanceModeEnabled();
-    if (isMaintenanceMode) {
-      if (kDebugMode) {
-        debugPrint('🔧 メンテナンスモードが有効です。メンテナンス画面を表示します。');
-      }
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MaintenanceScreen()),
-        );
-      }
-      return;
-    }
-
     final startTime = DateTime.now();
 
     // 認証状態をチェック

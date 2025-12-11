@@ -7,8 +7,6 @@ import 'providers/theme_provider.dart' show ThemeProvider, AppThemeMode;
 import 'auth/auth_provider.dart';
 import 'services/firebase_service.dart';
 import 'screens/splash_screen.dart';
-import 'screens/maintenance_screen.dart';
-import 'services/maintenance_service.dart';
 
 // バックグラウンドメッセージハンドラー（トップレベル関数である必要がある）
 @pragma('vm:entry-point')
@@ -37,14 +35,6 @@ void main() async {
     ),
   );
   
-  // 【重要】メンテナンスモードを最初にチェック（Firebase初期化の前）
-  final isMaintenanceMode = await MaintenanceService.isMaintenanceModeEnabled();
-  if (isMaintenanceMode) {
-    debugPrint('🔧 メンテナンスモードが有効です。メンテナンス画面を表示します。');
-    runApp(const MaintenanceModeApp());
-    return;
-  }
-  
   try {
     // Firebase初期化（FCMトークン初期化も含む）
     await FirebaseService.instance.initialize();
@@ -55,13 +45,6 @@ void main() async {
     debugPrint('✅ バックグラウンドメッセージハンドラー登録完了');
   } catch (e) {
     debugPrint('❌ Firebase/FCM初期化エラー: $e');
-    // Firebase初期化エラーでもメンテナンスモードをチェック
-    final isMaintenanceModeAfterError = await MaintenanceService.isMaintenanceModeEnabled();
-    if (isMaintenanceModeAfterError) {
-      debugPrint('🔧 メンテナンスモードが有効です。メンテナンス画面を表示します。');
-      runApp(const MaintenanceModeApp());
-      return;
-    }
   }
   
   runApp(const SpotLightApp());
@@ -100,25 +83,6 @@ class SpotLightApp extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-/// メンテナンスモード専用のアプリ（バックエンドが落ちていても動作）
-class MaintenanceModeApp extends StatelessWidget {
-  const MaintenanceModeApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SpotLight',
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        primaryColor: const Color(0xFFFF6B35),
-      ),
-      home: const MaintenanceScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
