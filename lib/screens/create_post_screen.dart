@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:video_compress/video_compress.dart';
 import 'dart:io' show File, Directory, Platform;
 import 'dart:async';
 import 'dart:ui';
@@ -215,21 +216,79 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // 動画ファイルの処理
         Uint8List bytes;
         int videoFileSize;
+        String? videoPath; // 圧縮後の動画パス（モバイル版用）
 
         if (kIsWeb) {
-          // Web版: XFileから直接読み取る
+          // Web版: XFileから直接読み取る（Web版では圧縮をスキップ）
           bytes = await _selectedMedia!.readAsBytes();
           videoFileSize = bytes.length;
         } else {
-          // モバイル版: Fileクラスを使用
-          final videoFile = File(_selectedMedia!.path);
-          videoFileSize = await videoFile.length();
-          bytes = await videoFile.readAsBytes();
+          // モバイル版: 動画を圧縮してビットレートを抑える
+          final originalVideoFile = File(_selectedMedia!.path);
+          final originalVideoSize = await originalVideoFile.length();
+
+          if (kDebugMode) {
+            debugPrint(
+                '📹 元の動画ファイルサイズ: ${(originalVideoSize / 1024 / 1024).toStringAsFixed(2)} MB');
+          }
+
+          try {
+            // 動画を圧縮（ビットレートを2Mbpsに設定）
+            if (kDebugMode) {
+              debugPrint('📹 動画を圧縮中...');
+            }
+
+            final compressedVideo = await VideoCompress.compressVideo(
+              _selectedMedia!.path,
+              quality: VideoQuality.MediumQuality, // 中品質（ビットレート約2Mbps）
+              deleteOrigin: false, // 元のファイルは削除しない
+              includeAudio: true, // 音声を含める
+            );
+
+            if (compressedVideo == null || compressedVideo.path == null) {
+              throw Exception('動画の圧縮に失敗しました');
+            }
+
+            videoPath = compressedVideo.path!;
+            final compressedVideoFile = File(videoPath);
+            videoFileSize = await compressedVideoFile.length();
+
+            if (kDebugMode) {
+              final compressionRatio = (1 - videoFileSize / originalVideoSize) * 100;
+              debugPrint(
+                  '📹 圧縮後の動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+              debugPrint(
+                  '📹 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
+            }
+
+            // 圧縮後のファイルを読み込む
+            bytes = await compressedVideoFile.readAsBytes();
+
+            // 圧縮後のファイルを削除（一時ファイル）
+            try {
+              await compressedVideoFile.delete();
+              if (kDebugMode) {
+                debugPrint('📹 圧縮後の一時ファイルを削除しました');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 圧縮後の一時ファイル削除エラー: $e');
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('❌ 動画圧縮エラー: $e');
+              debugPrint('   元の動画ファイルを使用します');
+            }
+            // 圧縮に失敗した場合は元のファイルを使用
+            videoFileSize = originalVideoSize;
+            bytes = await originalVideoFile.readAsBytes();
+          }
         }
 
         if (kDebugMode) {
           debugPrint(
-              '📹 動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+              '📹 最終動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
         }
 
         // 120MB以上の動画をブロック
@@ -269,8 +328,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
         } else {
           try {
+            // 圧縮後の動画からサムネイルを抽出（圧縮に失敗した場合は元の動画から）
+            final thumbnailPath = videoPath != null && videoPath.isNotEmpty
+                ? videoPath
+                : _selectedMedia!.path;
             final thumbnailBytes =
-                await _generateVideoThumbnail(_selectedMedia!.path);
+                await _generateVideoThumbnail(thumbnailPath);
             if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
               thumbBase64 = base64Encode(thumbnailBytes);
               if (kDebugMode) {

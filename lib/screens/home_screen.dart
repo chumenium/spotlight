@@ -986,8 +986,9 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isCheckingNewContent = false; // 最新コンテンツチェック中フラグ
   bool _noMoreContent = false; // これ以上コンテンツがないフラグ
   bool _isExternalNavigation = false; // 外部画面からの遷移中フラグ（再生を開始しない）
+  int? _targetJumpIndex; // 外部画面からの遷移時の目標インデックス
   static const int _initialLoadCount = 5; // 初回読み込み件数
-  static const int _preloadAheadCount = 5; // 現在のページから先読み込みする件数
+  static const int _preloadAheadCount = 2; // 現在のページから先読み込みする件数（コスト削減のため2件に削減）
 
   // ジェスチャー関連
   double _swipeOffset = 0.0;
@@ -1186,12 +1187,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// バックエンドから投稿を取得（初回読み込み）
   Future<void> _fetchPosts() async {
     try {
-      if (kDebugMode) {
-        debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件）...');
-        if (_initialRetryCount > 0) {
-          debugPrint('🔄 リトライ試行: $_initialRetryCount回目');
-        }
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 投稿取得を開始（初回: $_initialLoadCount件）...');
+      //   if (_initialRetryCount > 0) {
+      //     debugPrint('🔄 リトライ試行: $_initialRetryCount回目');
+      //   }
+      // }
 
       // 設定から並び順を取得して適切なAPIを呼び出す
       final sortOrder = await SortOrderService.getSortOrder();
@@ -1209,55 +1210,56 @@ class _HomeScreenState extends State<HomeScreen>
           break;
       }
       
-      if (kDebugMode) {
-        debugPrint('📝 並び順設定: ${SortOrderService.getSortOrderDisplayName(sortOrder)}');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 並び順設定: ${SortOrderService.getSortOrderDisplayName(sortOrder)}');
+      // }
 
-      if (kDebugMode) {
-        debugPrint('📝 fetchContents結果: ${posts.length}件');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 fetchContents結果: ${posts.length}件');
+      // }
 
       // 投稿が空の場合、ランダム取得をフォールバックとして使用
       if (posts.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('📝 通常の投稿取得が空でした。ランダム取得を試みます...');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 通常の投稿取得が空でした。ランダム取得を試みます...');
+        // }
         posts = await PostService.fetchRandomPosts(limit: _initialLoadCount);
 
-        if (kDebugMode) {
-          if (posts.isNotEmpty) {
-            debugPrint('🎲 ランダム取得成功: ${posts.length}件');
-          } else {
-            debugPrint('⚠️ ランダム取得も空でした');
-          }
-        }
+        // if (kDebugMode) {
+        //   if (posts.isNotEmpty) {
+        //     debugPrint('🎲 ランダム取得成功: ${posts.length}件');
+        //   } else {
+        //     debugPrint('⚠️ ランダム取得も空でした');
+        //   }
+        // }
       }
 
       // ランダム取得も空の場合、視聴履歴から取得を試みる
       if (posts.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('📚 ランダム取得も空でした。視聴履歴から取得を試みます...');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📚 ランダム取得も空でした。視聴履歴から取得を試みます...');
+        // }
         try {
           final historyPosts = await PostService.getPlayHistory();
-          if (kDebugMode) {
-            debugPrint('📚 視聴履歴取得結果: ${historyPosts.length}件');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📚 視聴履歴取得結果: ${historyPosts.length}件');
+          // }
           if (historyPosts.isNotEmpty) {
             // 視聴履歴から最大5件を取得
             posts = historyPosts.take(_initialLoadCount).toList();
-            if (kDebugMode) {
-              debugPrint('📚 視聴履歴から取得成功: ${posts.length}件');
-              for (int i = 0; i < posts.length; i++) {
-                debugPrint(
-                    '📚 視聴履歴投稿[$i]: id=${posts[i].id}, title=${posts[i].title}');
-              }
-            }
-          } else {
-            if (kDebugMode) {
-              debugPrint('⚠️ 視聴履歴も空でした');
-            }
+            // if (kDebugMode) {
+            //   debugPrint('📚 視聴履歴から取得成功: ${posts.length}件');
+            //   for (int i = 0; i < posts.length; i++) {
+            //     debugPrint(
+            //         '📚 視聴履歴投稿[$i]: id=${posts[i].id}, title=${posts[i].title}');
+            //   }
+            // }
           }
+          // else {
+          //   if (kDebugMode) {
+          //     debugPrint('⚠️ 視聴履歴も空でした');
+          //   }
+          // }
         } catch (e) {
           if (kDebugMode) {
             debugPrint('❌ 視聴履歴からの取得エラー: $e');
@@ -1265,9 +1267,9 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
 
-      if (kDebugMode) {
-        debugPrint('📝 最終的な投稿数: ${posts.length}件');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 最終的な投稿数: ${posts.length}件');
+      // }
 
       if (!_isDisposed && mounted) {
         // 投稿が空の場合でも、初回起動時は自動リトライを続ける（ただし、視聴履歴からも取得できない場合のみ）
@@ -1276,10 +1278,10 @@ class _HomeScreenState extends State<HomeScreen>
           final retryDelay =
               Duration(seconds: _initialRetryCount); // 1秒、2秒、3秒と段階的に増やす
 
-          if (kDebugMode) {
-            debugPrint(
-                '📝 投稿が空です。${retryDelay.inSeconds}秒後に自動リトライします（$_initialRetryCount/$_maxInitialRetries）');
-          }
+          // if (kDebugMode) {
+          //   debugPrint(
+          //       '📝 投稿が空です。${retryDelay.inSeconds}秒後に自動リトライします（$_initialRetryCount/$_maxInitialRetries）');
+          // }
 
           // リトライ前にローディング状態を維持
           if (mounted) {
@@ -1300,25 +1302,25 @@ class _HomeScreenState extends State<HomeScreen>
 
         // 投稿が取得できた、またはリトライ回数が上限に達した場合
         // データの整合性を確認（各投稿のIDとユーザー情報が正しいことを確認）
-        if (kDebugMode && posts.isNotEmpty) {
-          debugPrint('📝 [データ整合性チェック] 取得した投稿数: ${posts.length}件');
-          for (int i = 0; i < posts.length; i++) {
-            final post = posts[i];
-            if (post.id.isEmpty) {
-              debugPrint('⚠️ [データ整合性チェック] 投稿[$i]: IDが空です');
-            }
-            if (post.username.isEmpty) {
-              debugPrint(
-                  '⚠️ [データ整合性チェック] 投稿[$i]: usernameが空です (postId: ${post.id})');
-            }
-            if (post.userId.isEmpty) {
-              debugPrint(
-                  '⚠️ [データ整合性チェック] 投稿[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
-            }
-            debugPrint(
-                '📝 [データ整合性チェック] 投稿[$i]: id=${post.id}, username=${post.username}, userId=${post.userId}, title=${post.title}');
-          }
-        }
+        // if (kDebugMode && posts.isNotEmpty) {
+        //   debugPrint('📝 [データ整合性チェック] 取得した投稿数: ${posts.length}件');
+        //   for (int i = 0; i < posts.length; i++) {
+        //     final post = posts[i];
+        //     if (post.id.isEmpty) {
+        //       debugPrint('⚠️ [データ整合性チェック] 投稿[$i]: IDが空です');
+        //     }
+        //     if (post.username.isEmpty) {
+        //       debugPrint(
+        //           '⚠️ [データ整合性チェック] 投稿[$i]: usernameが空です (postId: ${post.id})');
+        //     }
+        //     if (post.userId.isEmpty) {
+        //       debugPrint(
+        //           '⚠️ [データ整合性チェック] 投稿[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
+        //     }
+        //     debugPrint(
+        //         '📝 [データ整合性チェック] 投稿[$i]: id=${post.id}, username=${post.username}, userId=${post.userId}, title=${post.title}');
+        //   }
+        // }
 
         // 投稿が空の場合、JWTトークンを確認してエラーメッセージを設定
         // 【重要】投稿が空でも、視聴履歴から取得を試みた後なので、エラーメッセージを表示する
@@ -1334,10 +1336,10 @@ class _HomeScreenState extends State<HomeScreen>
 
         // 【重要】_isLoadingを確実にfalseに設定（投稿が空でも、ローディングを終了する）
         // 【重要】投稿が取得できた場合、確実に_postsに設定する
-        if (kDebugMode) {
-          debugPrint(
-              '📝 setState前: posts.length=${posts.length}, _isLoading=$_isLoading, _posts.length=${_posts.length}');
-        }
+        // if (kDebugMode) {
+        //   debugPrint(
+        //       '📝 setState前: posts.length=${posts.length}, _isLoading=$_isLoading, _posts.length=${_posts.length}');
+        // }
 
         // 【重要】投稿が取得できた場合、確実に_postsに設定する
         // 【重要】_isLoadingを確実にfalseに設定（投稿が空でも、ローディングを終了する）
@@ -1358,9 +1360,9 @@ class _HomeScreenState extends State<HomeScreen>
         _fetchedContentIds.clear();
         for (final post in posts) {
           _addFetchedContentId(post.id);
-          if (kDebugMode) {
-            debugPrint('📝 取得済みIDを記録: ${post.id}');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📝 取得済みIDを記録: ${post.id}');
+          // }
         }
 
         // 初回読み込み時は、最初の投稿のIDを_currentDisplayedPostIdに設定
@@ -1518,6 +1520,34 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
+    // 投稿リストが空の場合は、投稿を取得してから再試行
+    if (_posts.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('📝 [checkAndJumpToTargetPost] 投稿リストが空なので、先に投稿を取得します');
+      }
+      // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
+      _lastTargetPostId = targetPostId;
+      _isExternalNavigation = true;
+      
+      await _fetchPosts();
+      
+      if (!mounted || _posts.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('❌ [checkAndJumpToTargetPost] 投稿の取得に失敗しました');
+        }
+        _lastTargetPostId = null;
+        return;
+      }
+      
+      // 投稿取得後、再度チェック
+      if (kDebugMode) {
+        debugPrint('✅ [checkAndJumpToTargetPost] 投稿取得完了、再度ジャンプ処理を実行します');
+      }
+      // 再帰的に呼び出す（ただし、_lastTargetPostIdが設定されているので重複実行は防がれる）
+      await _checkAndJumpToTargetPost();
+      return;
+    }
+
     // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
     _lastTargetPostId = targetPostId;
 
@@ -1580,7 +1610,13 @@ class _HomeScreenState extends State<HomeScreen>
             }
 
             // 正しい投稿にジャンプ
-            if (_pageController.hasClients) {
+            if (_pageController.hasClients && 
+                _posts.isNotEmpty && 
+                titleMatchIndex >= 0 && 
+                titleMatchIndex < _posts.length) {
+              // 目標インデックスを設定
+              _targetJumpIndex = titleMatchIndex;
+              
               await _pageController.animateToPage(
                 titleMatchIndex,
                 duration: const Duration(milliseconds: 300),
@@ -1589,6 +1625,14 @@ class _HomeScreenState extends State<HomeScreen>
 
               if (kDebugMode) {
                 debugPrint('✅ タイトルで一致する投稿にジャンプ完了: インデックス $titleMatchIndex');
+              }
+              
+              // 目標インデックスに到達したので、フラグをリセット
+              _isExternalNavigation = false;
+              _targetJumpIndex = null;
+            } else {
+              if (kDebugMode) {
+                debugPrint('⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
               }
             }
 
@@ -1670,7 +1714,13 @@ class _HomeScreenState extends State<HomeScreen>
           }
 
           // PageControllerでジャンプ
-          if (_pageController.hasClients) {
+          if (_pageController.hasClients && 
+              _posts.isNotEmpty && 
+              targetIndex >= 0 && 
+              targetIndex < _posts.length) {
+            // 目標インデックスを設定
+            _targetJumpIndex = targetIndex;
+            
             await _pageController.animateToPage(
               targetIndex,
               duration: const Duration(milliseconds: 300),
@@ -1678,7 +1728,7 @@ class _HomeScreenState extends State<HomeScreen>
             );
 
             // animateToPageの完了を待ってから、念のためインデックスを確認
-            if (mounted) {
+            if (mounted && targetIndex < _posts.length) {
               if (_currentIndex != targetIndex) {
                 setState(() {
                   _currentIndex = targetIndex;
@@ -1691,6 +1741,14 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint(
                     '✅ ジャンプ完了: インデックス $targetIndex, 現在の投稿ID=${_posts[targetIndex].id}');
               }
+              
+              // 目標インデックスに到達したので、フラグをリセット
+              _isExternalNavigation = false;
+              _targetJumpIndex = null;
+            }
+          } else {
+            if (kDebugMode) {
+              debugPrint('⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, targetIndex=$targetIndex');
             }
           }
         } else {
@@ -1706,7 +1764,13 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         // PageControllerでジャンプ
-        if (_pageController.hasClients) {
+        if (_pageController.hasClients && 
+            _posts.isNotEmpty && 
+            index >= 0 && 
+            index < _posts.length) {
+          // 目標インデックスを設定
+          _targetJumpIndex = index;
+          
           await _pageController.animateToPage(
             index,
             duration: const Duration(milliseconds: 300),
@@ -1715,6 +1779,14 @@ class _HomeScreenState extends State<HomeScreen>
 
           if (kDebugMode) {
             debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
+          }
+          
+          // 目標インデックスに到達したので、フラグをリセット
+          _isExternalNavigation = false;
+          _targetJumpIndex = null;
+        } else {
+          if (kDebugMode) {
+            debugPrint('⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, index=$index');
           }
         }
       }
@@ -1759,12 +1831,26 @@ class _HomeScreenState extends State<HomeScreen>
                     '✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
               }
 
-              if (_pageController.hasClients) {
+              if (_pageController.hasClients && 
+                  _posts.isNotEmpty && 
+                  titleMatchIndex >= 0 && 
+                  titleMatchIndex < _posts.length) {
+                // 目標インデックスを設定
+                _targetJumpIndex = titleMatchIndex;
+                
                 await _pageController.animateToPage(
                   titleMatchIndex,
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
                 );
+                
+                // 目標インデックスに到達したので、フラグをリセット
+                _isExternalNavigation = false;
+                _targetJumpIndex = null;
+              } else {
+                if (kDebugMode) {
+                  debugPrint('⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
+                }
               }
             } else {
               if (kDebugMode) {
@@ -1789,6 +1875,13 @@ class _HomeScreenState extends State<HomeScreen>
             '🔍 [fetchAndJumpToPost] 開始: postId=$postId, expectedTitle=$expectedTitle');
       }
 
+      if (!mounted) {
+        if (kDebugMode) {
+          debugPrint('❌ [fetchAndJumpToPost] Widgetがマウントされていません');
+        }
+        return false;
+      }
+
       // 投稿IDから数値に変換
       final contentId = int.tryParse(postId);
       if (contentId == null) {
@@ -1796,6 +1889,21 @@ class _HomeScreenState extends State<HomeScreen>
           debugPrint('❌ [fetchAndJumpToPost] 無効な投稿ID: $postId');
         }
         return false;
+      }
+
+      // PageControllerが初期化されているか確認
+      if (!_pageController.hasClients) {
+        if (kDebugMode) {
+          debugPrint('⏳ [fetchAndJumpToPost] PageControllerがまだ初期化されていません。少し待ってから再試行します');
+        }
+        // 少し待ってから再試行
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!_pageController.hasClients || !mounted) {
+          if (kDebugMode) {
+            debugPrint('❌ [fetchAndJumpToPost] PageControllerの初期化を待てませんでした');
+          }
+          return false;
+        }
       }
 
       // 外部画面からの遷移フラグを設定（再生を開始しないようにするため）
@@ -1891,7 +1999,11 @@ class _HomeScreenState extends State<HomeScreen>
                 '📝 [fetchAndJumpToPost] 追加後のインデックス検索: verifiedIndex=$verifiedIndex, 期待するインデックス=$newIndex');
           }
 
-          if (verifiedIndex >= 0 && _pageController.hasClients) {
+          if (verifiedIndex >= 0 && 
+              _pageController.hasClients && 
+              _posts.isNotEmpty && 
+              verifiedIndex >= 0 && 
+              verifiedIndex < _posts.length) {
             final targetIndex = verifiedIndex;
 
             if (kDebugMode) {
@@ -1901,6 +2013,9 @@ class _HomeScreenState extends State<HomeScreen>
                   '✅ [fetchAndJumpToPost] PageControllerでジャンプ開始: インデックス $targetIndex');
             }
 
+            // 目標インデックスを設定
+            _targetJumpIndex = targetIndex;
+            
             // animateToPageはonPageChangedを自動的に呼び出す
             await _pageController.animateToPage(
               targetIndex,
@@ -1913,12 +2028,15 @@ class _HomeScreenState extends State<HomeScreen>
                   '✅ [fetchAndJumpToPost] PageControllerでジャンプ完了: インデックス $targetIndex');
             }
 
+            // animateToPageの完了を待ってから、onPageChangedが呼ばれるまで少し待つ
+            await Future.delayed(const Duration(milliseconds: 100));
+
             // animateToPageの完了を待ってから、念のためインデックスを確認
-            if (mounted) {
+            if (mounted && targetIndex < _posts.length) {
               // 再度インデックスを確認（setStateの後なので確実に更新されているはず）
               final finalIndex = _posts.indexWhere(
                   (post) => post.id.toString() == postId.toString());
-              if (finalIndex >= 0) {
+              if (finalIndex >= 0 && finalIndex < _posts.length) {
                 if (_currentIndex != finalIndex) {
                   setState(() {
                     _currentIndex = finalIndex;
@@ -1937,11 +2055,16 @@ class _HomeScreenState extends State<HomeScreen>
                     Provider.of<NavigationProvider>(context, listen: false);
                 navigationProvider.clearTargetPostId();
                 _lastTargetPostId = null;
+                
+                // 目標インデックスに到達したので、フラグをリセット
+                // onPageChangedが呼ばれた後なので、ここでリセットしても問題ない
+                _isExternalNavigation = false;
+                _targetJumpIndex = null;
 
                 return true; // 成功
               } else {
                 if (kDebugMode) {
-                  debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId');
+                  debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId, finalIndex=$finalIndex, posts.length=${_posts.length}');
                 }
                 return false; // 失敗
               }
@@ -1950,18 +2073,24 @@ class _HomeScreenState extends State<HomeScreen>
           } else {
             if (kDebugMode) {
               debugPrint(
-                  '❌ 投稿を追加したが見つかりません: postId=$postId, verifiedIndex=$verifiedIndex, hasClients=${_pageController.hasClients}');
+                  '❌ 投稿を追加したが見つかりません: postId=$postId, verifiedIndex=$verifiedIndex, hasClients=${_pageController.hasClients}, posts.length=${_posts.length}');
             }
             return false; // 失敗
           }
         } else {
           // 既に存在する場合はそのインデックスにジャンプ
-          if (_pageController.hasClients) {
+          if (_pageController.hasClients && 
+              _posts.isNotEmpty && 
+              existingIndex >= 0 && 
+              existingIndex < _posts.length) {
             if (kDebugMode) {
               debugPrint(
                   '✅ 既存の投稿にジャンプ: インデックス $existingIndex, 投稿ID=${_posts[existingIndex].id}');
             }
 
+            // 目標インデックスを設定
+            _targetJumpIndex = existingIndex;
+            
             // animateToPageはonPageChangedを自動的に呼び出す
             await _pageController.animateToPage(
               existingIndex,
@@ -1969,8 +2098,11 @@ class _HomeScreenState extends State<HomeScreen>
               curve: Curves.easeInOut,
             );
 
+            // animateToPageの完了を待ってから、onPageChangedが呼ばれるまで少し待つ
+            await Future.delayed(const Duration(milliseconds: 100));
+
             // animateToPageの完了を待ってから、念のためインデックスを確認
-            if (mounted) {
+            if (mounted && existingIndex < _posts.length) {
               if (_currentIndex != existingIndex) {
                 setState(() {
                   _currentIndex = existingIndex;
@@ -1989,6 +2121,11 @@ class _HomeScreenState extends State<HomeScreen>
                   Provider.of<NavigationProvider>(context, listen: false);
               navigationProvider.clearTargetPostId();
               _lastTargetPostId = null;
+              
+              // 目標インデックスに到達したので、フラグをリセット
+              // onPageChangedが呼ばれた後なので、ここでリセットしても問題ない
+              _isExternalNavigation = false;
+              _targetJumpIndex = null;
 
               return true; // 成功
             }
@@ -2020,16 +2157,24 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('🔄 再読み込み開始: 最後の投稿IDから次のコンテンツを取得');
       }
 
-      // 最後の投稿のIDから次のIDを計算
-      final lastPost = _posts.last;
-      final lastId = int.tryParse(lastPost.id) ?? 0;
-      final nextStartId = lastId + 1;
-
-      // 次のコンテンツを取得（3件）
-      List<Post> morePosts = await PostService.fetchPosts(
-        limit: _preloadAheadCount,
-        startId: nextStartId,
-      );
+      // コスト削減のため、一括取得APIを使用
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> morePosts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          morePosts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          morePosts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          morePosts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      // 必要な件数まで制限
+      morePosts = morePosts.take(_preloadAheadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
       if (morePosts.isEmpty) {
@@ -2066,12 +2211,8 @@ class _HomeScreenState extends State<HomeScreen>
             if (kDebugMode) {
               debugPrint('⚠️ 全て重複していたため、次のIDから再試行');
             }
-            // 次のIDから再試行
-            final nextNextStartId = nextStartId + _preloadAheadCount;
-            List<Post> retryPosts = await PostService.fetchPosts(
-              limit: _preloadAheadCount,
-              startId: nextNextStartId,
-            );
+            // コスト削減のため、ランダム取得を直接使用（再試行は不要）
+            List<Post> retryPosts = [];
 
             // 再試行も空の場合、ランダム取得をフォールバックとして使用
             if (retryPosts.isEmpty) {
@@ -2322,11 +2463,24 @@ class _HomeScreenState extends State<HomeScreen>
       final previousFetchedIds = Set<String>.from(_fetchedContentIds);
       _fetchedContentIds.clear();
 
-      // 最新のコンテンツを取得（startId=1から最新順に取得）
-      List<Post> latestPosts = await PostService.fetchPosts(
-        limit: _initialLoadCount,
-        startId: 1,
-      );
+      // コスト削減のため、一括取得APIを使用
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> latestPosts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          latestPosts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          latestPosts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          latestPosts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      // 必要な件数まで制限
+      latestPosts = latestPosts.take(_initialLoadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
       if (latestPosts.isEmpty) {
@@ -2504,6 +2658,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// 最新のコンテンツをチェックして先頭に追加
+  // コスト削減のため、最新コンテンツチェック機能を無効化
+  // このメソッドは使用されていません（コスト削減のため）
+  /*
   Future<void> _checkForNewContent() async {
     // 既にチェック中の場合はスキップ
     if (_isCheckingNewContent || _noMoreContent) {
@@ -2517,11 +2674,24 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('🔄 最新コンテンツをチェック中...');
       }
 
-      // 最新のコンテンツを取得（ID=1から3件）
-      final newPosts = await PostService.fetchPosts(
-        limit: _initialLoadCount,
-        startId: 1,
-      );
+      // コスト削減のため、一括取得APIを使用
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> newPosts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          newPosts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          newPosts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          newPosts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      // 必要な件数まで制限
+      newPosts = newPosts.take(_initialLoadCount).toList();
 
       if (!_isDisposed && mounted) {
         if (newPosts.isEmpty) {
@@ -2598,6 +2768,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
   }
+  */
 
   /// 現在のページから3つ先までを事前読み込み
   Future<void> _preloadNextPosts(int currentIndex) async {
@@ -2635,11 +2806,24 @@ class _HomeScreenState extends State<HomeScreen>
       // 必要な件数分を読み込む（常に3件読み込む）
       const loadCount = _preloadAheadCount;
 
-      // 次のIDから追加読み込み
-      List<Post> morePosts = await PostService.fetchPosts(
-        limit: loadCount,
-        startId: nextStartId,
-      );
+      // コスト削減のため、一括取得APIを使用
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> morePosts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          morePosts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          morePosts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          morePosts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      // 必要な件数まで制限
+      morePosts = morePosts.take(loadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
       if (morePosts.isEmpty) {
@@ -2739,8 +2923,24 @@ class _HomeScreenState extends State<HomeScreen>
     _initialRetryCount = 0;
 
     try {
-      // 初回読み込みと同じ件数を取得
-      final posts = await PostService.fetchPosts(limit: _initialLoadCount);
+      // コスト削減のため、一括取得APIを使用
+      final sortOrder = await SortOrderService.getSortOrder();
+      List<Post> posts;
+      
+      switch (sortOrder) {
+        case SortOrder.random:
+          posts = await PostService.fetchContents();
+          break;
+        case SortOrder.newest:
+          posts = await PostService.fetchContentsNewest();
+          break;
+        case SortOrder.oldest:
+          posts = await PostService.fetchContentsOldest();
+          break;
+      }
+      
+      // 必要な件数まで制限
+      posts = posts.take(_initialLoadCount).toList();
 
       if (!_isDisposed && mounted && posts.isNotEmpty) {
         setState(() {
@@ -3027,8 +3227,9 @@ class _HomeScreenState extends State<HomeScreen>
     _isUpdating = true;
 
     try {
-      // 最初の1件だけ取得して新規投稿をチェック
-      final posts = await PostService.fetchPosts(limit: 1);
+      // コスト削減のため、一括取得APIを使用（最初の1件のみチェック）
+      // 新規投稿チェックのため、最新順で取得
+      final posts = await PostService.fetchContentsNewest();
 
       if (!_isDisposed && mounted && posts.isNotEmpty) {
         final newPost = posts.first;
@@ -3548,17 +3749,26 @@ class _HomeScreenState extends State<HomeScreen>
                                             debugPrint(
                                                 '⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $_currentIndex');
                                           }
-                                          // フラグをリセット（次回の通常スクロール時は再生を開始する）
-                                          _isExternalNavigation = false;
+                                          // 目標インデックスに到達した場合のみフラグをリセット
+                                          if (_targetJumpIndex != null && index == _targetJumpIndex) {
+                                            if (kDebugMode) {
+                                              debugPrint(
+                                                  '✅ 目標インデックスに到達しました: $_targetJumpIndex, フラグをリセットします');
+                                            }
+                                            _isExternalNavigation = false;
+                                            _targetJumpIndex = null;
+                                          } else if (_targetJumpIndex == null) {
+                                            // 目標インデックスが設定されていない場合は、通常のスクロールとして扱う
+                                            _isExternalNavigation = false;
+                                          }
                                         }
                                       }
 
                                       // 最後から2番目のコンテンツが表示された時に追加取得（無限スクロール）
-                                      // indexが有効な範囲内で、かつ最後から2番目以上の場合のみ
-                                      // すべてのコンテンツが読み込まれた場合でも、リセット処理を実行するため条件を緩和
+                                      // コスト削減のため、最後のコンテンツが表示された時のみ追加取得
                                       if (index >= 0 &&
                                           index < _posts.length &&
-                                          index >= _posts.length - 2 &&
+                                          index >= _posts.length - 1 &&
                                           !_isLoadingMore) {
                                         if (kDebugMode) {
                                           debugPrint(
@@ -3567,15 +3777,10 @@ class _HomeScreenState extends State<HomeScreen>
                                         _loadMoreContents();
                                       }
 
-                                      // 最後のページに到達した場合は最新コンテンツをチェック
-                                      if (index >= 0 &&
-                                          index < _posts.length &&
-                                          index >= _posts.length - 1 &&
-                                          !_noMoreContent) {
-                                        _checkForNewContent();
-                                      }
+                                      // 最新コンテンツのチェックは削除（コスト削減のため）
+                                      // スクロール時に毎回チェックするとAPI呼び出しが多すぎるため
 
-                                      // 現在のページから5つ先までを事前読み込み
+                                      // 現在のページから2つ先までを事前読み込み（コスト削減のため削減）
                                       _preloadNextPosts(index);
                                     },
                                     itemCount: () {
@@ -8444,7 +8649,8 @@ class _HomeScreenState extends State<HomeScreen>
       _recordPlayHistory(newPost);
 
       // 次のメディア（画像・動画・音声）を事前読み込み
-      _preloadMediaAround(newIndex);
+      // コスト削減のため、プリロードを削除（必要に応じて表示時に読み込む）
+      // _preloadMediaAround(newIndex);
     }
     // 動画と音声の場合は、読み込み完了時に視聴履歴を記録（上記の初期化処理内で実行）
   }
@@ -8520,48 +8726,28 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// メディア（画像・動画・音声）のプリロード（現在のページの前後3件ずつ）
+  /// メディア（画像・動画・音声）のプリロード（コスト削減のため無効化）
+  // このメソッドはコスト削減のため使用を停止しています
+  @Deprecated('コスト削減のため使用停止')
   void _preloadMediaAround(int currentIndex) {
     if (_posts.isEmpty || !mounted) return;
 
     // 【重要】範囲外のコントローラーをクリーンアップ（メモリリークを防ぐ）
     _cleanupDistantControllers(currentIndex);
 
-    // 前後3件ずつプリロード（優先度: 次のメディア > 前のメディア）
-    // 次のメディアを優先的にプリロード（1, 2, 3, -1, -2, -3）
-    final preloadIndices = [1, 2, 3, -1, -2, -3];
+    // コスト削減のため、次の1件のみプリロード
+    final preloadIndices = [1];
 
     for (final offset in preloadIndices) {
       final targetIndex = currentIndex + offset;
       if (targetIndex >= 0 && targetIndex < _posts.length) {
         final post = _posts[targetIndex];
 
-        // 画像のプリロード
-        if (post.postType == PostType.image) {
-          final imageUrl = post.mediaUrl ?? post.thumbnailUrl;
-          if (imageUrl != null && imageUrl.isNotEmpty) {
-            // バックグラウンドで画像をプリロード（キャッシュから読み込む）
-            precacheImage(
-              CachedNetworkImageProvider(
-                imageUrl,
-                headers: const {
-                  'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
-                  'User-Agent': 'Flutter-Spotlight/1.0',
-                },
-                cacheKey: imageUrl,
-              ),
-              context,
-            ).then((_) {
-              // プリロード成功時にRobustNetworkImageの読み込み状態を記録
-              // これにより、次回表示時に即座に画像が表示される
-              RobustNetworkImage.recordLoadedUrl(imageUrl);
-            }).catchError((error) {
-              // エラーは無視（プリロードなので失敗しても問題ない）
-            });
-          }
-        }
+        // 画像のプリロードは削除（コスト削減のため、キャッシュに任せる）
+        // 画像は表示時に自動的にキャッシュから読み込まれるため、事前プリロードは不要
+        
         // 動画のプリロード（初期化のみ、再生はしない）
-        else if (post.postType == PostType.video) {
+        if (post.postType == PostType.video) {
           if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
             // 現在表示中のページの動画はプリロードしない（_handleMediaPageChangeで初期化される）
             if (targetIndex == currentIndex) {
@@ -8605,12 +8791,12 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// 次のページのメディアを事前に初期化（読み込みを高速化）
+  /// 次のページのメディアを事前に初期化（コスト削減のため次の1件のみ）
   void _preloadNextPageMedia(int currentIndex) {
     if (_posts.isEmpty || !mounted) return;
 
-    // 次の1-2ページのメディアを事前に初期化（優先度: +1 > +2）
-    final preloadIndices = [1, 2];
+    // コスト削減のため、次の1件のみ事前初期化
+    final preloadIndices = [1];
 
     for (final offset in preloadIndices) {
       final targetIndex = currentIndex + offset;

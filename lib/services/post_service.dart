@@ -6,40 +6,6 @@ import '../config/app_config.dart';
 import '../models/post.dart';
 import '../services/jwt_service.dart';
 
-/// ローカルファイルパスかどうかを判定
-/// iOS: /private/var/mobile/...
-/// Android: /data/user/..., /storage/emulated/...
-bool _isLocalFilePath(String path) {
-  final normalizedPath = path.trim();
-
-  // iOSのローカルファイルパス
-  if (normalizedPath.startsWith('/private/var/mobile/') ||
-      normalizedPath.startsWith('/var/mobile/')) {
-    return true;
-  }
-
-  // Androidのローカルファイルパス
-  if (normalizedPath.startsWith('/data/user/') ||
-      normalizedPath.startsWith('/storage/emulated/') ||
-      normalizedPath.startsWith('/sdcard/')) {
-    return true;
-  }
-
-  // その他のローカルパスのパターン
-  if (normalizedPath.contains('/tmp/') ||
-      normalizedPath.contains('/cache/') ||
-      normalizedPath.contains('image_picker_')) {
-    // CloudFront URLに含まれない可能性が高いパターン
-    // ただし、完全なURL（http/httpsで始まる）の場合はローカルパスではない
-    if (!normalizedPath.startsWith('http://') &&
-        !normalizedPath.startsWith('https://')) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /// 投稿APIサービス
 class PostService {
   // 最近記録された視聴履歴のcontentIDを保存（最新の視聴履歴を確実に取得するため）
@@ -68,17 +34,17 @@ class PostService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 JWTトークンが取得できません');
+        // }
         return null;
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/add';
 
-      if (kDebugMode) {
-        debugPrint('📝 最小投稿URL: $url');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 最小投稿URL: $url');
+      // }
 
       final Map<String, dynamic> body = {
         'type': type,
@@ -99,203 +65,43 @@ class PostService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        if (kDebugMode) {
-          debugPrint('📝 最小投稿レスポンス: ${responseData.toString()}');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 最小投稿レスポンス: ${responseData.toString()}');
+        // }
         if (responseData['status'] == 'success') {
           return responseData['data'];
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 最小投稿エラー: ${response.statusCode}');
-        }
       }
+      // else {
+      //   if (kDebugMode) {
+      //     debugPrint('📝 最小投稿エラー: ${response.statusCode}');
+      //   }
+      // }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 最小投稿例外: $e');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 最小投稿例外: $e');
+      // }
     }
 
     return null;
   }
 
-  /// バックエンドから投稿一覧を取得（/api/content/detailを連続呼び出し）
+  /// バックエンドから投稿一覧を取得（非推奨: コスト削減のためfetchContents()を使用してください）
   ///
-  /// contentID=1から昇順で取得します
+  /// 注意: このメソッドは非効率です。代わりにfetchContents()、fetchContentsNewest()、fetchContentsOldest()を使用してください。
+  /// contentID=1から昇順で取得します（最大試行回数を大幅に削減）
   static Future<List<Post>> fetchPosts({
     int limit = 20,
     int startId = 1,
   }) async {
-    final List<Post> posts = [];
-
-    try {
-      final jwtToken = await JwtService.getJwtToken();
-
-      if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
-        }
-        return [];
-      }
-
-      if (kDebugMode) {
-        debugPrint('📝 投稿取得開始: startId=$startId, limit=$limit');
-      }
-
-      // startIdから昇順で取得（存在する投稿をlimit件取得するまで続ける）
-      int currentId = startId;
-      int attemptCount = 0;
-      final int maxAttempts = limit * 10; // 最大試行回数（limitの10倍まで）
-
-      while (posts.length < limit && attemptCount < maxAttempts) {
-        final contentId = currentId;
-        final url = '${AppConfig.apiBaseUrl}/content/detail';
-
-        if (kDebugMode) {
-          debugPrint(
-              '📝 投稿詳細取得[試行${attemptCount + 1}]: contentID=$contentId, URL=$url, 現在の取得数=${posts.length}/$limit');
-        }
-
-        final response = await http.post(
-          Uri.parse(url),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $jwtToken',
-          },
-          body: jsonEncode({'contentID': contentId}),
-        );
-
-        attemptCount++;
-
-        if (response.statusCode == 200) {
-          final responseData = jsonDecode(response.body);
-
-          if (kDebugMode) {
-            debugPrint(
-                '📝 投稿詳細レスポンス[試行$attemptCount]: ${responseData.toString()}');
-          }
-
-          if (responseData['status'] == 'success' &&
-              responseData['data'] != null) {
-            final data = responseData['data'] as Map<String, dynamic>;
-
-            if (kDebugMode) {
-              debugPrint('📝 投稿データ[試行$attemptCount] (ID=$contentId):');
-              debugPrint('  contentpath: ${data['contentpath']}');
-              debugPrint('  thumbnailpath: ${data['thumbnailpath']}');
-              debugPrint('  title: ${data['title']}');
-              debugPrint('  username: ${data['username']}');
-              debugPrint('  iconimgpath: ${data['iconimgpath']}');
-              debugPrint('  user_id: ${data['user_id']}');
-              debugPrint('  firebase_uid: ${data['firebase_uid']}');
-              debugPrint('  全フィールド: ${data.keys.toList()}');
-              debugPrint('  comments: ${data['comments']}');
-              debugPrint('  commentnum: ${data['commentnum']}');
-              debugPrint('  comment_count: ${data['comment_count']}');
-            }
-
-            // user_idまたはfirebase_uidが含まれていない場合、警告を出す
-            if ((data['user_id'] == null || data['user_id'] == '') &&
-                (data['firebase_uid'] == null || data['firebase_uid'] == '')) {
-              if (kDebugMode) {
-                debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
-                debugPrint('  contentID: $contentId');
-                debugPrint('  username: ${data['username']}');
-              }
-            }
-
-            // コンテンツIDを追加
-            data['contentID'] = contentId;
-
-            // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
-            if (kDebugMode) {
-              final hasUsername = data.containsKey('username') &&
-                  data['username'] != null &&
-                  (data['username'] as String).isNotEmpty;
-              final hasUserId = (data.containsKey('user_id') &&
-                      data['user_id'] != null &&
-                      (data['user_id'] as String).isNotEmpty) ||
-                  (data.containsKey('firebase_uid') &&
-                      data['firebase_uid'] != null &&
-                      (data['firebase_uid'] as String).isNotEmpty);
-
-              if (!hasUsername) {
-                debugPrint(
-                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: usernameが含まれていません');
-                debugPrint('   - contentID: $contentId');
-                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
-              }
-              if (!hasUserId) {
-                debugPrint(
-                    '⚠️ [fetchPosts] データ整合性警告[試行$attemptCount]: user_id/firebase_uidが含まれていません');
-                debugPrint('   - contentID: $contentId');
-                debugPrint('   - username: ${data['username']}');
-                debugPrint('   - 利用可能なキー: ${data.keys.toList()}');
-              }
-            }
-
-            // Postモデルに変換して追加（backendUrlを渡してメディアURLを生成）
-            final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
-
-            // 変換後のデータの整合性を確認
-            if (kDebugMode) {
-              if (post.id.isEmpty) {
-                debugPrint('⚠️ [fetchPosts] Post変換後[試行$attemptCount]: IDが空です');
-              }
-              if (post.username.isEmpty) {
-                debugPrint(
-                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: usernameが空です (postId: ${post.id})');
-              }
-              if (post.userId.isEmpty) {
-                debugPrint(
-                    '⚠️ [fetchPosts] Post変換後[試行$attemptCount]: userIdが空です (postId: ${post.id}, username: ${post.username})');
-              }
-            }
-
-            posts.add(post);
-
-            if (kDebugMode) {
-              debugPrint('📝 投稿変換完了[試行$attemptCount] (ID=$contentId):');
-              debugPrint('  mediaUrl: ${post.mediaUrl}');
-              debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
-              debugPrint('  userIconUrl: ${post.userIconUrl}');
-              debugPrint('  type: ${post.type}');
-              debugPrint('  username: ${post.username}');
-              debugPrint('  userId: ${post.userId}');
-            }
-          } else {
-            // コンテンツが存在しない場合はスキップ
-            if (kDebugMode) {
-              debugPrint('📝 投稿ID=$contentId は存在しないか取得失敗、スキップ');
-            }
-          }
-        } else {
-          if (kDebugMode) {
-            debugPrint(
-                '📝 投稿ID=$contentId HTTPエラー: ${response.statusCode}、スキップ');
-          }
-        }
-
-        // 次のIDを試す
-        currentId++;
-      }
-
-      if (kDebugMode) {
-        if (posts.length < limit && attemptCount >= maxAttempts) {
-          debugPrint('⚠️ 投稿取得: 最大試行回数に達しました（${posts.length}/$limit件取得）');
-        }
-      }
-
-      if (kDebugMode) {
-        debugPrint('📝 投稿取得完了: ${posts.length}件');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 投稿取得例外: $e');
-      }
-    }
-
-    return posts;
+    // コスト削減のため、一括取得APIを使用
+    // startIdパラメータは無視され、ランダム取得として動作します
+    // if (kDebugMode) {
+    //   debugPrint('⚠️ [fetchPosts] 非推奨メソッドが呼び出されました。fetchContents()の使用を推奨します');
+    // }
+    
+    // 一括取得APIを使用（コスト削減）
+    return await fetchContents();
   }
 
   /// スポットライトした投稿を一覧取得
@@ -334,9 +140,9 @@ class PostService {
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 スポットライト投稿取得例外: $e');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライト投稿取得例外: $e');
+      // }
     }
 
     return [];
@@ -353,9 +159,9 @@ class PostService {
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/on';
 
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトON URL: $url, contentID: $postId');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトON URL: $url, contentID: $postId');
+      // }
 
       final response = await http.post(
         Uri.parse(url),
@@ -366,15 +172,15 @@ class PostService {
         body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
       );
 
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトONレスポンス: ${response.statusCode}');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトONレスポンス: ${response.statusCode}');
+      // }
 
       return response.statusCode == 200;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトON例外: $e');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトON例外: $e');
+      // }
       return false;
     }
   }
@@ -390,9 +196,9 @@ class PostService {
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/off';
 
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトOFF URL: $url, contentID: $postId');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトOFF URL: $url, contentID: $postId');
+      // }
 
       final response = await http.post(
         Uri.parse(url),
@@ -403,15 +209,15 @@ class PostService {
         body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
       );
 
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトOFFレスポンス: ${response.statusCode}');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトOFFレスポンス: ${response.statusCode}');
+      // }
 
       return response.statusCode == 200;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 スポットライトOFF例外: $e');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 スポットライトOFF例外: $e');
+      // }
       return false;
     }
   }
@@ -422,9 +228,9 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴記録] JWTトークンが取得できません: contentID=$contentId');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 [視聴履歴記録] JWTトークンが取得できません: contentID=$contentId');
+        // }
         return false;
       }
 
@@ -432,15 +238,15 @@ class PostService {
       final contentIdInt = int.tryParse(contentId) ?? 0;
 
       if (contentIdInt == 0) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴記録] 無効なcontentID: $contentId');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 [視聴履歴記録] 無効なcontentID: $contentId');
+        // }
         return false;
       }
 
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴記録] 記録開始: contentID=$contentId');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 [視聴履歴記録] 記録開始: contentID=$contentId');
+      // }
 
       final response = await http
           .post(
@@ -454,9 +260,9 @@ class PostService {
           .timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('📝 [視聴履歴記録] タイムアウト: contentID=$contentId');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📝 [視聴履歴記録] タイムアウト: contentID=$contentId');
+          // }
           return http.Response('', 408);
         },
       );
@@ -468,29 +274,31 @@ class PostService {
           // 視聴履歴を記録したcontentIDをキャッシュに保存（最新の視聴履歴を確実に取得するため）
           _addRecentlyRecordedContentId(contentId);
 
-          if (kDebugMode) {
-            debugPrint('📝 [視聴履歴記録] 記録成功: contentID=$contentId');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📝 [視聴履歴記録] 記録成功: contentID=$contentId');
+          // }
 
           return true;
-        } else {
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [視聴履歴記録] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
-          }
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint(
-              '📝 [視聴履歴記録] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
-          debugPrint('📝 [視聴履歴記録] レスポンス: ${response.body}');
-        }
+        // else {
+        //   if (kDebugMode) {
+        //     debugPrint(
+        //         '📝 [視聴履歴記録] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
+        //   }
+        // }
       }
+      // else {
+      //   if (kDebugMode) {
+      //     debugPrint(
+      //         '📝 [視聴履歴記録] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
+      //     debugPrint('📝 [視聴履歴記録] レスポンス: ${response.body}');
+      //   }
+      // }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴記録] 例外: contentID=$contentId, error=$e');
-        debugPrint('📝 [視聴履歴記録] スタックトレース: $stackTrace');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 [視聴履歴記録] 例外: contentID=$contentId, error=$e');
+      //   debugPrint('📝 [視聴履歴記録] スタックトレース: $stackTrace');
+      // }
     }
 
     return false;
@@ -516,17 +324,17 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [ランダム取得] JWTトークンが取得できません');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 [ランダム取得] JWTトークンが取得できません');
+        // }
         return null;
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/detail';
 
-      if (kDebugMode) {
-        debugPrint('🎲 [ランダム取得] 取得開始: URL=$url');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('🎲 [ランダム取得] 取得開始: URL=$url');
+      // }
 
       final response = await http
           .post(
@@ -541,9 +349,9 @@ class PostService {
           .timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('📝 [ランダム取得] タイムアウト');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📝 [ランダム取得] タイムアウト');
+          // }
           throw TimeoutException('Request timeout for random content');
         },
       );
@@ -579,29 +387,31 @@ class PostService {
           data['contentID'] = contentId;
           final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
 
-          if (kDebugMode) {
-            debugPrint(
-                '🎲 [ランダム取得] 取得成功: contentID=$contentId, タイトル=${post.title}');
-          }
+          // if (kDebugMode) {
+          //   debugPrint(
+          //       '🎲 [ランダム取得] 取得成功: contentID=$contentId, タイトル=${post.title}');
+          // }
 
           return post;
-        } else {
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [ランダム取得] APIレスポンスエラー: status=${responseData['status']}, message=${responseData['message']}');
-          }
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 [ランダム取得] HTTPエラー: statusCode=${response.statusCode}');
-          debugPrint('📝 [ランダム取得] レスポンス: ${response.body}');
-        }
+        // else {
+        //   if (kDebugMode) {
+        //     debugPrint(
+        //         '📝 [ランダム取得] APIレスポンスエラー: status=${responseData['status']}, message=${responseData['message']}');
+        //   }
+        // }
       }
+      // else {
+      //   if (kDebugMode) {
+      //     debugPrint('📝 [ランダム取得] HTTPエラー: statusCode=${response.statusCode}');
+      //     debugPrint('📝 [ランダム取得] レスポンス: ${response.body}');
+      //   }
+      // }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('📝 [ランダム取得] 例外: error=$e');
-        debugPrint('📝 [ランダム取得] スタックトレース: $stackTrace');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 [ランダム取得] 例外: error=$e');
+      //   debugPrint('📝 [ランダム取得] スタックトレース: $stackTrace');
+      // }
     }
 
     return null;
@@ -614,9 +424,9 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿詳細] JWTトークンが取得できません: contentID=$contentId');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 [投稿詳細] JWTトークンが取得できません: contentID=$contentId');
+        // }
         return null;
       }
 
@@ -624,15 +434,15 @@ class PostService {
       final contentIdInt = int.tryParse(contentId) ?? 0;
 
       if (contentIdInt == 0) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿詳細] 無効なcontentID: $contentId');
-        }
+        // if (kDebugMode) {
+        //   debugPrint('📝 [投稿詳細] 無効なcontentID: $contentId');
+        // }
         return null;
       }
 
-      if (kDebugMode) {
-        debugPrint('📝 [投稿詳細] 取得開始: contentID=$contentId');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 [投稿詳細] 取得開始: contentID=$contentId');
+      // }
 
       final response = await http
           .post(
@@ -646,9 +456,9 @@ class PostService {
           .timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('📝 [投稿詳細] タイムアウト: contentID=$contentId');
-          }
+          // if (kDebugMode) {
+          //   debugPrint('📝 [投稿詳細] タイムアウト: contentID=$contentId');
+          // }
           throw TimeoutException('Request timeout for contentID: $contentId');
         },
       );
@@ -662,30 +472,32 @@ class PostService {
           data['contentID'] = contentId;
           final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
 
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [投稿詳細] 取得成功: contentID=$contentId, タイトル=${post.title}');
-          }
+          // if (kDebugMode) {
+          //   debugPrint(
+          //       '📝 [投稿詳細] 取得成功: contentID=$contentId, タイトル=${post.title}');
+          // }
 
           return post;
-        } else {
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [投稿詳細] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
-          }
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint(
-              '📝 [投稿詳細] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
-          debugPrint('📝 [投稿詳細] レスポンス: ${response.body}');
-        }
+        // else {
+        //   if (kDebugMode) {
+        //     debugPrint(
+        //         '📝 [投稿詳細] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
+        //   }
+        // }
       }
+      // else {
+      //   if (kDebugMode) {
+      //     debugPrint(
+      //         '📝 [投稿詳細] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
+      //     debugPrint('📝 [投稿詳細] レスポンス: ${response.body}');
+      //   }
+      // }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('📝 [投稿詳細] 例外: contentID=$contentId, error=$e');
-        debugPrint('📝 [投稿詳細] スタックトレース: $stackTrace');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('📝 [投稿詳細] 例外: contentID=$contentId, error=$e');
+      //   debugPrint('📝 [投稿詳細] スタックトレース: $stackTrace');
+      // }
     }
 
     return null;
@@ -711,9 +523,9 @@ class PostService {
         recentPlayHistoryIds.add(historyPost.id);
       }
 
-      if (kDebugMode) {
-        debugPrint('🎲 [ランダム取得複数] 直近視聴50件を除外: ${recentPlayHistoryIds.length}件');
-      }
+      // if (kDebugMode) {
+      //   debugPrint('🎲 [ランダム取得複数] 直近視聴50件を除外: ${recentPlayHistoryIds.length}件');
+      // }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('⚠️ [ランダム取得複数] 視聴履歴取得エラー（除外なしで続行）: $e');
@@ -1136,116 +948,57 @@ class PostService {
         debugPrint('📝 [視聴履歴] ===========================================');
       }
 
-      // ステップ3: 50件までに制限
-      final limitedContentIds = uniqueContentIds.take(50).toList();
+      // ステップ3: コスト削減のため30件までに制限（50件→30件）
+      final limitedContentIds = uniqueContentIds.take(30).toList();
 
       if (kDebugMode) {
         debugPrint('📝 [視聴履歴] 制限後: ${limitedContentIds.length}件');
       }
 
-      // ステップ4: 各 contentID を使って /api/content/detail から完全なコンテンツ情報を取得
-      // 並列処理で取得（最大10件ずつ処理してタイムアウトを防ぐ）
+      // ステップ4: コスト削減のため、バックエンドから返されたデータを直接使用
+      // /api/content/detailの個別呼び出しを削減し、既存データを活用
       final Map<String, Post> contentMap = {};
       final List<String> failedContentIds = [];
 
       if (limitedContentIds.isNotEmpty) {
-        // 10件ずつバッチ処理
-        const batchSize = 10;
-        for (int i = 0; i < limitedContentIds.length; i += batchSize) {
-          final batch = limitedContentIds.skip(i).take(batchSize).toList();
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [視聴履歴] コスト削減: バックエンドから返されたデータを直接使用（個別API呼び出しを削減）');
+        }
 
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [視聴履歴] バッチ処理: ${i + 1}-${i + batch.length} / ${limitedContentIds.length}件');
-          }
-
-          final futures = batch.map((contentId) async {
-            try {
-              final post = await fetchPostDetail(contentId);
-              if (post != null) {
-                // バックエンドから返されるデータの情報をマージ
-                final historyData = contentIdToHistoryData[contentId];
-                if (historyData != null) {
-                  // バックエンドから返されるデータのtitleとposttimestampを優先
-                  // （視聴履歴の順序を正確に反映するため）
-                  final mergedData = Map<String, dynamic>.from(historyData);
-                  // /api/content/detailから取得したデータで不足している情報を補完
-                  mergedData['username'] = post.username;
-                  mergedData['iconimgpath'] = post.userIconPath;
-                  // contentpathがない場合はlinkを使用（バックエンドが返すlinkは相対パスまたはCloudFront URL）
-                  // ただし、ローカルファイルパスの場合は使用しない
-                  if (mergedData['contentpath'] == null ||
-                      (mergedData['contentpath'] as String).isEmpty) {
-                    final link = historyData['link'] as String?;
-                    if (link != null &&
-                        link.isNotEmpty &&
-                        !_isLocalFilePath(link)) {
-                      // ローカルパスでない場合のみlinkを使用
-                      mergedData['contentpath'] = link;
-                    } else {
-                      // ローカルパスの場合やlinkがない場合は、post.contentPathを使用
-                      mergedData['contentpath'] = post.contentPath;
-                    }
-                  } else {
-                    // contentpathが既に存在する場合、ローカルパスでないことを確認
-                    final existingContentPath =
-                        mergedData['contentpath'] as String;
-                    if (_isLocalFilePath(existingContentPath)) {
-                      if (kDebugMode) {
-                        debugPrint(
-                            '⚠️ [視聴履歴] contentpathがローカルファイルパスです: $existingContentPath');
-                        debugPrint(
-                            '   post.contentPathを使用します: ${post.contentPath}');
-                      }
-                      // ローカルパスの場合は、post.contentPathを使用（CloudFront URLの可能性が高い）
-                      mergedData['contentpath'] = post.contentPath;
-                    }
-                  }
-                  mergedData['textflag'] = post.isText;
-                  mergedData['spotlightflag'] = post.isSpotlighted;
-
-                  // Postオブジェクトを再構築（バックエンドのデータを優先）
-                  final mergedPost = Post.fromJson(mergedData,
-                      backendUrl: AppConfig.backendUrl);
-
-                  if (kDebugMode) {
-                    debugPrint('📝 [視聴履歴] データマージ: contentID=$contentId');
-                    debugPrint('   バックエンドのtitle: ${historyData['title']}');
-                    debugPrint('   マージ後のtitle: ${mergedPost.title}');
-                  }
-
-                  return MapEntry(contentId, mergedPost);
-                }
-                return MapEntry(contentId, post);
-              } else {
+        // バックエンドから返されたデータを直接使用（個別API呼び出しを削減）
+        for (final contentId in limitedContentIds) {
+          try {
+            final historyData = contentIdToHistoryData[contentId];
+            if (historyData != null) {
+              // バックエンドから返されたデータにcontentIDを追加
+              final mergedData = Map<String, dynamic>.from(historyData);
+              mergedData['contentID'] = contentId;
+              
+              // Postオブジェクトに変換
+              try {
+                final post = Post.fromJson(mergedData,
+                    backendUrl: AppConfig.backendUrl);
+                contentMap[contentId] = post;
+              } catch (e) {
                 if (kDebugMode) {
-                  debugPrint('📝 [視聴履歴] コンテンツ取得失敗（null）: contentID=$contentId');
+                  debugPrint('⚠️ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
                 }
                 failedContentIds.add(contentId);
-                return null;
               }
-            } catch (e, stackTrace) {
+            } else {
               if (kDebugMode) {
-                debugPrint(
-                    '📝 [視聴履歴] コンテンツ取得エラー: contentID=$contentId, error=$e');
-                debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
+                debugPrint('⚠️ [視聴履歴] 履歴データが見つかりません: contentID=$contentId');
               }
               failedContentIds.add(contentId);
-              return null;
             }
-          }).toList();
-
-          try {
-            final results = await Future.wait(futures, eagerError: false);
-            for (final result in results) {
-              if (result != null) {
-                contentMap[result.key] = result.value;
-              }
-            }
-          } catch (e) {
+          } catch (e, stackTrace) {
             if (kDebugMode) {
-              debugPrint('📝 [視聴履歴] バッチ処理エラー: $e');
+              debugPrint(
+                  '📝 [視聴履歴] 処理エラー: contentID=$contentId, error=$e');
+              debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
             }
+            failedContentIds.add(contentId);
           }
         }
 
