@@ -109,62 +109,11 @@ class RobustNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 既に読み込み成功したURLの場合は、最小限のチェックのみでCachedNetworkImageを返す
-    // これにより、読み込み成功したURLに対するチェック処理の実行頻度を大幅に削減
-    if (_loadedUrls.containsKey(imageUrl)) {
-      // 読み込み成功したURLは、キャッシュから読み込まれることが確定しているため、
-      // 失敗チェックや読み込み中チェックをスキップして、直接CachedNetworkImageを返す
-      return CachedNetworkImage(
-        imageUrl: imageUrl,
-        key: ValueKey(imageUrl),
-        cacheKey: imageUrl,
-        fit: fit,
-        // アスペクト比を保持するために、maxWidthのみを指定
-        // maxHeightを指定しないことで、画像の元のアスペクト比が保持される
-        memCacheWidth: maxWidth,
-        // maxHeightは指定しない（アスペクト比を保持）
-        maxHeightDiskCache:
-            maxHeight != null ? ((maxHeight! * 2).round()) : 2000,
-        maxWidthDiskCache: maxWidth != null ? ((maxWidth! * 2).round()) : 2000,
-        httpHeaders: const {
-          'Accept': 'image/webp,image/avif,image/*,*/*;q=0.8',
-          'User-Agent': 'Flutter-Spotlight/1.0',
-        },
-        fadeInDuration: const Duration(milliseconds: 150),
-        fadeOutDuration: const Duration(milliseconds: 50),
-        // 読み込み成功したURLの場合は、placeholderとprogressIndicatorBuilderを指定しない
-        // （キャッシュから即座に読み込まれるため）
-        placeholder: null, // 明示的にnullを設定
-        progressIndicatorBuilder: null, // 明示的にnullを設定
-        errorWidget: errorWidget != null
-            ? (context, url, error) => errorWidget!
-            : (context, url, error) {
-                if (placeholder != null) return placeholder!;
-                return const SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.broken_image,
-                          color: Colors.white38,
-                          size: 48,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          '画像の読み込みに失敗',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white38, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-      );
-    }
+    // NOTE:
+    // 以前は _loadedUrls を見て「成功済みURLはplaceholder/progressなしで即返す」最適化をしていましたが、
+    // キャッシュが効かない/ネットワークが遅い状況だと “何も描画されない” フレームが発生し、
+    // HomeScreen側の背景色だけが見えて「完全な黒(暗転)」になり得ます。
+    // そのため、常に progressIndicatorBuilder を通して placeholder を出せる経路に統一します。
 
     // 404エラーが発生したURLの場合は、エラーウィジェットを表示（1時間に1回の読み込み制限）
     if (_isFailedUrl(imageUrl)) {
@@ -213,21 +162,12 @@ class RobustNetworkImage extends StatelessWidget {
       debugPrint('🖼️ RobustNetworkImage: 画像読み込み開始: $imageUrl');
     }
 
-    // CachedNetworkImageを使用して、キャッシュから読み込む
-    // 同じURLの場合は再取得されない
-    // maxCacheAgeを1時間に設定して、AWS使用量を削減
-    // キャッシュから読み込まれた場合は、placeholderが表示されずに即座に画像が表示される
-    // そのため、次のフレームで読み込み成功を記録する
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // キャッシュから読み込まれた場合、placeholderが表示されないため、
-      // 次のフレームで読み込み成功を記録する
-      Future.delayed(const Duration(milliseconds: 50), () {
-        // まだ記録されていない場合のみ記録
-        if (!_loadedUrls.containsKey(imageUrl)) {
-          _recordLoadedUrl(imageUrl);
-        }
-      });
-    });
+    // NOTE:
+    // Web(Chrome)では progressIndicatorBuilder が呼ばれない/進捗が取れないケースがあり、
+    // その場合 placeholder が一切出ずに「何も描画されないフレーム」になって
+    // 画面が真っ黒(暗転)に見えることがありました。
+    // そのため、placeholder は必ず表示する設計にし、成功判定は imageBuilder
+    // （実際に画像が描画できたタイミング）で記録します。
 
     return CachedNetworkImage(
       imageUrl: imageUrl,
@@ -250,19 +190,8 @@ class RobustNetworkImage extends StatelessWidget {
       },
       fadeInDuration: const Duration(milliseconds: 150), // フェードイン時間を短縮
       fadeOutDuration: const Duration(milliseconds: 50), // フェードアウト時間を短縮
-      // placeholderとprogressIndicatorBuilderは同時に指定できないため、
-      // placeholderを明示的にnullに設定し、progressIndicatorBuilderのみを使用する
-      placeholder: null, // 明示的にnullを設定（progressIndicatorBuilderと競合しないように）
-      progressIndicatorBuilder: (context, url, downloadProgress) {
-        // 読み込みが完了した場合（progress == 1.0）に読み込み成功を記録
-        if (downloadProgress.progress == 1.0) {
-          // 読み込み完了を即座に記録（同期的に実行）
-          _recordLoadedUrl(imageUrl);
-          if (_shouldLog(imageUrl)) {
-            debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
-          }
-        }
-        // プログレスインジケーターを表示（読み込み中の場合）
+      // 【重要】必ずローディングUIを表示する（Webでprogressが取れない場合でも暗転させない）
+      placeholder: (context, url) {
         if (placeholder != null) return placeholder!;
         return const SizedBox(
           width: 40,
@@ -274,6 +203,16 @@ class RobustNetworkImage extends StatelessWidget {
             ),
           ),
         );
+      },
+      // 実際に画像が描画できる状態になったタイミングで成功扱いを記録
+      imageBuilder: (context, imageProvider) {
+        if (!_loadedUrls.containsKey(imageUrl)) {
+          _recordLoadedUrl(imageUrl);
+          if (_shouldLog(imageUrl)) {
+            debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
+          }
+        }
+        return Image(image: imageProvider, fit: fit);
       },
       errorWidget: (context, url, error) {
         // 読み込み中から削除

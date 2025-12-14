@@ -548,9 +548,9 @@ class _ReportDialogState extends State<_ReportDialog> {
         // 自分の投稿の場合はダイアログを閉じてエラーダイアログを表示
         Navigator.of(context).pop();
         Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+          if (mounted && context.mounted) {
+            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+          }
         });
       }
     });
@@ -702,9 +702,9 @@ class _ReportDialogState extends State<_ReportDialog> {
                     if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+                        if (mounted && context.mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
                       });
                     }
                     return; // ここで必ずreturnして送信をブロック
@@ -718,9 +718,9 @@ class _ReportDialogState extends State<_ReportDialog> {
                     if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+                        if (mounted && context.mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
                       });
                     }
                     return;
@@ -758,9 +758,9 @@ class _ReportDialogState extends State<_ReportDialog> {
                     if (mounted && context.mounted) {
                       Navigator.of(context).pop();
                       Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+                        if (mounted && context.mounted) {
+                          _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                        }
                       });
                     }
                     return;
@@ -812,8 +812,8 @@ class _ReportDialogState extends State<_ReportDialog> {
                         Navigator.of(context).pop();
                         Future.delayed(const Duration(milliseconds: 100), () {
                           if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                          }
                         });
                       }
                       return;
@@ -838,8 +838,8 @@ class _ReportDialogState extends State<_ReportDialog> {
                         }
                         Future.delayed(const Duration(milliseconds: 100), () {
                           if (mounted && context.mounted) {
-                      _showErrorDialogInDialog(context, '自分の投稿は通報できません');
-                    }
+                            _showErrorDialogInDialog(context, '自分の投稿は通報できません');
+                          }
                         });
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -933,8 +933,8 @@ class _AudioBackgroundPainter extends CustomPainter {
     if (isPlaying) {
       final center = Offset(size.width / 2, size.height / 2);
       for (int i = 0; i < 3; i++) {
-        paint.color =
-            SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.1 - (i * 0.03));
+        paint.color = SpotLightColors.getSpotlightColor(2)
+            .withValues(alpha: 0.1 - (i * 0.03));
         canvas.drawCircle(
           center,
           size.width * 0.3 + (i * 30),
@@ -1037,6 +1037,21 @@ class _HomeScreenState extends State<HomeScreen>
       Duration(seconds: 30); // 30秒ごとに更新（頻度を下げる）
   final Set<String> _fetchedContentIds = {}; // 取得済みのコンテンツID
   static const int _maxFetchedContentIds = 100; // 取得済みIDの最大保持数
+
+  /// _posts 更新などで _currentIndex が範囲外になった場合に補正する
+  void _clampCurrentIndexIfNeeded() {
+    if (_posts.isEmpty) {
+      _currentIndex = 0;
+      _currentDisplayedPostId = null;
+      return;
+    }
+    if (_currentIndex < 0) {
+      _currentIndex = 0;
+    } else if (_currentIndex >= _posts.length) {
+      _currentIndex = _posts.length - 1;
+    }
+    _currentDisplayedPostId = _posts[_currentIndex].id;
+  }
 
   /// 取得済みIDを追加し、最大数を超えた場合は古いものを削除
   void _addFetchedContentId(String id) {
@@ -1197,7 +1212,7 @@ class _HomeScreenState extends State<HomeScreen>
       // 設定から並び順を取得して適切なAPIを呼び出す
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> posts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           posts = await PostService.fetchContents();
@@ -1209,7 +1224,7 @@ class _HomeScreenState extends State<HomeScreen>
           posts = await PostService.fetchContentsOldest();
           break;
       }
-      
+
       // if (kDebugMode) {
       //   debugPrint('📝 並び順設定: ${SortOrderService.getSortOrderDisplayName(sortOrder)}');
       // }
@@ -1353,8 +1368,28 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 読み込んだ件数が要求した件数より少ない場合は、これ以上投稿がない
             _hasMorePosts = posts.length >= _initialLoadCount;
+
+            // 【重要】投稿数が変わった場合に _currentIndex が範囲外になり、
+            // 下部UIが消える/黒画面になるのを防ぐ
+            _clampCurrentIndexIfNeeded();
           });
         }
+
+        // PageControllerも範囲内に補正（フレーム後に実行してbuild中の例外を避ける）
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _isDisposed) return;
+          if (!_pageController.hasClients) return;
+          if (_posts.isEmpty) return;
+          final safeIndex = _currentIndex.clamp(0, _posts.length - 1);
+          final currentPage = _pageController.page?.round();
+          if (currentPage != null && currentPage != safeIndex) {
+            try {
+              _pageController.jumpToPage(safeIndex);
+            } catch (_) {
+              // ignore
+            }
+          }
+        });
 
         // 取得済みコンテンツIDを記録
         _fetchedContentIds.clear();
@@ -1528,9 +1563,9 @@ class _HomeScreenState extends State<HomeScreen>
       // 処理開始前に_lastTargetPostIdを設定（重複実行を防ぐ）
       _lastTargetPostId = targetPostId;
       _isExternalNavigation = true;
-      
+
       await _fetchPosts();
-      
+
       if (!mounted || _posts.isEmpty) {
         if (kDebugMode) {
           debugPrint('❌ [checkAndJumpToTargetPost] 投稿の取得に失敗しました');
@@ -1538,7 +1573,7 @@ class _HomeScreenState extends State<HomeScreen>
         _lastTargetPostId = null;
         return;
       }
-      
+
       // 投稿取得後、再度チェック
       if (kDebugMode) {
         debugPrint('✅ [checkAndJumpToTargetPost] 投稿取得完了、再度ジャンプ処理を実行します');
@@ -1610,13 +1645,13 @@ class _HomeScreenState extends State<HomeScreen>
             }
 
             // 正しい投稿にジャンプ
-            if (_pageController.hasClients && 
-                _posts.isNotEmpty && 
-                titleMatchIndex >= 0 && 
+            if (_pageController.hasClients &&
+                _posts.isNotEmpty &&
+                titleMatchIndex >= 0 &&
                 titleMatchIndex < _posts.length) {
               // 目標インデックスを設定
               _targetJumpIndex = titleMatchIndex;
-              
+
               await _pageController.animateToPage(
                 titleMatchIndex,
                 duration: const Duration(milliseconds: 300),
@@ -1626,13 +1661,14 @@ class _HomeScreenState extends State<HomeScreen>
               if (kDebugMode) {
                 debugPrint('✅ タイトルで一致する投稿にジャンプ完了: インデックス $titleMatchIndex');
               }
-              
+
               // 目標インデックスに到達したので、フラグをリセット
               _isExternalNavigation = false;
               _targetJumpIndex = null;
             } else {
               if (kDebugMode) {
-                debugPrint('⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
+                debugPrint(
+                    '⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
               }
             }
 
@@ -1714,13 +1750,13 @@ class _HomeScreenState extends State<HomeScreen>
           }
 
           // PageControllerでジャンプ
-          if (_pageController.hasClients && 
-              _posts.isNotEmpty && 
-              targetIndex >= 0 && 
+          if (_pageController.hasClients &&
+              _posts.isNotEmpty &&
+              targetIndex >= 0 &&
               targetIndex < _posts.length) {
             // 目標インデックスを設定
             _targetJumpIndex = targetIndex;
-            
+
             await _pageController.animateToPage(
               targetIndex,
               duration: const Duration(milliseconds: 300),
@@ -1741,14 +1777,15 @@ class _HomeScreenState extends State<HomeScreen>
                 debugPrint(
                     '✅ ジャンプ完了: インデックス $targetIndex, 現在の投稿ID=${_posts[targetIndex].id}');
               }
-              
+
               // 目標インデックスに到達したので、フラグをリセット
               _isExternalNavigation = false;
               _targetJumpIndex = null;
             }
           } else {
             if (kDebugMode) {
-              debugPrint('⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, targetIndex=$targetIndex');
+              debugPrint(
+                  '⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, targetIndex=$targetIndex');
             }
           }
         } else {
@@ -1764,13 +1801,13 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         // PageControllerでジャンプ
-        if (_pageController.hasClients && 
-            _posts.isNotEmpty && 
-            index >= 0 && 
+        if (_pageController.hasClients &&
+            _posts.isNotEmpty &&
+            index >= 0 &&
             index < _posts.length) {
           // 目標インデックスを設定
           _targetJumpIndex = index;
-          
+
           await _pageController.animateToPage(
             index,
             duration: const Duration(milliseconds: 300),
@@ -1780,13 +1817,14 @@ class _HomeScreenState extends State<HomeScreen>
           if (kDebugMode) {
             debugPrint('✅ ジャンプ完了: インデックス $index, 現在の投稿ID=${_posts[index].id}');
           }
-          
+
           // 目標インデックスに到達したので、フラグをリセット
           _isExternalNavigation = false;
           _targetJumpIndex = null;
         } else {
           if (kDebugMode) {
-            debugPrint('⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, index=$index');
+            debugPrint(
+                '⚠️ ジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, index=$index');
           }
         }
       }
@@ -1831,25 +1869,26 @@ class _HomeScreenState extends State<HomeScreen>
                     '✅ タイトルで一致する投稿を見つけました: インデックス $titleMatchIndex, 投稿ID=${_posts[titleMatchIndex].id}');
               }
 
-              if (_pageController.hasClients && 
-                  _posts.isNotEmpty && 
-                  titleMatchIndex >= 0 && 
+              if (_pageController.hasClients &&
+                  _posts.isNotEmpty &&
+                  titleMatchIndex >= 0 &&
                   titleMatchIndex < _posts.length) {
                 // 目標インデックスを設定
                 _targetJumpIndex = titleMatchIndex;
-                
+
                 await _pageController.animateToPage(
                   titleMatchIndex,
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
                 );
-                
+
                 // 目標インデックスに到達したので、フラグをリセット
                 _isExternalNavigation = false;
                 _targetJumpIndex = null;
               } else {
                 if (kDebugMode) {
-                  debugPrint('⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
+                  debugPrint(
+                      '⚠️ タイトルマッチジャンプ条件を満たしていません: hasClients=${_pageController.hasClients}, posts.length=${_posts.length}, titleMatchIndex=$titleMatchIndex');
                 }
               }
             } else {
@@ -1894,7 +1933,8 @@ class _HomeScreenState extends State<HomeScreen>
       // PageControllerが初期化されているか確認
       if (!_pageController.hasClients) {
         if (kDebugMode) {
-          debugPrint('⏳ [fetchAndJumpToPost] PageControllerがまだ初期化されていません。少し待ってから再試行します');
+          debugPrint(
+              '⏳ [fetchAndJumpToPost] PageControllerがまだ初期化されていません。少し待ってから再試行します');
         }
         // 少し待ってから再試行
         await Future.delayed(const Duration(milliseconds: 300));
@@ -1999,10 +2039,10 @@ class _HomeScreenState extends State<HomeScreen>
                 '📝 [fetchAndJumpToPost] 追加後のインデックス検索: verifiedIndex=$verifiedIndex, 期待するインデックス=$newIndex');
           }
 
-          if (verifiedIndex >= 0 && 
-              _pageController.hasClients && 
-              _posts.isNotEmpty && 
-              verifiedIndex >= 0 && 
+          if (verifiedIndex >= 0 &&
+              _pageController.hasClients &&
+              _posts.isNotEmpty &&
+              verifiedIndex >= 0 &&
               verifiedIndex < _posts.length) {
             final targetIndex = verifiedIndex;
 
@@ -2015,7 +2055,7 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 目標インデックスを設定
             _targetJumpIndex = targetIndex;
-            
+
             // animateToPageはonPageChangedを自動的に呼び出す
             await _pageController.animateToPage(
               targetIndex,
@@ -2055,7 +2095,7 @@ class _HomeScreenState extends State<HomeScreen>
                     Provider.of<NavigationProvider>(context, listen: false);
                 navigationProvider.clearTargetPostId();
                 _lastTargetPostId = null;
-                
+
                 // 目標インデックスに到達したので、フラグをリセット
                 // onPageChangedが呼ばれた後なので、ここでリセットしても問題ない
                 _isExternalNavigation = false;
@@ -2064,7 +2104,8 @@ class _HomeScreenState extends State<HomeScreen>
                 return true; // 成功
               } else {
                 if (kDebugMode) {
-                  debugPrint('❌ 投稿を追加したが見つかりません: postId=$postId, finalIndex=$finalIndex, posts.length=${_posts.length}');
+                  debugPrint(
+                      '❌ 投稿を追加したが見つかりません: postId=$postId, finalIndex=$finalIndex, posts.length=${_posts.length}');
                 }
                 return false; // 失敗
               }
@@ -2079,9 +2120,9 @@ class _HomeScreenState extends State<HomeScreen>
           }
         } else {
           // 既に存在する場合はそのインデックスにジャンプ
-          if (_pageController.hasClients && 
-              _posts.isNotEmpty && 
-              existingIndex >= 0 && 
+          if (_pageController.hasClients &&
+              _posts.isNotEmpty &&
+              existingIndex >= 0 &&
               existingIndex < _posts.length) {
             if (kDebugMode) {
               debugPrint(
@@ -2090,7 +2131,7 @@ class _HomeScreenState extends State<HomeScreen>
 
             // 目標インデックスを設定
             _targetJumpIndex = existingIndex;
-            
+
             // animateToPageはonPageChangedを自動的に呼び出す
             await _pageController.animateToPage(
               existingIndex,
@@ -2121,7 +2162,7 @@ class _HomeScreenState extends State<HomeScreen>
                   Provider.of<NavigationProvider>(context, listen: false);
               navigationProvider.clearTargetPostId();
               _lastTargetPostId = null;
-              
+
               // 目標インデックスに到達したので、フラグをリセット
               // onPageChangedが呼ばれた後なので、ここでリセットしても問題ない
               _isExternalNavigation = false;
@@ -2160,7 +2201,7 @@ class _HomeScreenState extends State<HomeScreen>
       // コスト削減のため、一括取得APIを使用
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> morePosts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           morePosts = await PostService.fetchContents();
@@ -2172,7 +2213,7 @@ class _HomeScreenState extends State<HomeScreen>
           morePosts = await PostService.fetchContentsOldest();
           break;
       }
-      
+
       // 必要な件数まで制限
       morePosts = morePosts.take(_preloadAheadCount).toList();
 
@@ -2355,7 +2396,7 @@ class _HomeScreenState extends State<HomeScreen>
       // 設定から並び順を取得して適切なAPIを呼び出す
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> newPosts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           newPosts = await PostService.fetchContents();
@@ -2466,7 +2507,7 @@ class _HomeScreenState extends State<HomeScreen>
       // コスト削減のため、一括取得APIを使用
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> latestPosts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           latestPosts = await PostService.fetchContents();
@@ -2478,7 +2519,7 @@ class _HomeScreenState extends State<HomeScreen>
           latestPosts = await PostService.fetchContentsOldest();
           break;
       }
-      
+
       // 必要な件数まで制限
       latestPosts = latestPosts.take(_initialLoadCount).toList();
 
@@ -2809,7 +2850,7 @@ class _HomeScreenState extends State<HomeScreen>
       // コスト削減のため、一括取得APIを使用
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> morePosts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           morePosts = await PostService.fetchContents();
@@ -2821,7 +2862,7 @@ class _HomeScreenState extends State<HomeScreen>
           morePosts = await PostService.fetchContentsOldest();
           break;
       }
-      
+
       // 必要な件数まで制限
       morePosts = morePosts.take(loadCount).toList();
 
@@ -2926,7 +2967,7 @@ class _HomeScreenState extends State<HomeScreen>
       // コスト削減のため、一括取得APIを使用
       final sortOrder = await SortOrderService.getSortOrder();
       List<Post> posts;
-      
+
       switch (sortOrder) {
         case SortOrder.random:
           posts = await PostService.fetchContents();
@@ -2938,7 +2979,7 @@ class _HomeScreenState extends State<HomeScreen>
           posts = await PostService.fetchContentsOldest();
           break;
       }
-      
+
       // 必要な件数まで制限
       posts = posts.take(_initialLoadCount).toList();
 
@@ -3606,7 +3647,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       // 【重要】スクロール中のクラッシュを防ぐため、安全なインデックスアクセス
                                       // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
                                       final postsLength = _posts.length;
-                                      
+
                                       // インデックスの範囲チェック
                                       if (index < 0 || index >= postsLength) {
                                         if (kDebugMode) {
@@ -3620,7 +3661,8 @@ class _HomeScreenState extends State<HomeScreen>
                                       Post? displayedPost;
                                       try {
                                         // 再度範囲チェック（リストが更新された可能性がある）
-                                        if (index >= 0 && index < _posts.length) {
+                                        if (index >= 0 &&
+                                            index < _posts.length) {
                                           displayedPost = _posts[index];
                                         } else {
                                           if (kDebugMode) {
@@ -3636,7 +3678,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         }
                                         return;
                                       }
-                                      
+
                                       // displayedPostがnullの場合は処理を中断
                                       if (displayedPost == null) {
                                         return;
@@ -3673,14 +3715,19 @@ class _HomeScreenState extends State<HomeScreen>
                                       // これにより、_buildBottomControlsなどで使用している_posts[_currentIndex]が正しい投稿を参照することを保証
                                       // 【重要】値が変わった場合のみsetStateを呼ぶ（スクロール中の過剰な再ビルドを防ぐ）
                                       // displayedPostは既にnullチェック済み
-                                      final needsUpdate = _currentIndex != index || 
-                                          _currentDisplayedPostId != displayedPost!.id;
-                                      
-                                      if (needsUpdate && mounted && !_isDisposed) {
+                                      final needsUpdate =
+                                          _currentIndex != index ||
+                                              _currentDisplayedPostId !=
+                                                  displayedPost!.id;
+
+                                      if (needsUpdate &&
+                                          mounted &&
+                                          !_isDisposed) {
                                         // 【重要】setState内での安全なアクセス
                                         setState(() {
                                           _currentIndex = index;
-                                          _currentDisplayedPostId = displayedPost!.id;
+                                          _currentDisplayedPostId =
+                                              displayedPost!.id;
                                           _resetSpotlightState();
                                         });
 
@@ -3694,8 +3741,10 @@ class _HomeScreenState extends State<HomeScreen>
                                               // 【重要】非同期処理前に投稿データを再度安全に取得
                                               Post? safeDisplayedPost;
                                               try {
-                                                if (index >= 0 && index < _posts.length) {
-                                                  safeDisplayedPost = _posts[index];
+                                                if (index >= 0 &&
+                                                    index < _posts.length) {
+                                                  safeDisplayedPost =
+                                                      _posts[index];
                                                 }
                                               } catch (e) {
                                                 if (kDebugMode) {
@@ -3704,7 +3753,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                 }
                                                 return;
                                               }
-                                              
+
                                               // 投稿データが取得できない場合は処理を中断
                                               if (safeDisplayedPost == null) {
                                                 return;
@@ -3712,13 +3761,16 @@ class _HomeScreenState extends State<HomeScreen>
 
                                               // 現在のインデックスと一致する場合のみ処理を実行
                                               if (_currentIndex == index) {
-                                                _handleMediaPageChange(_currentIndex);
+                                                _handleMediaPageChange(
+                                                    _currentIndex);
 
                                                 // 【重要】範囲外のコントローラーをクリーンアップ（メモリリークを防ぐ）
-                                                _cleanupDistantControllers(_currentIndex);
+                                                _cleanupDistantControllers(
+                                                    _currentIndex);
 
                                                 // 次のページのメディアを事前に初期化（読み込みを高速化）
-                                                _preloadNextPageMedia(_currentIndex);
+                                                _preloadNextPageMedia(
+                                                    _currentIndex);
                                               }
                                             }
                                           });
@@ -3728,7 +3780,8 @@ class _HomeScreenState extends State<HomeScreen>
                                                 '⏭️ 外部画面からの遷移のため、再生を開始しません: インデックス $_currentIndex');
                                           }
                                           // 目標インデックスに到達した場合のみフラグをリセット
-                                          if (_targetJumpIndex != null && index == _targetJumpIndex) {
+                                          if (_targetJumpIndex != null &&
+                                              index == _targetJumpIndex) {
                                             if (kDebugMode) {
                                               debugPrint(
                                                   '✅ 目標インデックスに到達しました: $_targetJumpIndex, フラグをリセットします');
@@ -3761,201 +3814,30 @@ class _HomeScreenState extends State<HomeScreen>
                                       // 現在のページから2つ先までを事前読み込み（コスト削減のため削減）
                                       _preloadNextPosts(index);
                                     },
-                                    itemCount: () {
-                                      // 【重要】スクロール中のリスト更新に対応するため、ローカル変数に保存
-                                      final postsLength = _posts.length;
-                                      final noMoreContent = _noMoreContent;
-                                      final hasMorePosts = _hasMorePosts;
-                                      final isLoadingMore = _isLoadingMore;
-                                      
-                                      // 投稿数が0の場合は0を返す
-                                      if (postsLength == 0) {
-                                        return 0;
-                                      }
-                                      // これ以上コンテンツがない場合は、投稿数 + 1（メッセージ表示用）
-                                      if (noMoreContent) {
-                                        return postsLength + 1;
-                                      }
-                                      // まだコンテンツがある場合は、投稿数 + 1（ローディング表示用）
-                                      if (hasMorePosts && !isLoadingMore) {
-                                        return postsLength + 1;
-                                      }
-                                      // その他の場合は投稿数のみ
-                                      return postsLength;
-                                    }(),
+                                    // 【修正】末尾の「ローディング/メッセージ専用ページ」を追加しない。
+                                    // 末尾ページに遷移すると _currentIndex が _posts.length になり、
+                                    // 下部UI/右側ボタンが消え、さらに onPageChanged が範囲外でreturnして
+                                    // 前の動画の音声だけ残る（＝暗転 + 音だけ）原因になる。
+                                    itemCount: _posts.length,
                                     itemBuilder: (context, index) {
                                       // 【重要】スクロール中のリスト更新に対応するため、範囲チェックを強化
                                       // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
                                       final postsLength = _posts.length;
-                                      
-                                      // インデックスの範囲チェック
+
+                                      // インデックスの範囲チェック（安全対策）
                                       if (index < 0 || index >= postsLength) {
-                                        // 最後の項目（ローディングまたはメッセージ）
-                                        if (index >= postsLength) {
-                                          if (_noMoreContent) {
-                                            // これ以上コンテンツがない場合はメッセージを表示
-                                            return Container(
-                                              // 画面の暗転を防ぐため、背景色をグレーに設定
-                                              color: Colors.grey[900],
-                                              child: Center(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.inbox_outlined,
-                                                      color: Colors.white38,
-                                                      size: 64,
-                                                    ),
-                                                    const SizedBox(height: 16),
-                                                    const Text(
-                                                      '表示できるコンテンツはありません',
-                                                      style: TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 16,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 32),
-                                                    ElevatedButton.icon(
-                                                      onPressed: () =>
-                                                          _reloadMoreContent(),
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                        backgroundColor:
-                                                            const Color(
-                                                                0xFFFF6B35),
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                          horizontal: 24,
-                                                          vertical: 12,
-                                                        ),
-                                                        shape:
-                                                            RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(8),
-                                                        ),
-                                                      ),
-                                                      icon: const Icon(
-                                                        Icons.refresh,
-                                                        color: Colors.white,
-                                                        size: 20,
-                                                      ),
-                                                      label: const Text(
-                                                        '再読み込み',
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          } else {
-                                            // ローディングインジケーター
-                                            return Container(
-                                              // 画面の暗転を防ぐため、背景色をグレーに設定
-                                              color: Colors.grey[900],
-                                              child: const Center(
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  color: Color(0xFFFF6B35),
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        }
-                                        // 無効なインデックスの場合は背景色付きコンテナを返す（真っ白を防ぐ）
                                         if (kDebugMode) {
                                           debugPrint(
                                               '⚠️ 無効なインデックス: index=$index, _posts.length=$postsLength');
                                         }
-                                        return Container(
-                                          color: Colors.grey[900],
-                                          child: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6B35),
-                                            ),
-                                          ),
-                                        );
+                                        return _buildOutOfRangePlaceholder();
                                       }
 
                                       // 【重要】投稿データを安全に取得（リスト更新中の競合を防ぐ）
-                                      Post? post;
-                                      try {
-                                        // リストの長さを再度確認（更新中の競合を防ぐ）
-                                        final currentPostsLength = _posts.length;
-                                        
-                                        // 再度範囲チェック（リストが更新された可能性がある）
-                                        if (index >= 0 && index < currentPostsLength) {
-                                          // 範囲チェック後に再度確認（二重チェック）
-                                          if (index < _posts.length) {
-                                            post = _posts[index];
-                                          } else {
-                                            // 範囲外になった場合はローディングを表示
-                                            if (kDebugMode) {
-                                              debugPrint(
-                                                  '⚠️ 範囲外アクセス（二重チェック）: index=$index, _posts.length=${_posts.length}');
-                                            }
-                                            return Container(
-                                              color: Colors.grey[900],
-                                              child: const Center(
-                                                child: CircularProgressIndicator(
-                                                  color: Color(0xFFFF6B35),
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        } else {
-                                          // 範囲外の場合はローディングを表示
-                                          if (kDebugMode) {
-                                            debugPrint(
-                                                '⚠️ 範囲外アクセス: index=$index, _posts.length=$currentPostsLength');
-                                          }
-                                          return Container(
-                                            color: Colors.grey[900],
-                                            child: const Center(
-                                              child: CircularProgressIndicator(
-                                                color: Color(0xFFFF6B35),
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        // 例外が発生した場合もローディングを表示
-                                        if (kDebugMode) {
-                                          debugPrint(
-                                              '❌ 投稿データ取得エラー: index=$index, error=$e');
-                                        }
-                                        return Container(
-                                          color: Colors.grey[900],
-                                          child: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6B35),
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                      
-                                      // postがnullの場合はローディングを表示
-                                      if (post == null) {
-                                        return Container(
-                                          color: Colors.grey[900],
-                                          child: const Center(
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6B35),
-                                            ),
-                                          ),
-                                        );
-                                      }
+                                      final post = _posts[index];
 
-                                      // データの整合性チェック（postは既にnullチェック済みだが、念のため再確認）
-                                      if (post == null || post.id.isEmpty) {
+                                      // データの整合性チェック
+                                      if (post.id.isEmpty) {
                                         if (kDebugMode) {
                                           debugPrint(
                                               '⚠️ 投稿データが無効です: index=$index, postId=${post.id}');
@@ -4002,9 +3884,10 @@ class _HomeScreenState extends State<HomeScreen>
                                         radius: 1.5,
                                         colors: [
                                           SpotLightColors.getSpotlightColor(0)
-                                              .withValues(alpha: 0.3 *
-                                                  _ambientOpacityAnimation!
-                                                      .value),
+                                              .withValues(
+                                                  alpha: 0.3 *
+                                                      _ambientOpacityAnimation!
+                                                          .value),
                                           Colors.transparent,
                                         ],
                                       ),
@@ -4124,10 +4007,23 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _buildOutOfRangePlaceholder() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey[900],
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFFFF6B35),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPostContent(Post post) {
     // 【重要】postオブジェクトを直接使用し、_postsへの依存を最小化
     // スクロール中のリスト更新に対応するため、indexWhereの結果に依存しない
-    
+
     if (kDebugMode) {
       final postIndex = _posts.indexWhere((p) => p.id == post.id);
       debugPrint(
@@ -4202,20 +4098,20 @@ class _HomeScreenState extends State<HomeScreen>
     // 【重要】スクロール中のリスト更新に対応するため、安全にインデックスを取得
     int? postIndex;
     Post? actualPost;
-    
+
     try {
       // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
       final postsLength = _posts.length;
-      
+
       // インデックスを安全に取得（indexWhereは見つからない場合-1を返す）
       final foundIndex = _posts.indexWhere((p) => p.id == post.id);
-      
+
       if (foundIndex >= 0 && foundIndex < postsLength) {
         // 再度範囲チェック（リストが更新された可能性がある）
         if (foundIndex < _posts.length) {
           postIndex = foundIndex;
           actualPost = _posts[foundIndex];
-          
+
           // データの整合性を再確認
           if (actualPost.id != post.id) {
             if (kDebugMode) {
@@ -4275,10 +4171,11 @@ class _HomeScreenState extends State<HomeScreen>
         }
       } catch (e) {
         if (kDebugMode) {
-          debugPrint('❌ _buildVideoContent: _currentIndexアクセスエラー: $_currentIndex, error=$e');
+          debugPrint(
+              '❌ _buildVideoContent: _currentIndexアクセスエラー: $_currentIndex, error=$e');
         }
       }
-      
+
       // _currentIndexが有効で、そのインデックスの投稿IDが一致する場合、_currentIndexのコントローラーを使用
       if (currentPost != null &&
           currentPost.id == post.id &&
@@ -4359,8 +4256,8 @@ class _HomeScreenState extends State<HomeScreen>
       color: Colors.grey[900],
       child: Stack(
         children: [
-          // 動画プレイヤー（isValidControllerがtrueならcontrollerはnullでない）
-          if (isValidController)
+          // 動画プレイヤー（有効なコントローラーがあって、現在表示中のインデックスだけ）
+          if (isValidController && actualIndex == _currentIndex)
             Positioned.fill(
               child: Center(
                 child: AspectRatio(
@@ -4428,7 +4325,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   Text(
                                     '読み込み中...',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.7),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -5030,7 +4928,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.3),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -5202,7 +5101,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.3),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -5381,19 +5281,19 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildAudioContent(Post post) {
     // 【重要】スクロール中のリスト更新に対応するため、安全にインデックスを取得
     int postIndex;
-    
+
     try {
       // リストの長さをローカル変数に保存（更新中の競合を防ぐ）
       final postsLength = _posts.length;
-      
+
       // インデックスを安全に取得（indexWhereは見つからない場合-1を返す）
       final foundIndex = _posts.indexWhere((p) => p.id == post.id);
-      
+
       if (foundIndex >= 0 && foundIndex < postsLength) {
         // 再度範囲チェック（リストが更新された可能性がある）
         if (foundIndex < _posts.length) {
           final actualPost = _posts[foundIndex];
-          
+
           // データの整合性を再確認
           if (actualPost.id == post.id) {
             postIndex = foundIndex;
@@ -5436,7 +5336,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (player == null) {
       return _buildAudioContentFallback(post);
     }
-    
+
     // postIndexは必ず設定されている
     final validPostIndex = postIndex;
     final isPlaying = _currentPlayingAudio == validPostIndex;
@@ -5589,8 +5489,10 @@ class _HomeScreenState extends State<HomeScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.6),
-                        SpotLightColors.getSpotlightColor(2).withValues(alpha: 0.2),
+                        SpotLightColors.getSpotlightColor(2)
+                            .withValues(alpha: 0.6),
+                        SpotLightColors.getSpotlightColor(2)
+                            .withValues(alpha: 0.2),
                         Colors.transparent,
                       ],
                     ),
@@ -7360,41 +7262,41 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 通報ボタンを構築（画面右上に配置）
   Widget _buildReportButton(Post post) {
-    // Selectorを使用して、currentUser.idのみを監視（依存関係の問題を回避）
     return Selector<AuthProvider, String?>(
       selector: (context, authProvider) => authProvider.currentUser?.id,
       shouldRebuild: (prev, next) {
-        // 値が実際に変わった時のみ再構築
         if (prev == next) return false;
-        // 値がnullから非null、または非nullからnullに変わった場合も再構築
         return true;
       },
       builder: (context, currentUserId, child) {
         final postUserId = post.userId.toString().trim();
         final currentUserIdStr = currentUserId?.toString().trim() ?? '';
-
-        // 自分の投稿の場合は非表示
-        if (currentUserIdStr.isNotEmpty &&
+        final isSelfPost = currentUserIdStr.isNotEmpty &&
             postUserId.isNotEmpty &&
-            currentUserIdStr == postUserId) {
-          return const SizedBox.shrink();
-        }
+            currentUserIdStr == postUserId;
 
         return Positioned(
           top: 40,
           right: 20,
-          child: GestureDetector(
-            onTap: () => _showReportDialog(post),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.flag_outlined,
-                color: Colors.white,
-                size: 20,
+          child: Visibility(
+            visible: !isSelfPost,
+            maintainSize: true,
+            maintainState: true,
+            maintainAnimation: true,
+            maintainSemantics: true,
+            child: GestureDetector(
+              onTap: () => _showReportDialog(post),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.flag_outlined,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ),
@@ -7736,7 +7638,7 @@ class _HomeScreenState extends State<HomeScreen>
             setState(() {
               // 動画コントローラーが更新されたことを通知
             });
-            
+
             if (kDebugMode) {
               debugPrint(
                   '✅ 動画コントローラーUI更新完了: index=$postIndex, _currentIndex=$_currentIndex, _currentPlayingVideo=$_currentPlayingVideo');
@@ -7822,22 +7724,24 @@ class _HomeScreenState extends State<HomeScreen>
         newPost = _posts[newIndex];
       } else {
         if (kDebugMode) {
-          debugPrint('⚠️ _handleMediaPageChange: 範囲外アクセス: newIndex=$newIndex, _posts.length=${_posts.length}');
+          debugPrint(
+              '⚠️ _handleMediaPageChange: 範囲外アクセス: newIndex=$newIndex, _posts.length=${_posts.length}');
         }
         return;
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('❌ _handleMediaPageChange: 投稿データ取得エラー: newIndex=$newIndex, error=$e');
+        debugPrint(
+            '❌ _handleMediaPageChange: 投稿データ取得エラー: newIndex=$newIndex, error=$e');
       }
       return;
     }
-    
+
     // newPostがnullの場合は処理を中断
     if (newPost == null) {
       return;
     }
-    
+
     // newPostがnullでないことを確認（型安全性のため）
     final post = newPost;
 
@@ -8353,7 +8257,9 @@ class _HomeScreenState extends State<HomeScreen>
                     '✅ 動画コントローラー初期化完了: index=$newIndex, duration=${controller.value.duration}, size=${controller.value.size}');
               }
               // 【重要】現在表示中の動画のみsetStateを呼ぶ（スクロール中の過剰な再ビルドを防ぐ）
-              if (mounted && (_currentIndex == newIndex || _currentPlayingVideo == newIndex)) {
+              if (mounted &&
+                  (_currentIndex == newIndex ||
+                      _currentPlayingVideo == newIndex)) {
                 setState(() {
                   // 動画コントローラーが更新されたことを通知
                 });
@@ -8792,7 +8698,7 @@ class _HomeScreenState extends State<HomeScreen>
 
         // 画像のプリロードは削除（コスト削減のため、キャッシュに任せる）
         // 画像は表示時に自動的にキャッシュから読み込まれるため、事前プリロードは不要
-        
+
         // 動画のプリロード（初期化のみ、再生はしない）
         if (post.postType == PostType.video) {
           if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
@@ -9385,4 +9291,3 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
     );
   }
 }
-

@@ -99,7 +99,7 @@ class PostService {
     // if (kDebugMode) {
     //   debugPrint('⚠️ [fetchPosts] 非推奨メソッドが呼び出されました。fetchContents()の使用を推奨します');
     // }
-    
+
     // 一括取得APIを使用（コスト削減）
     return await fetchContents();
   }
@@ -294,10 +294,10 @@ class PostService {
       //     debugPrint('📝 [視聴履歴記録] レスポンス: ${response.body}');
       //   }
       // }
-    } catch (e, stackTrace) {
+    } catch (e) {
       // if (kDebugMode) {
       //   debugPrint('📝 [視聴履歴記録] 例外: contentID=$contentId, error=$e');
-      //   debugPrint('📝 [視聴履歴記録] スタックトレース: $stackTrace');
+      //   debugPrint('📝 [視聴履歴記録] スタックトレース: $e');
       // }
     }
 
@@ -307,204 +307,45 @@ class PostService {
   /// 投稿詳細を取得（視聴履歴を記録しない）
   /// 視聴履歴を記録せずに投稿詳細を取得する場合に使用
   static Future<Post?> fetchPostDetailWithoutRecording(String contentId) async {
+    // /api/content/getcontent を使用して1件のコンテンツを取得
     return _fetchPostDetailInternal(contentId, recordHistory: false);
   }
 
   /// 投稿詳細を取得（視聴履歴を記録しない）
   /// 注意: このメソッドは視聴履歴を記録しません。視聴履歴を記録するには recordPlayHistory() を使用してください。
   static Future<Post?> fetchPostDetail(String contentId) async {
+    // /api/content/getcontent を使用して1件のコンテンツを取得
     return _fetchPostDetailInternal(contentId, recordHistory: false);
   }
 
   /// ランダムな投稿を取得
-  /// バックエンドの/api/content/detail APIでcontentIDを指定せずに呼び出すことでランダム取得
+  /// /api/content/getcontents APIで取得した候補から1件を返す
   /// 戻り値: 成功時はPost、失敗時はnull
   static Future<Post?> fetchRandomPost() async {
     try {
-      final jwtToken = await JwtService.getJwtToken();
-
-      if (jwtToken == null) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 [ランダム取得] JWTトークンが取得できません');
-        // }
+      final posts = await fetchContents();
+      if (posts.isEmpty) {
         return null;
       }
-
-      final url = '${AppConfig.apiBaseUrl}/content/detail';
-
-      // if (kDebugMode) {
-      //   debugPrint('🎲 [ランダム取得] 取得開始: URL=$url');
-      // }
-
-      final response = await http
-          .post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $jwtToken',
-        },
-        // contentIDを指定しない（空のオブジェクト）ことでランダム取得
-        body: jsonEncode({}),
-      )
-          .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          // if (kDebugMode) {
-          //   debugPrint('📝 [ランダム取得] タイムアウト');
-          // }
-          throw TimeoutException('Request timeout for random content');
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-
-        // バックエンドがエラーを返した場合の処理
-        if (responseData['status'] == 'error') {
-          if (kDebugMode) {
-            debugPrint(
-                '⚠️ [ランダム取得] バックエンドエラー: ${responseData['message'] ?? '不明なエラー'}');
-          }
-          return null;
-        }
-
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final Map<String, dynamic> data = responseData['data'];
-
-          // バックエンドのレスポンスでは nextcontentid フィールドにランダム取得したコンテンツIDが含まれる
-          // バックエンドの実装（contents.py 357行目）を確認: "nextcontentid": nextcontentID
-          final contentId = data['nextcontentid']?.toString() ?? '';
-
-          if (contentId.isEmpty) {
-            if (kDebugMode) {
-              debugPrint('⚠️ [ランダム取得] nextcontentidがレスポンスに含まれていません');
-              debugPrint('⚠️ [ランダム取得] レスポンスデータ: $data');
-            }
-            return null;
-          }
-
-          data['contentID'] = contentId;
-          final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
-
-          // if (kDebugMode) {
-          //   debugPrint(
-          //       '🎲 [ランダム取得] 取得成功: contentID=$contentId, タイトル=${post.title}');
-          // }
-
-          return post;
-        }
-        // else {
-        //   if (kDebugMode) {
-        //     debugPrint(
-        //         '📝 [ランダム取得] APIレスポンスエラー: status=${responseData['status']}, message=${responseData['message']}');
-        //   }
-        // }
+      // バックエンド側でランダム5件を返しているため、ここではそのうち先頭1件を利用
+      return posts.first;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 [ランダム取得] 例外: error=$e');
       }
-      // else {
-      //   if (kDebugMode) {
-      //     debugPrint('📝 [ランダム取得] HTTPエラー: statusCode=${response.statusCode}');
-      //     debugPrint('📝 [ランダム取得] レスポンス: ${response.body}');
-      //   }
-      // }
-    } catch (e, stackTrace) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 [ランダム取得] 例外: error=$e');
-      //   debugPrint('📝 [ランダム取得] スタックトレース: $stackTrace');
-      // }
+      return null;
     }
-
-    return null;
   }
 
   /// 投稿詳細を取得（内部実装）
   static Future<Post?> _fetchPostDetailInternal(String contentId,
       {required bool recordHistory}) async {
-    try {
-      final jwtToken = await JwtService.getJwtToken();
-
-      if (jwtToken == null) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 [投稿詳細] JWTトークンが取得できません: contentID=$contentId');
-        // }
-        return null;
-      }
-
-      final url = '${AppConfig.apiBaseUrl}/content/detail';
-      final contentIdInt = int.tryParse(contentId) ?? 0;
-
-      if (contentIdInt == 0) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 [投稿詳細] 無効なcontentID: $contentId');
-        // }
-        return null;
-      }
-
-      // if (kDebugMode) {
-      //   debugPrint('📝 [投稿詳細] 取得開始: contentID=$contentId');
-      // }
-
-      final response = await http
-          .post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $jwtToken',
-        },
-        body: jsonEncode({'contentID': contentIdInt}),
-      )
-          .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          // if (kDebugMode) {
-          //   debugPrint('📝 [投稿詳細] タイムアウト: contentID=$contentId');
-          // }
-          throw TimeoutException('Request timeout for contentID: $contentId');
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-
-        if (responseData['status'] == 'success' &&
-            responseData['data'] != null) {
-          final Map<String, dynamic> data = responseData['data'];
-          data['contentID'] = contentId;
-          final post = Post.fromJson(data, backendUrl: AppConfig.backendUrl);
-
-          // if (kDebugMode) {
-          //   debugPrint(
-          //       '📝 [投稿詳細] 取得成功: contentID=$contentId, タイトル=${post.title}');
-          // }
-
-          return post;
-        }
-        // else {
-        //   if (kDebugMode) {
-        //     debugPrint(
-        //         '📝 [投稿詳細] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
-        //   }
-        // }
-      }
-      // else {
-      //   if (kDebugMode) {
-      //     debugPrint(
-      //         '📝 [投稿詳細] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
-      //     debugPrint('📝 [投稿詳細] レスポンス: ${response.body}');
-      //   }
-      // }
-    } catch (e, stackTrace) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 [投稿詳細] 例外: contentID=$contentId, error=$e');
-      //   debugPrint('📝 [投稿詳細] スタックトレース: $stackTrace');
-      // }
-    }
-
-    return null;
+    // 現在は recordHistory フラグは使用せず、/api/content/getcontent を叩く fetchContentById に委譲
+    return fetchContentById(contentId);
   }
 
   /// 複数のランダムな投稿を取得
-  /// バックエンドの/api/content/detail APIを複数回呼び出してランダム取得
+  /// /api/content/getcontents APIで取得した候補をもとにランダム取得
   /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
   /// - limit: 取得する件数（デフォルト: 5件）
   /// 注意: 直近で視聴した5件は除外されます
@@ -726,8 +567,8 @@ class PostService {
   /// 1. /api/users/getplayhistory から視聴履歴データを取得
   /// 2. 同じ contentID の重複を排除（最初に見つかったものを残す = 最新の視聴履歴）
   /// 3. 50件までに制限
-  /// 4. 各 contentID を使って /api/content/detail から完全なコンテンツ情報を取得
-  ///    （username, iconimgpath, contentpath, textflag, spotlightflag を取得するため）
+  /// 4. 各 contentID に対応する履歴データを使って完全なコンテンツ情報を構築
+  ///    （username, iconimgpath, contentpath, textflag, spotlightflag などを使用）
   /// 5. Post オブジェクトに変換して返す
   static Future<List<Post>> getPlayHistory() async {
     try {
@@ -956,14 +797,13 @@ class PostService {
       }
 
       // ステップ4: コスト削減のため、バックエンドから返されたデータを直接使用
-      // /api/content/detailの個別呼び出しを削減し、既存データを活用
+      // 個別API呼び出しを削減し、既存データを活用
       final Map<String, Post> contentMap = {};
       final List<String> failedContentIds = [];
 
       if (limitedContentIds.isNotEmpty) {
         if (kDebugMode) {
-          debugPrint(
-              '📝 [視聴履歴] コスト削減: バックエンドから返されたデータを直接使用（個別API呼び出しを削減）');
+          debugPrint('📝 [視聴履歴] コスト削減: バックエンドから返されたデータを直接使用（個別API呼び出しを削減）');
         }
 
         // バックエンドから返されたデータを直接使用（個別API呼び出しを削減）
@@ -974,15 +814,16 @@ class PostService {
               // バックエンドから返されたデータにcontentIDを追加
               final mergedData = Map<String, dynamic>.from(historyData);
               mergedData['contentID'] = contentId;
-              
+
               // Postオブジェクトに変換
               try {
-                final post = Post.fromJson(mergedData,
-                    backendUrl: AppConfig.backendUrl);
+                final post =
+                    Post.fromJson(mergedData, backendUrl: AppConfig.backendUrl);
                 contentMap[contentId] = post;
               } catch (e) {
                 if (kDebugMode) {
-                  debugPrint('⚠️ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
+                  debugPrint(
+                      '⚠️ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
                 }
                 failedContentIds.add(contentId);
               }
@@ -994,8 +835,7 @@ class PostService {
             }
           } catch (e, stackTrace) {
             if (kDebugMode) {
-              debugPrint(
-                  '📝 [視聴履歴] 処理エラー: contentID=$contentId, error=$e');
+              debugPrint('📝 [視聴履歴] 処理エラー: contentID=$contentId, error=$e');
               debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
             }
             failedContentIds.add(contentId);
@@ -1830,7 +1670,8 @@ class PostService {
 
       if (kDebugMode) {
         debugPrint('📝 [getcontents/newest] API呼び出し開始: $url');
-        debugPrint('📝 [getcontents/newest] JWTトークン: ${jwtToken.substring(0, 20)}...');
+        debugPrint(
+            '📝 [getcontents/newest] JWTトークン: ${jwtToken.substring(0, 20)}...');
       }
 
       final response = await http
@@ -1859,7 +1700,8 @@ class PostService {
 
           if (kDebugMode) {
             debugPrint('📝 [getcontents/newest] レスポンス受信: statusCode=200');
-            debugPrint('📝 [getcontents/newest] レスポンスステータス: ${responseData['status']}');
+            debugPrint(
+                '📝 [getcontents/newest] レスポンスステータス: ${responseData['status']}');
           }
 
           if (responseData['status'] == 'success' &&
@@ -1867,7 +1709,8 @@ class PostService {
             final List<dynamic> contentsJson = responseData['data'] as List;
 
             if (kDebugMode) {
-              debugPrint('📝 [getcontents/newest] 取得件数: ${contentsJson.length}件');
+              debugPrint(
+                  '📝 [getcontents/newest] 取得件数: ${contentsJson.length}件');
             }
 
             if (contentsJson.isEmpty) {
@@ -1899,7 +1742,8 @@ class PostService {
                 posts.add(post);
               } catch (e) {
                 if (kDebugMode) {
-                  debugPrint('⚠️ [getcontents/newest] Post変換エラー: $e, インデックス $i');
+                  debugPrint(
+                      '⚠️ [getcontents/newest] Post変換エラー: $e, インデックス $i');
                 }
               }
             }
@@ -1950,7 +1794,8 @@ class PostService {
 
       if (kDebugMode) {
         debugPrint('📝 [getcontents/oldest] API呼び出し開始: $url');
-        debugPrint('📝 [getcontents/oldest] JWTトークン: ${jwtToken.substring(0, 20)}...');
+        debugPrint(
+            '📝 [getcontents/oldest] JWTトークン: ${jwtToken.substring(0, 20)}...');
       }
 
       final response = await http
@@ -1979,7 +1824,8 @@ class PostService {
 
           if (kDebugMode) {
             debugPrint('📝 [getcontents/oldest] レスポンス受信: statusCode=200');
-            debugPrint('📝 [getcontents/oldest] レスポンスステータス: ${responseData['status']}');
+            debugPrint(
+                '📝 [getcontents/oldest] レスポンスステータス: ${responseData['status']}');
           }
 
           if (responseData['status'] == 'success' &&
@@ -1987,7 +1833,8 @@ class PostService {
             final List<dynamic> contentsJson = responseData['data'] as List;
 
             if (kDebugMode) {
-              debugPrint('📝 [getcontents/oldest] 取得件数: ${contentsJson.length}件');
+              debugPrint(
+                  '📝 [getcontents/oldest] 取得件数: ${contentsJson.length}件');
             }
 
             if (contentsJson.isEmpty) {
@@ -2019,7 +1866,8 @@ class PostService {
                 posts.add(post);
               } catch (e) {
                 if (kDebugMode) {
-                  debugPrint('⚠️ [getcontents/oldest] Post変換エラー: $e, インデックス $i');
+                  debugPrint(
+                      '⚠️ [getcontents/oldest] Post変換エラー: $e, インデックス $i');
                 }
               }
             }
