@@ -2242,9 +2242,10 @@ class _HomeScreenState extends State<HomeScreen>
           }
           _showAllContentViewedDialog();
         } else {
-          // 通常の取得時は、全ての取得済みIDを除外
+          // 通常の取得時は、全ての取得済みIDと_postsリスト内の投稿を除外
+          final existingPostIds = _posts.map((post) => post.id).toSet();
           final newPosts = morePosts
-              .where((post) => !_fetchedContentIds.contains(post.id))
+              .where((post) => !_fetchedContentIds.contains(post.id) && !existingPostIds.contains(post.id))
               .toList();
 
           if (newPosts.isEmpty) {
@@ -2275,10 +2276,11 @@ class _HomeScreenState extends State<HomeScreen>
             if (retryPosts.isEmpty) {
               _showAllContentViewedDialog();
             } else {
-              // ランダム取得時は、直近の50件を除外（直近表示コンテンツの再選択を防ぐため）
+              // ランダム取得時は、直近の50件と_postsリスト内の投稿を除外（直近表示コンテンツの再選択を防ぐため）
               final recentFetchedIds = _getRecentFetchedContentIds(limit: 50);
+              final existingPostIds = _posts.map((post) => post.id).toSet();
               final retryNewPosts = retryPosts
-                  .where((post) => !recentFetchedIds.contains(post.id))
+                  .where((post) => !recentFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
                   .toList();
 
               // それでも全て重複していた場合は、除外せずに全て追加（ランダム取得の目的を優先）
@@ -2424,9 +2426,10 @@ class _HomeScreenState extends State<HomeScreen>
           }
         } else {
           // バックエンドが5件を返している（newPosts.length >= 5）
-          // 重複を防ぐために、既に取得済みの投稿を除外
+          // 重複を防ぐために、既に取得済みの投稿と_postsリスト内の投稿を除外
+          final existingPostIds = _posts.map((post) => post.id).toSet();
           final uniqueNewPosts = newPosts
-              .where((post) => !_fetchedContentIds.contains(post.id))
+              .where((post) => !_fetchedContentIds.contains(post.id) && !existingPostIds.contains(post.id))
               .toList();
 
           if (kDebugMode) {
@@ -2542,8 +2545,10 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (!_isDisposed && mounted && latestPosts.isNotEmpty) {
         // 一度も読み込まれていない最新のコンテンツをフィルタリング
+        // _postsリスト内の投稿も除外
+        final existingPostIds = _posts.map((post) => post.id).toSet();
         final newPosts = latestPosts
-            .where((post) => !previousFetchedIds.contains(post.id))
+            .where((post) => !previousFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
             .toList();
 
         if (newPosts.isNotEmpty) {
@@ -2612,10 +2617,11 @@ class _HomeScreenState extends State<HomeScreen>
       final historyPosts = await PostService.getPlayHistory();
 
       if (!_isDisposed && mounted && historyPosts.isNotEmpty) {
-        // 視聴履歴から取得する際は、直近の50件を除外（直近表示コンテンツの再選択を防ぐため）
+        // 視聴履歴から取得する際は、直近の50件と_postsリスト内の投稿を除外（直近表示コンテンツの再選択を防ぐため）
         final recentFetchedIds = _getRecentFetchedContentIds(limit: 50);
+        final existingPostIds = _posts.map((post) => post.id).toSet();
         final availablePosts = historyPosts
-            .where((post) => !recentFetchedIds.contains(post.id))
+            .where((post) => !recentFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
             .toList();
 
         if (availablePosts.isEmpty) {
@@ -2884,9 +2890,11 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (!_isDisposed && mounted && morePosts.isNotEmpty) {
         // 事前読み込み時は、直近の50件を除外（直近表示コンテンツの再選択を防ぐため）
+        // さらに、_postsリスト内に既に存在するコンテンツも除外
         final recentFetchedIds = _getRecentFetchedContentIds(limit: 50);
+        final existingPostIds = _posts.map((post) => post.id).toSet();
         final newPosts = morePosts
-            .where((post) => !recentFetchedIds.contains(post.id))
+            .where((post) => !recentFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
             .toList();
 
         // それでも全て重複していた場合は、除外せずに全て追加（ランダム取得の目的を優先）

@@ -1408,7 +1408,7 @@ class PostService {
     return [];
   }
 
-  /// /api/content/getcontents APIを使用して5件のコンテンツを取得
+  /// /api/content/getcontents/random APIを使用して5件のコンテンツを取得
   /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
   static Future<List<Post>> fetchContents() async {
     try {
@@ -1422,7 +1422,7 @@ class PostService {
         return [];
       }
 
-      final url = '${AppConfig.apiBaseUrl}/content/getcontents';
+      final url = '${AppConfig.apiBaseUrl}/content/getcontents/random';
 
       if (kDebugMode) {
         debugPrint('📝 [getcontents] API呼び出し開始: $url');
