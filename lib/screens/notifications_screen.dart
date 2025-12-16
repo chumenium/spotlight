@@ -620,11 +620,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   String _formatTime(DateTime dateTime) {
     // 端末のローカル時間から逆算
-    final now = DateTime.now().toLocal();
+    // dateTimeをローカル時間に変換（UTC時間の可能性があるため）
     final localDateTime = dateTime.toLocal();
+    final now = DateTime.now(); // DateTime.now()は既にローカル時間
     final difference = now.difference(localDateTime);
 
-    if (difference.inMinutes < 1) {
+    if (difference.inMinutes < 3) {
       return 'たった今';
     } else if (difference.inMinutes < 60) {
       return '${difference.inMinutes}分前';

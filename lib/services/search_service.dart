@@ -167,5 +167,65 @@ class SearchService {
 
     return [];
   }
+
+  /// 検索履歴を削除
+  static Future<bool> deleteSearchHistory(String searchId) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('🔍 JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/delete/searchhistory';
+      
+      if (kDebugMode) {
+        debugPrint('🔍 検索履歴削除URL: $url');
+        debugPrint('🔍 削除する検索履歴ID: $searchId');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({'serchID': searchId}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        
+        if (kDebugMode) {
+          debugPrint('🔍 検索履歴削除レスポンス: ${responseData.toString()}');
+        }
+        
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 検索履歴削除成功: serchID=$searchId');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 検索履歴削除エラー: ${responseData['message'] ?? '不明なエラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 検索履歴削除HTTPエラー: ${response.statusCode}');
+          debugPrint('❌ レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 検索履歴削除例外: $e');
+      }
+    }
+
+    return false;
+  }
 }
 

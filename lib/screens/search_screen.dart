@@ -633,10 +633,29 @@ class _SearchScreenState extends State<SearchScreen> {
             size: 16,
             color: Colors.grey,
           ),
-          onDeleted: () {
-            setState(() {
-              _searchHistory.remove(history);
-            });
+          onDeleted: () async {
+            // バックエンドから検索履歴を削除
+            final success = await SearchService.deleteSearchHistory(history.id);
+            
+            if (success) {
+              // 削除成功時はローカルのリストからも削除
+              if (mounted) {
+                setState(() {
+                  _searchHistory.remove(history);
+                });
+              }
+            } else {
+              // 削除失敗時はエラーメッセージを表示（オプション）
+              if (kDebugMode) {
+                debugPrint('⚠️ 検索履歴の削除に失敗しました: serchID=${history.id}');
+              }
+              // エラー時もローカルから削除（UIの一貫性のため）
+              if (mounted) {
+                setState(() {
+                  _searchHistory.remove(history);
+                });
+              }
+            }
           },
         ),
       ),
