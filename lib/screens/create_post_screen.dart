@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'dart:io' show File, Directory, Platform;
 import 'dart:async';
 import 'dart:ui';
@@ -207,9 +208,108 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       String? thumbBase64;
 
       if (type == 'image') {
-        // Web対応: XFileから直接読み取る
-        final Uint8List imageBytes =
-            _compositedImageBytes ?? await _selectedMedia!.readAsBytes();
+        // 画像ファイルの処理
+        Uint8List imageBytes;
+        int imageFileSize;
+
+        if (kIsWeb) {
+          // Web版: XFileから直接読み取る（Web版では圧縮をスキップ）
+          imageBytes =
+              _compositedImageBytes ?? await _selectedMedia!.readAsBytes();
+          imageFileSize = imageBytes.length;
+        } else {
+          // モバイル版: 画像を圧縮してファイルサイズを抑える
+          final originalImageBytes =
+              _compositedImageBytes ?? await _selectedMedia!.readAsBytes();
+          final originalImageSize = originalImageBytes.length;
+
+          if (kDebugMode) {
+            debugPrint(
+                '🖼️ 元の画像ファイルサイズ: ${(originalImageSize / 1024 / 1024).toStringAsFixed(2)} MB');
+          }
+
+          try {
+            // 画像を圧縮
+            if (kDebugMode) {
+              debugPrint('🖼️ 画像を圧縮中...');
+            }
+
+            // 一時ファイルとして保存
+            final tempDir = Directory.systemTemp;
+            final tempFile = File('${tempDir.path}/temp_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+            await tempFile.writeAsBytes(originalImageBytes);
+
+            // 画像を圧縮（品質85%、最大幅1920px）
+            final compressedFile = await FlutterImageCompress.compressAndGetFile(
+              tempFile.absolute.path,
+              '${tempDir.path}/compressed_image_${DateTime.now().millisecondsSinceEpoch}.jpg',
+              quality: 85, // 品質85%（バランス重視）
+              minWidth: 1920, // 最大幅1920px
+              minHeight: 1920, // 最大高さ1920px
+            );
+
+            if (compressedFile == null) {
+              throw Exception('画像の圧縮に失敗しました');
+            }
+
+            imageBytes = await compressedFile.readAsBytes();
+            imageFileSize = imageBytes.length;
+
+            if (kDebugMode) {
+              final compressionRatio = (1 - imageFileSize / originalImageSize) * 100;
+              debugPrint(
+                  '🖼️ 圧縮後の画像ファイルサイズ: ${(imageFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+              debugPrint(
+                  '🖼️ 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
+            }
+
+            // 一時ファイルを削除
+            try {
+              await tempFile.delete();
+              // XFileをFileに変換して削除
+              final compressedFileObj = File(compressedFile.path);
+              await compressedFileObj.delete();
+              if (kDebugMode) {
+                debugPrint('🖼️ 一時ファイルを削除しました');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('⚠️ 一時ファイル削除エラー: $e');
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('❌ 画像圧縮エラー: $e');
+              debugPrint('   元の画像ファイルを使用します');
+            }
+            // 圧縮に失敗した場合は元のファイルを使用
+            imageFileSize = originalImageSize;
+            imageBytes = originalImageBytes;
+          }
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+              '🖼️ 最終画像ファイルサイズ: ${(imageFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        }
+
+        // 50MB以上の画像をブロック
+        const maxImageSize = 50 * 1024 * 1024; // 50MB
+
+        if (imageFileSize > maxImageSize) {
+          if (mounted) {
+            final fileSizeMB = (imageFileSize / 1024 / 1024).toStringAsFixed(2);
+            _showSnackBar(
+              '画像ファイルが大きすぎます（${fileSizeMB}MB）。50MB以下の画像を選択してください。',
+              Colors.red,
+            );
+          }
+          setState(() {
+            _isPosting = false;
+          });
+          return;
+        }
+
         fileBase64 = base64Encode(imageBytes);
         thumbBase64 = base64Encode(await _generateImageThumbnail(imageBytes));
       } else if (type == 'video') {

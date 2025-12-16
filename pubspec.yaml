@@ -47,6 +47,9 @@ dependencies:
   # 画像処理（JPEGエンコード/縮小/描画）
   image: ^4.1.7
   
+  # 画像圧縮
+  flutter_image_compress: ^2.3.0
+  
   # キャッシュ付き画像読み込み
   cached_network_image: ^3.3.0
   fast_cached_network_image: ^1.2.9

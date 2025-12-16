@@ -82,7 +82,11 @@ class _SearchScreenState extends State<SearchScreen> {
     if (!_isDisposed && mounted) {
       setState(() {
         if (query.isEmpty) {
+          // 検索欄が空の場合は初期状態に戻す
           _filteredSuggestions = _allSuggestions;
+          _searchResults = []; // 検索結果をクリア
+          _searchQuery = null; // 検索クエリをクリア
+          _isSearching = false; // 検索中フラグをリセット
         } else {
           // 検索履歴から候補を生成
           final historySuggestions = _searchHistory
