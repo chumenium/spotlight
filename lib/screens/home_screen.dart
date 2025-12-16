@@ -21,7 +21,6 @@ import '../services/playlist_service.dart';
 import '../models/comment.dart';
 import '../auth/auth_provider.dart';
 import '../services/report_service.dart';
-import '../services/sort_order_service.dart';
 import 'user_profile_screen.dart';
 
 /// 通報ダイアログ（独立したStatefulWidgetとして分離）
@@ -1209,21 +1208,8 @@ class _HomeScreenState extends State<HomeScreen>
       //   }
       // }
 
-      // 設定から並び順を取得して適切なAPIを呼び出す
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> posts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          posts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          posts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          posts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      var posts = await PostService.fetchContents();
 
       // if (kDebugMode) {
       //   debugPrint('📝 並び順設定: ${SortOrderService.getSortOrderDisplayName(sortOrder)}');
@@ -2198,36 +2184,22 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('🔄 再読み込み開始: 最後の投稿IDから次のコンテンツを取得');
       }
 
-      // コスト削減のため、一括取得APIを使用
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> morePosts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          morePosts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          morePosts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          morePosts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final morePosts = await PostService.fetchContents();
 
       // 必要な件数まで制限
-      morePosts = morePosts.take(_preloadAheadCount).toList();
+      final limitedMorePosts = morePosts.take(_preloadAheadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
-      if (morePosts.isEmpty) {
+      if (limitedMorePosts.isEmpty) {
         if (kDebugMode) {
           debugPrint('📝 通常の再読み込みが空でした。ランダム取得を試みます...');
         }
-        morePosts =
-            await PostService.fetchRandomPosts(limit: _preloadAheadCount);
+        final retryPosts = await PostService.fetchRandomPosts(limit: _preloadAheadCount);
 
         if (kDebugMode) {
-          if (morePosts.isNotEmpty) {
-            debugPrint('🎲 ランダム再読み込み成功: ${morePosts.length}件');
+          if (retryPosts.isNotEmpty) {
+            debugPrint('🎲 ランダム再読み込み成功: ${retryPosts.length}件');
           } else {
             debugPrint('⚠️ ランダム再読み込みも空でした');
           }
@@ -2235,7 +2207,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       if (!_isDisposed && mounted) {
-        if (morePosts.isEmpty) {
+        if (limitedMorePosts.isEmpty) {
           // 追加のコンテンツがない場合
           if (kDebugMode) {
             debugPrint('⚠️ 追加のコンテンツがありません');
@@ -2244,7 +2216,7 @@ class _HomeScreenState extends State<HomeScreen>
         } else {
           // 通常の取得時は、全ての取得済みIDと_postsリスト内の投稿を除外
           final existingPostIds = _posts.map((post) => post.id).toSet();
-          final newPosts = morePosts
+          final newPosts = limitedMorePosts
               .where((post) => !_fetchedContentIds.contains(post.id) && !existingPostIds.contains(post.id))
               .toList();
 
@@ -2395,21 +2367,8 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📝 追加コンテンツ取得開始（無限スクロール）...');
       }
 
-      // 設定から並び順を取得して適切なAPIを呼び出す
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> newPosts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          newPosts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          newPosts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          newPosts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final newPosts = await PostService.fetchContents();
 
       if (!_isDisposed && mounted) {
         // バックエンドが5件未満を返した場合のみ、これ以上コンテンツがないと判断
@@ -2507,47 +2466,33 @@ class _HomeScreenState extends State<HomeScreen>
       final previousFetchedIds = Set<String>.from(_fetchedContentIds);
       _fetchedContentIds.clear();
 
-      // コスト削減のため、一括取得APIを使用
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> latestPosts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          latestPosts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          latestPosts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          latestPosts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final latestPosts = await PostService.fetchContents();
 
       // 必要な件数まで制限
-      latestPosts = latestPosts.take(_initialLoadCount).toList();
+      final limitedLatestPosts = latestPosts.take(_initialLoadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
-      if (latestPosts.isEmpty) {
+      if (limitedLatestPosts.isEmpty) {
         if (kDebugMode) {
           debugPrint('📝 通常のリセット読み込みが空でした。ランダム取得を試みます...');
         }
-        latestPosts =
-            await PostService.fetchRandomPosts(limit: _initialLoadCount);
+        final retryPosts = await PostService.fetchRandomPosts(limit: _initialLoadCount);
 
         if (kDebugMode) {
-          if (latestPosts.isNotEmpty) {
-            debugPrint('🎲 ランダムリセット読み込み成功: ${latestPosts.length}件');
+          if (retryPosts.isNotEmpty) {
+            debugPrint('🎲 ランダムリセット読み込み成功: ${retryPosts.length}件');
           } else {
             debugPrint('⚠️ ランダムリセット読み込みも空でした');
           }
         }
       }
 
-      if (!_isDisposed && mounted && latestPosts.isNotEmpty) {
+      if (!_isDisposed && mounted && limitedLatestPosts.isNotEmpty) {
         // 一度も読み込まれていない最新のコンテンツをフィルタリング
         // _postsリスト内の投稿も除外
         final existingPostIds = _posts.map((post) => post.id).toSet();
-        final newPosts = latestPosts
+        final newPosts = limitedLatestPosts
             .where((post) => !previousFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
             .toList();
 
@@ -2721,27 +2666,14 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('🔄 最新コンテンツをチェック中...');
       }
 
-      // コスト削減のため、一括取得APIを使用
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> newPosts;
-      
-      switch (sortOrder) {
-        case SortOrder.random:
-          newPosts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          newPosts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          newPosts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final newPosts = await PostService.fetchContents();
       
       // 必要な件数まで制限
-      newPosts = newPosts.take(_initialLoadCount).toList();
+      final limitedNewPosts = newPosts.take(_initialLoadCount).toList();
 
       if (!_isDisposed && mounted) {
-        if (newPosts.isEmpty) {
+        if (limitedNewPosts.isEmpty) {
           // 最新のコンテンツがない場合
           if (kDebugMode) {
             debugPrint('⚠️ 最新のコンテンツがありません');
@@ -2753,7 +2685,7 @@ class _HomeScreenState extends State<HomeScreen>
         } else {
           // 最新のコンテンツがある場合、既存の投稿と比較
           final existingIds = _posts.map((p) => p.id.toString()).toSet();
-          final newContentIds = newPosts.map((p) => p.id.toString()).toSet();
+          final newContentIds = limitedNewPosts.map((p) => p.id.toString()).toSet();
 
           // 新しいコンテンツがあるかチェック
           final hasNewContent =
@@ -2853,52 +2785,39 @@ class _HomeScreenState extends State<HomeScreen>
       // 必要な件数分を読み込む（常に3件読み込む）
       const loadCount = _preloadAheadCount;
 
-      // コスト削減のため、一括取得APIを使用
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> morePosts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          morePosts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          morePosts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          morePosts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final morePosts = await PostService.fetchContents();
 
       // 必要な件数まで制限
-      morePosts = morePosts.take(loadCount).toList();
+      final limitedMorePosts = morePosts.take(loadCount).toList();
 
       // 通常の取得が空の場合、ランダム取得をフォールバックとして使用
-      if (morePosts.isEmpty) {
+      if (limitedMorePosts.isEmpty) {
         if (kDebugMode) {
           debugPrint('📝 通常の追加読み込みが空でした。ランダム取得を試みます...');
         }
-        morePosts = await PostService.fetchRandomPosts(limit: loadCount);
+        final retryPosts = await PostService.fetchRandomPosts(limit: loadCount);
 
         if (kDebugMode) {
-          if (morePosts.isNotEmpty) {
-            debugPrint('🎲 ランダム追加読み込み成功: ${morePosts.length}件');
+          if (retryPosts.isNotEmpty) {
+            debugPrint('🎲 ランダム追加読み込み成功: ${retryPosts.length}件');
           } else {
             debugPrint('⚠️ ランダム追加読み込みも空でした');
           }
         }
       }
 
-      if (!_isDisposed && mounted && morePosts.isNotEmpty) {
+      if (!_isDisposed && mounted && limitedMorePosts.isNotEmpty) {
         // 事前読み込み時は、直近の50件を除外（直近表示コンテンツの再選択を防ぐため）
         // さらに、_postsリスト内に既に存在するコンテンツも除外
         final recentFetchedIds = _getRecentFetchedContentIds(limit: 50);
         final existingPostIds = _posts.map((post) => post.id).toSet();
-        final newPosts = morePosts
+        final newPosts = limitedMorePosts
             .where((post) => !recentFetchedIds.contains(post.id) && !existingPostIds.contains(post.id))
             .toList();
 
         // それでも全て重複していた場合は、除外せずに全て追加（ランダム取得の目的を優先）
-        final finalNewPosts = newPosts.isNotEmpty ? newPosts : morePosts;
+        final finalNewPosts = newPosts.isNotEmpty ? newPosts : limitedMorePosts;
 
         if (kDebugMode) {
           debugPrint(
@@ -2972,35 +2891,22 @@ class _HomeScreenState extends State<HomeScreen>
     _initialRetryCount = 0;
 
     try {
-      // コスト削減のため、一括取得APIを使用
-      final sortOrder = await SortOrderService.getSortOrder();
-      List<Post> posts;
-
-      switch (sortOrder) {
-        case SortOrder.random:
-          posts = await PostService.fetchContents();
-          break;
-        case SortOrder.newest:
-          posts = await PostService.fetchContentsNewest();
-          break;
-        case SortOrder.oldest:
-          posts = await PostService.fetchContentsOldest();
-          break;
-      }
+      // ランダム取得APIを使用
+      final posts = await PostService.fetchContents();
 
       // 必要な件数まで制限
-      posts = posts.take(_initialLoadCount).toList();
+      final limitedPosts = posts.take(_initialLoadCount).toList();
 
-      if (!_isDisposed && mounted && posts.isNotEmpty) {
+      if (!_isDisposed && mounted && limitedPosts.isNotEmpty) {
         setState(() {
-          _posts = posts;
+          _posts = limitedPosts;
           _errorMessage = null;
-          _hasMorePosts = posts.length >= _initialLoadCount;
+          _hasMorePosts = limitedPosts.length >= _initialLoadCount;
           _initialRetryCount = 0; // リトライカウントをリセット
 
           // 取得済みコンテンツIDを更新
           _fetchedContentIds.clear();
-          for (final post in posts) {
+          for (final post in limitedPosts) {
             _addFetchedContentId(post.id);
           }
         });

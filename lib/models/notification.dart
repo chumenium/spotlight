@@ -59,9 +59,47 @@ class NotificationItem {
       postId: json['contentID']?.toString(),
       postTitle: json['contenttitle'],
       thumbnailUrl: json['thumbnailpath'],
-      createdAt: DateTime.parse(json['timestamp']).toLocal(),
+      createdAt: _parseDateTime(json['timestamp']),
       isRead: json['isread'] ?? false,
     );
+  }
+
+  // timestamp文字列をDateTimeに変換（UTC対応）
+  static DateTime _parseDateTime(String timestamp) {
+    try {
+      // UTC形式（Zサフィックス付き）の場合はUTCとして解釈
+      if (timestamp.endsWith('Z')) {
+        final utcDateTime = DateTime.parse(timestamp);
+        return utcDateTime.toLocal();
+      }
+      
+      // タイムゾーン情報がない場合、バックエンドがUTCを送っていると仮定してUTCとして解釈
+      // DateTime.parseはタイムゾーン情報がない場合、ローカル時間として解釈してしまうため、
+      // 明示的にUTCとして解釈してからローカル時間に変換
+      final parsed = DateTime.parse(timestamp);
+      
+      // タイムゾーン情報がない場合、UTCとして明示的に解釈
+      if (!parsed.isUtc && !timestamp.contains('+') && !timestamp.contains('-', timestamp.length - 6)) {
+        // UTCとして再構築してからローカル時間に変換
+        return DateTime.utc(
+          parsed.year,
+          parsed.month,
+          parsed.day,
+          parsed.hour,
+          parsed.minute,
+          parsed.second,
+          parsed.millisecond,
+          parsed.microsecond,
+        ).toLocal();
+      }
+      
+      // 既にUTCまたはタイムゾーン情報がある場合はそのままローカル時間に変換
+      return parsed.toLocal();
+    } catch (e) {
+      debugPrint('⚠️ 日時パースエラー: $timestamp, エラー: $e');
+      // エラー時は現在時刻を返す
+      return DateTime.now().toLocal();
+    }
   }
 
   // type を文字列 → enum に変換
