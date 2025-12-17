@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/painting.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/bottom_navigation_bar.dart';
 import 'home_screen.dart';
@@ -277,9 +278,61 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-/// メイン画面（既存のMainScreenをそのまま使用）
-class MainScreen extends StatelessWidget {
+/// メイン画面
+class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // プッシュ通知のハンドラーを設定
+    _setupNotificationHandlers();
+  }
+
+  /// プッシュ通知のハンドラーを設定
+  void _setupNotificationHandlers() {
+    // アプリがバックグラウンド状態で通知をタップした場合
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (kDebugMode) {
+        debugPrint('🔔 バックグラウンドから通知をタップ: ${message.messageId}');
+        debugPrint('🔔 通知データ: ${message.data}');
+      }
+      _handleNotificationTap(message);
+    });
+
+    // アプリが終了状態から通知をタップして起動した場合
+    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+      if (message != null) {
+        if (kDebugMode) {
+          debugPrint('🔔 終了状態から通知をタップして起動: ${message.messageId}');
+          debugPrint('🔔 通知データ: ${message.data}');
+        }
+        // 少し遅延させてから処理（MainScreenが完全に構築されてから）
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleNotificationTap(message);
+        });
+      }
+    });
+  }
+
+  /// 通知タップ時の処理
+  void _handleNotificationTap(RemoteMessage message) {
+    if (!mounted) return;
+
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    
+    // 通知画面に遷移
+    navigationProvider.navigateToNotifications();
+    
+    if (kDebugMode) {
+      debugPrint('✅ 通知画面に遷移しました');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

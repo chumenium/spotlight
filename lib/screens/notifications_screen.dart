@@ -21,7 +21,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   int _lastRefreshTrigger = -1; // 最後に処理したリフレッシュトリガーの値
 
   // タブの定義
-  final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'トレンド', 'システム'];
+  final List<String> _tabs = ['すべて', 'スポットライト', 'コメント'];
 
   @override
   void initState() {
@@ -258,14 +258,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 n.type == NotificationType.comment ||
                 n.type == NotificationType.reply)
             .toList();
-      case 'トレンド':
-        return notifications
-            .where((n) => n.type == NotificationType.trending)
-            .toList();
-      case 'システム':
-        return notifications
-            .where((n) => n.type == NotificationType.system)
-            .toList();
       default:
         return notifications;
     }
@@ -287,14 +279,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'コメント':
         message = 'コメント通知はありません';
         icon = Icons.comment;
-        break;
-      case 'トレンド':
-        message = 'トレンド通知はありません';
-        icon = Icons.trending_up;
-        break;
-      case 'システム':
-        message = 'システム通知はありません';
-        icon = Icons.info_outline;
         break;
       default:
         message = '通知はありません';

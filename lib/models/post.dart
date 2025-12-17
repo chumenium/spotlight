@@ -251,23 +251,87 @@ class Post {
     final nextContentIdStr = nextContentId?.toString();
 
     // メディアファイルはCloudFront経由で配信（S3から）
-    // contentpathから完全なURLを生成（CloudFront URLを使用）
-    // バックエンドが返すパス形式（/content/movie/filename.mp4など）をCloudFront URLに変換
-    final contentPath = json['contentpath'] as String? ?? '';
+    // APIは既にnormalize_content_urlでcontentpathとthumbnailpathを正規化済み
+    // linkフィールドが存在する場合はそれを優先（完全なURLの可能性が高い）
+    // contentpathは既に正規化されたCloudFront URLまたはnull
+    final link = json['link'] as String?;
+    final contentPath = json['contentpath'] as String?;
     String? mediaUrl;
 
-    // ローカルファイルパスが含まれている場合は無効として扱う
-    if (contentPath.isNotEmpty && _isLocalFilePath(contentPath)) {
-      if (kDebugMode) {
-        debugPrint('⚠️ contentpathにローカルファイルパスが含まれています: $contentPath');
-        debugPrint('   CloudFront URLの使用を試みますが、contentpathが不正な可能性があります');
+    // 優先順位: link > contentpath
+    // linkフィールドが存在し、有効なURLの場合、それを優先使用
+    if (link != null && link.isNotEmpty) {
+      // ローカルファイルパスでないことを確認
+      if (!_isLocalFilePath(link)) {
+        // linkが完全なURL（http/httpsで始まる）の場合、そのまま使用
+        if (link.startsWith('http://') || link.startsWith('https://')) {
+          mediaUrl = link;
+          if (kDebugMode) {
+            debugPrint('✅ linkフィールド（完全URL）からmediaUrlを取得: $mediaUrl');
+          }
+        } else {
+          // linkが相対パスの場合、正規化してからURLを構築
+          final normalizedLink = _normalizeContentUrl(link);
+          if (normalizedLink != null && !_isLocalFilePath(normalizedLink)) {
+            mediaUrl = normalizedLink;
+            if (kDebugMode) {
+              debugPrint('✅ linkフィールド（相対パス）からmediaUrlを取得: $mediaUrl');
+            }
+          } else {
+            // 正規化できない場合、mediaBaseUrlと結合
+            final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, link);
+            if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
+              mediaUrl = builtUrl;
+              if (kDebugMode) {
+                debugPrint('✅ linkフィールドからmediaUrlを構築: $mediaUrl');
+              }
+            }
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('⚠️ linkフィールドがローカルファイルパスです: $link');
+        }
       }
-      // ローカルパスの場合は、正規化もURL構築も行わない
-      mediaUrl = null;
-    } else {
-      final normalizedContentPath = _normalizeContentUrl(contentPath);
-      mediaUrl = normalizedContentPath ??
-          _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
+    }
+
+    // linkが存在しない、または無効な場合、contentpathを使用
+    // contentpathは既にAPIで正規化されているため、そのまま使用できる
+    if (mediaUrl == null || mediaUrl.isEmpty) {
+      if (contentPath != null && contentPath.isNotEmpty) {
+        // ローカルファイルパスでないことを確認
+        if (!_isLocalFilePath(contentPath)) {
+          // 既に完全なURLの場合はそのまま使用、相対パスの場合は正規化
+          if (contentPath.startsWith('http://') || contentPath.startsWith('https://')) {
+            mediaUrl = contentPath;
+            if (kDebugMode) {
+              debugPrint('✅ contentpath（完全URL）からmediaUrlを取得: $mediaUrl');
+            }
+          } else {
+            // 相対パスの場合は正規化
+            final normalizedContentPath = _normalizeContentUrl(contentPath);
+            if (normalizedContentPath != null && !_isLocalFilePath(normalizedContentPath)) {
+              mediaUrl = normalizedContentPath;
+              if (kDebugMode) {
+                debugPrint('✅ contentpath（相対パス）からmediaUrlを生成: $mediaUrl');
+              }
+            } else {
+              // 正規化できない場合、mediaBaseUrlと結合
+              final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
+              if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
+                mediaUrl = builtUrl;
+                if (kDebugMode) {
+                  debugPrint('✅ contentpathからmediaUrlを構築: $mediaUrl');
+                }
+              }
+            }
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('⚠️ contentpathがローカルファイルパスです: $contentPath');
+          }
+        }
+      }
     }
 
     // mediaUrlがローカルパスの場合、nullにして警告を出す
@@ -279,10 +343,44 @@ class Post {
     }
 
     // thumbnailpathから完全なURLを生成（CloudFront URLを使用）
-    final thumbnailPath = json['thumbnailpath'] as String?;
-    final normalizedThumbnailPath = _normalizeContentUrl(thumbnailPath);
-    final thumbnailUrl = normalizedThumbnailPath ??
-        _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
+    // APIは既にnormalize_content_urlで正規化済み
+    final thumbnailPath = json['thumbnailpath'] as String? ?? json['thumbnailurl'] as String?;
+    String? thumbnailUrl;
+    
+    if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
+      // ローカルファイルパスでないことを確認
+      if (!_isLocalFilePath(thumbnailPath)) {
+        // 既に完全なURLの場合はそのまま使用
+        if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
+          thumbnailUrl = thumbnailPath;
+          if (kDebugMode) {
+            debugPrint('✅ thumbnailpath（完全URL）からthumbnailUrlを取得: $thumbnailUrl');
+          }
+        } else {
+          // 相対パスの場合、正規化してからURLを構築
+          final normalizedThumbnailPath = _normalizeContentUrl(thumbnailPath);
+          if (normalizedThumbnailPath != null && !_isLocalFilePath(normalizedThumbnailPath)) {
+            thumbnailUrl = normalizedThumbnailPath;
+            if (kDebugMode) {
+              debugPrint('✅ thumbnailpath（相対パス）からthumbnailUrlを生成: $thumbnailUrl');
+            }
+          } else {
+            // 正規化できない場合、mediaBaseUrlと結合
+            final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
+            if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
+              thumbnailUrl = builtUrl;
+              if (kDebugMode) {
+                debugPrint('✅ thumbnailpathからthumbnailUrlを構築: $thumbnailUrl');
+              }
+            }
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('⚠️ thumbnailpathがローカルファイルパスです: $thumbnailPath');
+        }
+      }
+    }
 
     // iconimgpathから完全なアイコンURLを生成（バックエンドサーバーから配信）
     // アイコンURLにキャッシュキーを追加して、1時間以内は同じURLを使用（AWS使用量削減）
@@ -293,6 +391,7 @@ class Post {
     // デバッグログ出力
     if (kDebugMode) {
       debugPrint('📦 Post.fromJson:');
+      debugPrint('  link: $link');
       debugPrint('  contentPath: $contentPath');
       debugPrint('  mediaUrl: $mediaUrl (CloudFront経由)');
       debugPrint('  thumbnailPath: $thumbnailPath');
@@ -301,29 +400,39 @@ class Post {
       debugPrint('  userIconUrl: $userIconUrl (バックエンドサーバー経由)');
       debugPrint('  mediaBaseUrl: ${AppConfig.mediaBaseUrl}');
       debugPrint('  backendUrl: ${AppConfig.backendUrl}');
+      // mediaUrlがnullの場合、警告を出力
+      if (mediaUrl == null || mediaUrl.isEmpty) {
+        debugPrint('⚠️ mediaUrlがnullまたは空です。コンテンツが表示されない可能性があります。');
+        debugPrint('   link: $link');
+        debugPrint('   contentPath: $contentPath');
+      }
     }
 
-    // typeフィールドがない場合、contentpathから推測
+    // typeフィールドがない場合、contentpathまたはlinkから推測
     String postType = json['type'] as String? ?? '';
-    if (postType.isEmpty && contentPath.isNotEmpty) {
-      // CloudFront URLのパスから推測（/movie/, /picture/, /audio/）
-      if (contentPath.contains('/movie/') ||
-          contentPath.contains('video') ||
-          contentPath.endsWith('.mp4') ||
-          contentPath.endsWith('.mov')) {
-        postType = 'video';
-      } else if (contentPath.contains('/picture/') ||
-          contentPath.contains('image') ||
-          contentPath.endsWith('.jpg') ||
-          contentPath.endsWith('.png') ||
-          contentPath.endsWith('.jpeg')) {
-        postType = 'image';
-      } else if (contentPath.contains('/audio/') ||
-          contentPath.contains('audio') ||
-          contentPath.endsWith('.mp3') ||
-          contentPath.endsWith('.wav') ||
-          contentPath.endsWith('.m4a')) {
-        postType = 'audio';
+    if (postType.isEmpty) {
+      // contentpathから推測
+      final pathToCheck = contentPath ?? link ?? '';
+      if (pathToCheck.isNotEmpty) {
+        // CloudFront URLのパスから推測（/movie/, /picture/, /audio/）
+        if (pathToCheck.contains('/movie/') ||
+            pathToCheck.contains('video') ||
+            pathToCheck.endsWith('.mp4') ||
+            pathToCheck.endsWith('.mov')) {
+          postType = 'video';
+        } else if (pathToCheck.contains('/picture/') ||
+            pathToCheck.contains('image') ||
+            pathToCheck.endsWith('.jpg') ||
+            pathToCheck.endsWith('.png') ||
+            pathToCheck.endsWith('.jpeg')) {
+          postType = 'image';
+        } else if (pathToCheck.contains('/audio/') ||
+            pathToCheck.contains('audio') ||
+            pathToCheck.endsWith('.mp3') ||
+            pathToCheck.endsWith('.wav') ||
+            pathToCheck.endsWith('.m4a')) {
+          postType = 'audio';
+        }
       }
     }
     if (postType.isEmpty) {
@@ -351,7 +460,7 @@ class Post {
       userIconUrl: userIconUrl,
       title: json['title'] as String? ?? '',
       content: json['content'] as String?,
-      contentPath: contentPath,
+      contentPath: contentPath ?? '',
       type: postType,
       mediaUrl: mediaUrl,
       thumbnailUrl: thumbnailUrl,
@@ -402,39 +511,40 @@ class Post {
         return PostType.text;
     }
   }
-
-  // サンプルデータ用（テスト・開発用）
-  factory Post.sample(int index) {
-    final types = ['video', 'image', 'text', 'audio'];
-    final usernames = [
-      'ユーザー1',
-      'ユーザー2',
-      'ユーザー3',
-      'ユーザー4',
-      'ユーザー5',
-    ];
-
-    return Post(
-      id: 'post_$index',
-      userId: 'user_${index % 5}',
-      username: usernames[index % usernames.length],
-      userIconPath: '',
-      userIconUrl: null,
-      title: 'サンプル投稿 $index',
-      content: 'これはサンプル投稿の内容です。',
-      contentPath: '',
-      type: types[index % types.length],
-      mediaUrl: null,
-      thumbnailUrl: null,
-      likes: index * 10,
-      playNum: index * 5,
-      link: null,
-      comments: index * 3,
-      shares: index * 2,
-      isSpotlighted: index % 3 == 0,
-      isText: index % 4 == 2,
-      nextContentId: 'post_${index + 1}',
-      createdAt: DateTime.now().subtract(Duration(hours: index)),
-    );
-  }
 }
+
+//   // サンプルデータ用（テスト・開発用）
+//   factory Post.sample(int index) {
+//     final types = ['video', 'image', 'text', 'audio'];
+//     final usernames = [
+//       'ユーザー1',
+//       'ユーザー2',
+//       'ユーザー3',
+//       'ユーザー4',
+//       'ユーザー5',
+//     ];
+
+//     return Post(
+//       id: 'post_$index',
+//       userId: 'user_${index % 5}',
+//       username: usernames[index % usernames.length],
+//       userIconPath: '',
+//       userIconUrl: null,
+//       title: 'サンプル投稿 $index',
+//       content: 'これはサンプル投稿の内容です。',
+//       contentPath: '',
+//       type: types[index % types.length],
+//       mediaUrl: null,
+//       thumbnailUrl: null,
+//       likes: index * 10,
+//       playNum: index * 5,
+//       link: null,
+//       comments: index * 3,
+//       shares: index * 2,
+//       isSpotlighted: index % 3 == 0,
+//       isText: index % 4 == 2,
+//       nextContentId: 'post_${index + 1}',
+//       createdAt: DateTime.now().subtract(Duration(hours: index)),
+//     );
+//   }
+// }
