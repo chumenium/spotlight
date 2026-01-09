@@ -1408,7 +1408,8 @@ class PostService {
     return [];
   }
 
-  /// /api/content/getcontents/random APIを使用して5件のコンテンツを取得
+  /// /api/content/getcontents APIを使用して5件のランダムコンテンツを取得
+  /// パラメータなしでリクエストしてランダムで5件のデータを返す
   /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
   static Future<List<Post>> fetchContents() async {
     try {
@@ -1422,11 +1423,20 @@ class PostService {
         return [];
       }
 
+      // /api/content/getcontents/random - パラメータなしで5件のランダムデータを返す
+      // excludeContentIDsパラメータを送信（APIが期待する形式）
       final url = '${AppConfig.apiBaseUrl}/content/getcontents/random';
+
+      // 既に取得したコンテンツIDを除外するためのパラメータ（オプション）
+      // 現在は空の配列を送信（APIが期待する形式に合わせる）
+      final requestBody = <String, dynamic>{
+        'excludeContentIDs': <String>[],
+      };
 
       if (kDebugMode) {
         debugPrint('📝 [getcontents] API呼び出し開始: $url');
         debugPrint('📝 [getcontents] JWTトークン: ${jwtToken.substring(0, 20)}...');
+        debugPrint('📝 [getcontents] リクエストボディ: $requestBody');
       }
 
       // タイムアウトを設定（30秒）
@@ -1437,7 +1447,7 @@ class PostService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
         },
-        body: jsonEncode({}),
+        body: jsonEncode(requestBody),
       )
           .timeout(
         const Duration(seconds: 30),
@@ -1636,15 +1646,24 @@ class PostService {
       if (kDebugMode) {
         debugPrint('❌ [getcontents] ネットワーク接続エラー: $e');
         debugPrint('❌ [getcontents] インターネット接続を確認してください');
+        debugPrint(
+            '❌ [getcontents] URL: ${AppConfig.apiBaseUrl}/content/getcontents');
+        debugPrint('❌ [getcontents] 考えられる原因:');
+        debugPrint('   1. インターネット接続の問題');
+        debugPrint('   2. CORS設定の問題（Webブラウザの場合）');
+        debugPrint('   3. サーバーがダウンしている');
+        debugPrint('   4. ファイアウォールまたはプロキシの設定');
       }
     } on FormatException catch (e) {
       if (kDebugMode) {
         debugPrint('❌ [getcontents] データ形式エラー: $e');
         debugPrint('❌ [getcontents] サーバーからのレスポンス形式が正しくありません');
+        debugPrint('❌ [getcontents] エラーメッセージ: ${e.message}');
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('❌ [getcontents] 予期しないエラー: $e');
+        debugPrint('❌ [getcontents] エラータイプ: ${e.runtimeType}');
         debugPrint('❌ [getcontents] スタックトレース: $stackTrace');
       }
     }
