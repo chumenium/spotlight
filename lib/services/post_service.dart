@@ -6,6 +6,17 @@ import '../config/app_config.dart';
 import '../models/post.dart';
 import '../services/jwt_service.dart';
 
+/// 429 Too Many Requests エラー用の例外クラス
+class TooManyRequestsException implements Exception {
+  final String message;
+  final int retryAfterSeconds;
+
+  TooManyRequestsException(this.message, this.retryAfterSeconds);
+
+  @override
+  String toString() => message;
+}
+
 /// 投稿APIサービス
 class PostService {
   // 最近記録された視聴履歴のcontentIDを保存（最新の視聴履歴を確実に取得するため）
@@ -1410,8 +1421,10 @@ class PostService {
 
   /// /api/content/getcontents APIを使用して5件のランダムコンテンツを取得
   /// パラメータなしでリクエストしてランダムで5件のデータを返す
+  /// [excludeContentIDs] 除外するコンテンツIDのリスト（オプション）
   /// 戻り値: 成功時はPostのリスト、失敗時は空のリスト
-  static Future<List<Post>> fetchContents() async {
+  static Future<List<Post>> fetchContents(
+      {List<String> excludeContentIDs = const []}) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
 
@@ -1427,10 +1440,9 @@ class PostService {
       // excludeContentIDsパラメータを送信（APIが期待する形式）
       final url = '${AppConfig.apiBaseUrl}/content/getcontents/random';
 
-      // 既に取得したコンテンツIDを除外するためのパラメータ（オプション）
-      // 現在は空の配列を送信（APIが期待する形式に合わせる）
+      // 既に取得したコンテンツIDを除外するためのパラメータ
       final requestBody = <String, dynamic>{
-        'excludeContentIDs': <String>[],
+        'excludeContentIDs': excludeContentIDs,
       };
 
       if (kDebugMode) {
@@ -1617,6 +1629,29 @@ class PostService {
             debugPrint('❌ [getcontents] レスポンスボディ: ${response.body}');
           }
         }
+      } else if (response.statusCode == 429) {
+        // 429 Too Many Requests - レート制限エラー
+        // レスポンスから待機時間を取得（Retry-Afterヘッダーがある場合）
+        int retryAfterSeconds = 2; // デフォルトは2秒
+        final retryAfterHeader = response.headers['retry-after'];
+        if (retryAfterHeader != null) {
+          try {
+            retryAfterSeconds = int.parse(retryAfterHeader);
+          } catch (e) {
+            // パースエラー時はデフォルト値を使用
+          }
+        }
+
+        if (kDebugMode) {
+          debugPrint('⚠️ [getcontents] レート制限エラー (429):');
+          debugPrint('   - メッセージ: リクエストが頻繁すぎます。しばらく待ってから再度お試しください。');
+          debugPrint('   - 待機時間: ${retryAfterSeconds}秒');
+        }
+
+        // 429エラー時は例外をスローして、呼び出し元で再試行できるようにする
+        throw TooManyRequestsException(
+            'リクエストが頻繁すぎます。${retryAfterSeconds}秒待ってから再度お試しください。',
+            retryAfterSeconds);
       } else {
         if (kDebugMode) {
           debugPrint('❌ [getcontents] HTTPエラー:');
@@ -1637,6 +1672,9 @@ class PostService {
           }
         }
       }
+    } on TooManyRequestsException {
+      // 429エラーは呼び出し元で再試行するため、そのまま再スロー
+      rethrow;
     } on TimeoutException catch (e) {
       if (kDebugMode) {
         debugPrint('❌ [getcontents] タイムアウトエラー: $e');

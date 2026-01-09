@@ -87,6 +87,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double _swipeOffset = 0.0;
   double? _lastPanY;
 
+  // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
+  int? _loadingStartIndex;
+
   @override
   void initState() {
     super.initState();
@@ -237,8 +240,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     try {
-      // PostServiceから投稿を取得
-      final fetchedPosts = await PostService.fetchContents();
+      // PostServiceから投稿を取得（初期読み込み時は除外IDなし）
+      List<Post> fetchedPosts = [];
+      int retryCount = 0;
+      const maxRetries = 3; // 最大3回まで再試行
+
+      while (retryCount <= maxRetries) {
+        try {
+          fetchedPosts = await PostService.fetchContents(excludeContentIDs: []);
+          break; // 成功したらループを抜ける
+        } on TooManyRequestsException catch (e) {
+          retryCount++;
+          if (retryCount > maxRetries) {
+            // 最大再試行回数に達した場合は、429エラーを再スロー
+            rethrow;
+          }
+
+          // 429エラー時は待機してから再試行
+          if (kDebugMode) {
+            debugPrint(
+                '⚠️ 429エラー（初期読み込み）: ${e.retryAfterSeconds}秒待機してから再試行します (試行回数: $retryCount/$maxRetries)');
+          }
+
+          await Future.delayed(Duration(seconds: e.retryAfterSeconds));
+        }
+      }
 
       if (_isDisposed) return;
 
@@ -258,12 +284,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           debugPrint('⚠️ 投稿が取得できませんでした（リトライ上限に達しました）');
         }
 
-        // サンプルデータを表示（テスト用）
+        // エラー時は空のリストを設定
         setState(() {
-          _posts = List.generate(
-            5,
-            (index) => Post.sample(index),
-          );
+          _posts = [];
           _isLoading = false;
         });
       } else {
@@ -291,7 +314,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           debugPrint(
               '✅ 投稿を取得しました: ${uniquePosts.length}件（重複除外後: ${fetchedPosts.length - uniquePosts.length}件）');
         }
+
+        // 初期ロード完了後、最初の投稿の動画を初期化・再生（初期表示時に動画が表示されない問題を修正）
+        if (uniquePosts.isNotEmpty && !_isDisposed) {
+          // 次のフレームで動画を初期化（UI更新後に実行）
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_isDisposed && _posts.isNotEmpty && _currentIndex == 0) {
+              final firstPost = _posts[0];
+              if (firstPost.postType == PostType.video) {
+                if (kDebugMode) {
+                  debugPrint('🎬 初期表示: 最初の動画を初期化します: postId=${firstPost.id}');
+                }
+                _handleMediaPageChange(0);
+              }
+            }
+          });
+        }
       }
+    } on TooManyRequestsException catch (e) {
+      // 429エラー時は一時的なエラーとして扱い、リトライする
+      if (kDebugMode) {
+        debugPrint('⚠️ 429エラー（レート制限）: ${e.message}');
+      }
+
+      // リトライ処理
+      if (_initialRetryCount < _maxInitialRetries) {
+        _initialRetryCount++;
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ エラーが発生しました。リトライします ($_initialRetryCount/$_maxInitialRetries)');
+        }
+        await Future.delayed(Duration(seconds: e.retryAfterSeconds));
+        return _loadInitialPosts();
+      }
+
+      if (kDebugMode) {
+        debugPrint('⚠️ 投稿が取得できませんでした（リトライ上限に達しました）');
+      }
+
+      // エラー時は空のリストを設定
+      setState(() {
+        _posts = [];
+        _isLoading = false;
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ 投稿取得エラー: $e');
@@ -310,12 +375,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (_isDisposed) return;
 
-      // エラー時はサンプルデータを表示
+      // エラー時は空のリストを設定
       setState(() {
-        _posts = List.generate(
-          5,
-          (index) => Post.sample(index),
-        );
+        _posts = [];
         _isLoading = false;
       });
     }
@@ -343,6 +405,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return idsList.skip(idsList.length - limit).toSet();
   }
 
+  /// 古い取得履歴をクリア（直近のkeepRecent件のみ保持）
+  void _clearOldFetchedContentIds({int keepRecent = 10}) {
+    final idsList = _fetchedContentIds.toList();
+    if (idsList.length <= keepRecent) {
+      return; // 保持する件数以下の場合は何もしない
+    }
+    // 最新のkeepRecent件のみを保持
+    final recentIds = idsList.skip(idsList.length - keepRecent).toSet();
+    _fetchedContentIds.clear();
+    _fetchedContentIds.addAll(recentIds);
+
+    if (kDebugMode) {
+      debugPrint(
+          '📄 取得履歴をクリア: ${idsList.length}件 → ${recentIds.length}件（直近${keepRecent}件のみ保持）');
+    }
+  }
+
   /// PageViewのページ変更処理（段階4: 動画再生制御を追加）
   void _onPageChanged(int index) {
     if (_isDisposed) return;
@@ -352,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _currentIndex = index;
     });
 
-    // 前の動画を停止（段階4）
+    // 前の動画を停止（段階4）- 逆スクロール時も対応
     if (previousIndex != index &&
         previousIndex >= 0 &&
         previousIndex < _posts.length) {
@@ -362,6 +441,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (prevController != null && prevController.value.isInitialized) {
           prevController.pause();
           prevController.seekTo(Duration.zero);
+
+          // 前の動画が現在再生中の場合は、再生状態をクリア
+          if (_currentPlayingVideo == previousIndex) {
+            _currentPlayingVideo = null;
+          }
+
+          if (kDebugMode) {
+            debugPrint(
+                '⏸️ 前の動画を停止: postId=${prevPost.id}, index=$previousIndex');
+          }
+        }
+      }
+
+      // 前の音声も停止（段階5）
+      if (prevPost.postType == PostType.audio) {
+        final prevPlayer = _audioPlayers[previousIndex];
+        if (prevPlayer != null) {
+          prevPlayer.pause();
+          prevPlayer.seek(Duration.zero);
+
+          // 前の音声が現在再生中の場合は、再生状態をクリア
+          if (_currentPlayingAudio == previousIndex) {
+            _currentPlayingAudio = null;
+          }
         }
       }
     }
@@ -372,9 +475,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 次のページを事前読み込み
     _preloadNextPages(index);
 
-    // 最後から3件前になったら追加コンテンツを読み込む
-    // または、最後のページに到達した時も読み込む（念のため）
-    if ((index >= _posts.length - 3 || index >= _posts.length - 1) &&
+    // 最後から5件前になったら追加コンテンツを読み込む（高頻度スクロール対応：早めに読み込み）
+    // または、最後のページに到達した時も読み込む
+    if ((index >= _posts.length - 5 || index >= _posts.length - 1) &&
         !_isLoadingMore &&
         !_noMoreContent) {
       if (kDebugMode) {
@@ -397,6 +500,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 動画コンテンツの場合（段階4）
     if (post.postType == PostType.video) {
       await _initializeVideoController(index, post);
+
+      // 逆スクロール時も確実に動画を再生するため、状態を再確認
+      if (!_isDisposed && index == _currentIndex) {
+        final controller = _videoControllers[index];
+        if (controller != null &&
+            controller.value.isInitialized &&
+            !controller.value.isPlaying) {
+          _currentPlayingVideo = index;
+          controller.play();
+          controller.setLooping(true);
+          _startSeekBarUpdateTimer();
+
+          if (mounted) {
+            setState(() {});
+          }
+
+          if (kDebugMode) {
+            debugPrint('✅ 逆スクロール時の動画再生: postId=${post.id}, index=$index');
+          }
+        }
+      }
     }
     // 音声コンテンツの場合（段階5）
     else if (post.postType == PostType.audio) {
@@ -408,16 +532,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _initializeVideoController(int postIndex, Post post) async {
     if (_isDisposed || postIndex < 0 || postIndex >= _posts.length) return;
 
-    // 既に初期化済みの場合はスキップ
+    // 既に初期化済みの場合は、再生状態を確認して再生
     if (_initializedVideos.contains(postIndex)) {
       final controller = _videoControllers[postIndex];
       if (controller != null && controller.value.isInitialized) {
-        // 現在表示中の動画を再生
-        if (_currentIndex == postIndex && _currentPlayingVideo != postIndex) {
+        // 現在表示中の動画を確実に再生（逆スクロール時も対応）
+        if (_currentIndex == postIndex) {
           _currentPlayingVideo = postIndex;
+
+          // 動画が停止している場合は再生
           if (!controller.value.isPlaying) {
             controller.play();
+            controller.setLooping(true);
             _startSeekBarUpdateTimer();
+
+            if (kDebugMode) {
+              debugPrint('✅ 既存動画を再生しました: postId=${post.id}, index=$postIndex');
+            }
+          }
+
+          // UIを更新（再生マークを非表示にするため）
+          if (mounted) {
+            setState(() {});
           }
         }
       }
@@ -428,11 +564,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mediaUrl == null || mediaUrl.isEmpty) {
       if (kDebugMode) {
         debugPrint('⚠️ 動画URLが空です: postId=${post.id}');
+        debugPrint('   - link: ${post.link}');
+        debugPrint('   - contentPath: ${post.contentPath}');
+        debugPrint('   - mediaUrl: ${post.mediaUrl}');
+      }
+
+      // URLが空の場合でも、UIを更新してエラー状態を解除
+      if (mounted) {
+        setState(() {
+          // エラー状態を記録（オプション：エラーメッセージを表示する場合）
+        });
       }
       return;
     }
 
     try {
+      if (kDebugMode) {
+        debugPrint('🎬 動画を初期化中: postId=${post.id}, url=$mediaUrl');
+      }
+
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(mediaUrl),
         videoPlayerOptions: VideoPlayerOptions(
@@ -440,7 +590,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
 
-      await controller.initialize();
+      // 初期化にタイムアウトを設定（30秒）
+      await controller.initialize().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('❌ 動画の初期化がタイムアウトしました: postId=${post.id}');
+          }
+          controller.dispose();
+          throw TimeoutException('動画の初期化がタイムアウトしました');
+        },
+      );
 
       if (_isDisposed || !mounted) {
         controller.dispose();
@@ -463,12 +623,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _startSeekBarUpdateTimer();
 
         if (kDebugMode) {
-          debugPrint('✅ 動画を初期化・再生しました: postId=${post.id}');
+          debugPrint('✅ 動画を初期化・再生しました: postId=${post.id}, index=$postIndex');
         }
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ 動画の初期化に失敗しました: postId=${post.id}, error=$e');
+        debugPrint('   - mediaUrl: $mediaUrl');
+      }
+
+      // エラー時にUIを更新（エラー状態を解除して再試行可能にする）
+      if (mounted) {
+        setState(() {
+          // エラー状態を記録（オプション：エラーメッセージを表示する場合）
+          // 初期化済みリストから削除して、次回再試行可能にする
+          _initializedVideos.remove(postIndex);
+          _videoControllers.remove(postIndex);
+        });
       }
     }
   }
@@ -551,31 +722,115 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           '📄 _loadMoreContents: 開始 (_hasMorePosts=$_hasMorePosts, posts=${_posts.length})');
     }
 
+    // 読み込み開始時のインデックスを記録（読み込み完了時の自動遷移判定用）
+    final loadingStartIndex = _currentIndex;
+    double? currentPageValue;
+    if (_pageController.hasClients) {
+      currentPageValue = _pageController.page;
+    }
+    final loadingStartPageIndex = currentPageValue?.round() ?? _currentIndex;
+    _loadingStartIndex = loadingStartPageIndex;
+
     setState(() {
       _isLoadingMore = true;
     });
 
+    if (kDebugMode) {
+      debugPrint(
+          '📄 読み込み開始時のインデックス: _currentIndex=$_currentIndex, PageController.page=$currentPageValue, loadingStartPageIndex=$loadingStartPageIndex');
+    }
+
     try {
-      // PostServiceから追加の投稿を取得
-      final fetchedPosts = await PostService.fetchContents();
+      // 既に取得したコンテンツIDを除外するため、取得済みIDのリストを準備
+      // 高頻度スクロール対応：除外IDを10件に制限（20件→10件に減らして、APIレスポンスと429エラーを改善）
+      final excludeIds = _getRecentFetchedContentIds(limit: 10);
+      final excludeIdsList = excludeIds.toList();
+
+      if (kDebugMode) {
+        debugPrint(
+            '📄 除外ID数: ${excludeIdsList.length}件 (posts=${_posts.length})');
+      }
+
+      // PostServiceから追加の投稿を取得（既に取得したIDを除外）
+      List<Post> fetchedPosts = [];
+
+      // 初回は除外IDをそのまま使用して取得を試みる
+      try {
+        fetchedPosts =
+            await PostService.fetchContents(excludeContentIDs: excludeIdsList);
+
+        if (kDebugMode) {
+          debugPrint('📄 初回取得: ${fetchedPosts.length}件');
+        }
+      } on TooManyRequestsException catch (e) {
+        // 429エラー時は、待機せずに次回の読み込みを遅延させる（高頻度スクロール対応）
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ 429エラー（レート制限）: 次回の読み込みを遅延させます（待機時間: ${e.retryAfterSeconds}秒）');
+        }
+
+        // 429エラー時は、次回の読み込みを許可するが、すぐには再試行しない
+        _clearOldFetchedContentIds(keepRecent: 5); // 取得履歴をさらに削減
+
+        setState(() {
+          _isLoadingMore = false;
+          // _noMoreContentはtrueにしない（次回の読み込みを許可するため）
+          // _hasMorePostsもfalseにしない（次回の読み込みを許可するため）
+        });
+        return; // 429エラー時は待機せずに即座に終了
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('❌ 初回取得エラー: $e');
+        }
+        // エラー時も次回の読み込みを許可
+        _clearOldFetchedContentIds(keepRecent: 5);
+        setState(() {
+          _isLoadingMore = false;
+        });
+        return;
+      }
 
       if (_isDisposed) return;
 
-      if (fetchedPosts.isEmpty) {
-        // すべてのコンテンツを読み込み済み
-        setState(() {
-          _hasMorePosts = false;
-          _noMoreContent = true;
-          _isLoadingMore = false;
-        });
+      // 空の結果の場合、すぐに除外IDなしで再試行（高頻度スクロール対応：1回のみ）
+      if (fetchedPosts.isEmpty && !_isDisposed) {
+        try {
+          fetchedPosts = await PostService.fetchContents(excludeContentIDs: []);
 
-        if (kDebugMode) {
-          debugPrint('✅ すべてのコンテンツを読み込みました（取得件数: 0件）');
+          if (kDebugMode) {
+            debugPrint('📄 除外IDなしで再取得: ${fetchedPosts.length}件');
+          }
+
+          // 除外IDなしでも空の場合は、取得履歴をクリアして次回の読み込みに備える
+          if (fetchedPosts.isEmpty) {
+            _clearOldFetchedContentIds(keepRecent: 5); // 取得履歴をさらに削減
+
+            setState(() {
+              _isLoadingMore = false;
+              // _noMoreContentはtrueにしない（次回の読み込みを許可するため）
+              // _hasMorePostsもfalseにしない（次回の読み込みを許可するため）
+            });
+
+            if (kDebugMode) {
+              debugPrint('⚠️ 空の結果: 取得履歴をクリアして、次回の読み込みで再試行します。');
+            }
+            return;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ 除外IDなしでの再取得エラー: $e');
+          }
+
+          // エラー時も次回の読み込みを許可
+          _clearOldFetchedContentIds(keepRecent: 5);
+          setState(() {
+            _isLoadingMore = false;
+          });
+          return;
         }
+      }
 
-        // 「すべてのコンテンツを視聴済み」ダイアログを表示（オプション）
-        // _showAllContentViewedDialog();
-      } else {
+      if (fetchedPosts.isNotEmpty) {
         if (kDebugMode) {
           debugPrint('📄 取得した投稿数: ${fetchedPosts.length}件');
         }
@@ -610,6 +865,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               }
 
               if (randomUniquePosts.isNotEmpty && !_isDisposed) {
+                // 読み込み完了時に、読み込み中のプレースホルダーから新しいコンテンツに自動遷移
+                final previousPostCount = _posts.length;
+
+                // PageControllerの現在のページを確認（実際の表示位置を取得）
+                double? currentPageValue;
+                if (_pageController.hasClients) {
+                  currentPageValue = _pageController.page;
+                }
+                final currentPageIndex =
+                    currentPageValue?.round() ?? _currentIndex;
+
+                // 読み込み中のプレースホルダーを表示しているか確認
+                final wasViewingLoadingPlaceholder =
+                    currentPageIndex == previousPostCount ||
+                        _currentIndex == previousPostCount;
+
                 setState(() {
                   _posts.addAll(randomUniquePosts);
                   _isLoadingMore = false;
@@ -619,7 +890,84 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 if (kDebugMode) {
                   debugPrint(
                       '✅ ランダム投稿を取得しました: ${randomUniquePosts.length}件（合計: ${_posts.length}件）');
+                  debugPrint(
+                      '📄 読み込み前の投稿数: $previousPostCount, 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex, 読み込み中プレースホルダー表示中: $wasViewingLoadingPlaceholder');
                 }
+
+                // 読み込み中のプレースホルダーを表示していた場合、新しいコンテンツに自動遷移
+                if (wasViewingLoadingPlaceholder &&
+                    randomUniquePosts.isNotEmpty &&
+                    !_isDisposed) {
+                  // 次のフレームで新しいコンテンツに遷移（UI更新後に実行）
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!_isDisposed && _posts.length > previousPostCount) {
+                      // 新しく追加された最初のコンテンツのインデックス
+                      final newContentIndex = previousPostCount;
+
+                      if (_pageController.hasClients &&
+                          newContentIndex < _posts.length) {
+                        if (kDebugMode) {
+                          debugPrint(
+                              '🎬 ランダム投稿自動遷移開始: index=$newContentIndex (${_posts[newContentIndex].title})');
+                        }
+
+                        // スムーズに新しいコンテンツに遷移
+                        try {
+                          _pageController
+                              .animateToPage(
+                            newContentIndex,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          )
+                              .then((_) {
+                            // 遷移完了後に、動画や音声を自動再生
+                            if (!_isDisposed) {
+                              // _onPageChangedが呼ばれるはずだが、念のため手動で更新
+                              if (_currentIndex != newContentIndex) {
+                                setState(() {
+                                  _currentIndex = newContentIndex;
+                                });
+                              }
+                              _handleMediaPageChange(newContentIndex);
+                            }
+
+                            if (kDebugMode) {
+                              debugPrint(
+                                  '✅ ランダム投稿読み込み完了: 新しいコンテンツに自動遷移しました (index: $newContentIndex → ${_posts[newContentIndex].title})');
+                            }
+                          }).catchError((e) {
+                            if (kDebugMode) {
+                              debugPrint(
+                                  '❌ ランダム投稿animateToPageエラー: $e, jumpToPageで再試行します');
+                            }
+                            // animateToPageが失敗した場合、jumpToPageで確実に遷移
+                            if (_pageController.hasClients && !_isDisposed) {
+                              _pageController.jumpToPage(newContentIndex);
+                              setState(() {
+                                _currentIndex = newContentIndex;
+                              });
+                              _handleMediaPageChange(newContentIndex);
+                            }
+                          });
+                        } catch (e) {
+                          if (kDebugMode) {
+                            debugPrint(
+                                '❌ ランダム投稿自動遷移エラー: $e, jumpToPageで再試行します');
+                          }
+                          // エラー時はjumpToPageで確実に遷移
+                          if (_pageController.hasClients && !_isDisposed) {
+                            _pageController.jumpToPage(newContentIndex);
+                            setState(() {
+                              _currentIndex = newContentIndex;
+                            });
+                            _handleMediaPageChange(newContentIndex);
+                          }
+                        }
+                      }
+                    }
+                  });
+                }
+
                 return;
               }
             }
@@ -640,6 +988,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             debugPrint('⚠️ すべてのコンテンツを読み込み済みとして扱います');
           }
         } else {
+          // 読み込み完了時に、読み込み中のプレースホルダーから新しいコンテンツに自動遷移
+          final previousPostCount = _posts.length;
+
+          // 読み込み開始時に読み込み中プレースホルダーが表示されていたかどうかを確認
+          // プレースホルダーのインデックスは previousPostCount (_posts.length)
+          // 読み込み開始時に読み込み中プレースホルダーが表示されていた場合、必ず自動遷移する
+          // （逆スクロールした後でも、読み込み開始時に表示されていた場合は自動遷移）
+          final wasViewingLoadingPlaceholderAtStart =
+              _loadingStartIndex != null &&
+                  _loadingStartIndex == previousPostCount;
+
+          // 読み込み開始時に最後の投稿付近にいた場合も自動遷移する（より確実に）
+          // 最後の投稿のインデックスは previousPostCount - 1
+          final wasNearLastPostAtStart = _loadingStartIndex != null &&
+              _loadingStartIndex! >= previousPostCount - 1 &&
+              _loadingStartIndex! <= previousPostCount;
+
+          // PageControllerの現在のページを確認（実際の表示位置を取得）
+          double? currentPageValue;
+          if (_pageController.hasClients) {
+            currentPageValue = _pageController.page;
+          }
+          final currentPageIndex = currentPageValue?.round() ?? _currentIndex;
+
+          // 現在のページも読み込み中プレースホルダーかどうかを確認
+          final isCurrentlyViewingLoadingPlaceholder =
+              currentPageIndex == previousPostCount ||
+                  _currentIndex == previousPostCount;
+
+          // 読み込み開始時に読み込み中プレースホルダーが表示されていた場合、または
+          // 読み込み開始時に最後の投稿付近にいた場合、または
+          // 現在読み込み中プレースホルダーを表示している場合、自動遷移する
+          // 読み込み成功時は、読み込み開始時に読み込み中プレースホルダーが表示されていた場合は必ず自動遷移
+          final shouldAutoNavigate = wasViewingLoadingPlaceholderAtStart ||
+              wasNearLastPostAtStart ||
+              isCurrentlyViewingLoadingPlaceholder;
+
           // 新しい投稿を追加
           setState(() {
             _posts.addAll(uniquePosts);
@@ -654,9 +1039,146 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 '✅ 追加コンテンツを取得しました: ${uniquePosts.length}件（合計: ${_posts.length}件）');
             debugPrint(
                 '📄 状態更新: _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
+            debugPrint(
+                '📄 読み込み前の投稿数: $previousPostCount, 読み込み開始時のインデックス: $_loadingStartIndex');
+            debugPrint(
+                '📄 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex');
+            debugPrint(
+                '📄 読み込み開始時に読み込み中プレースホルダー表示: $wasViewingLoadingPlaceholderAtStart');
+            debugPrint('📄 読み込み開始時に最後の投稿付近: $wasNearLastPostAtStart');
+            debugPrint(
+                '📄 現在読み込み中プレースホルダー表示: $isCurrentlyViewingLoadingPlaceholder');
+            debugPrint('📄 自動遷移判定: shouldAutoNavigate=$shouldAutoNavigate');
+          }
+
+          // 読み込み成功時は、読み込み開始時に読み込み中プレースホルダーが表示されていた場合は必ず自動遷移
+          // または、現在読み込み中プレースホルダーを表示している場合も自動遷移
+          // 逆スクロールした後でも、読み込み開始時に表示されていた場合は自動遷移
+          // 特に、現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移する
+          if (uniquePosts.isNotEmpty && !_isDisposed) {
+            // 現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移
+            // または、読み込み開始時に読み込み中プレースホルダーが表示されていた場合も自動遷移
+            final shouldAutoNavigateNow =
+                isCurrentlyViewingLoadingPlaceholder ||
+                    wasViewingLoadingPlaceholderAtStart ||
+                    wasNearLastPostAtStart;
+
+            if (kDebugMode) {
+              debugPrint(
+                  '🎯 自動遷移判定: uniquePosts=${uniquePosts.length}件, shouldAutoNavigate=$shouldAutoNavigate, shouldAutoNavigateNow=$shouldAutoNavigateNow');
+              debugPrint(
+                  '🎯 自動遷移実行: 読み込み成功時に新しいコンテンツを表示します (uniquePosts=${uniquePosts.length}件)');
+            }
+
+            // 現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移
+            if (shouldAutoNavigateNow) {
+              // 次のフレームで新しいコンテンツに遷移（UI更新後に実行）
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!_isDisposed && _posts.length > previousPostCount) {
+                  // 新しく追加された最初のコンテンツのインデックス
+                  final newContentIndex = previousPostCount;
+
+                  if (_pageController.hasClients &&
+                      newContentIndex < _posts.length) {
+                    // shouldAutoNavigateがtrueの場合（読み込み開始時に読み込み中プレースホルダーが表示されていた場合、または現在表示している場合）、自動遷移
+                    if (kDebugMode) {
+                      debugPrint(
+                          '🎬 自動遷移開始: index=$newContentIndex (${_posts[newContentIndex].title}), shouldAutoNavigate=$shouldAutoNavigate');
+                    }
+
+                    // スムーズに新しいコンテンツに遷移
+                    try {
+                      _pageController
+                          .animateToPage(
+                        newContentIndex,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      )
+                          .then((_) {
+                        // 遷移完了後に、動画や音声を自動再生
+                        if (!_isDisposed) {
+                          // _onPageChangedが呼ばれるはずだが、念のため手動で更新
+                          if (_currentIndex != newContentIndex) {
+                            setState(() {
+                              _currentIndex = newContentIndex;
+                            });
+                          }
+                          _handleMediaPageChange(newContentIndex);
+                        }
+
+                        if (kDebugMode) {
+                          debugPrint(
+                              '✅ 読み込み完了: 新しいコンテンツに自動遷移しました (index: $newContentIndex → ${_posts[newContentIndex].title})');
+                        }
+                      }).catchError((e) {
+                        if (kDebugMode) {
+                          debugPrint(
+                              '❌ animateToPageエラー: $e, jumpToPageで再試行します');
+                        }
+                        // animateToPageが失敗した場合、jumpToPageで確実に遷移
+                        if (_pageController.hasClients && !_isDisposed) {
+                          _pageController.jumpToPage(newContentIndex);
+                          setState(() {
+                            _currentIndex = newContentIndex;
+                          });
+                          _handleMediaPageChange(newContentIndex);
+                        }
+                      });
+                    } catch (e) {
+                      if (kDebugMode) {
+                        debugPrint('❌ 自動遷移エラー: $e, jumpToPageで再試行します');
+                      }
+                      // エラー時はjumpToPageで確実に遷移
+                      if (_pageController.hasClients && !_isDisposed) {
+                        _pageController.jumpToPage(newContentIndex);
+                        setState(() {
+                          _currentIndex = newContentIndex;
+                        });
+                        _handleMediaPageChange(newContentIndex);
+                      }
+                    }
+                  } else {
+                    if (kDebugMode) {
+                      debugPrint(
+                          '⚠️ 自動遷移スキップ: hasClients=${_pageController.hasClients}, newContentIndex=$newContentIndex, posts.length=${_posts.length}');
+                    }
+                  }
+                } else {
+                  if (kDebugMode) {
+                    debugPrint(
+                        '⚠️ 自動遷移スキップ: _isDisposed=$_isDisposed, posts.length=${_posts.length}, previousPostCount=$previousPostCount');
+                  }
+                }
+              });
+            } else {
+              if (kDebugMode) {
+                debugPrint(
+                    '⚠️ 自動遷移スキップ: 読み込み中プレースホルダーを表示していません (shouldAutoNavigateNow=$shouldAutoNavigateNow)');
+              }
+            }
+          } else {
+            if (kDebugMode) {
+              debugPrint(
+                  '⚠️ 自動遷移スキップ: uniquePosts.isEmpty=${uniquePosts.isEmpty}, _isDisposed=$_isDisposed');
+            }
           }
         }
       }
+    } on TooManyRequestsException catch (e) {
+      // 429エラー時は一時的なエラーとして扱い、次の読み込みを許可する
+      if (kDebugMode) {
+        debugPrint('⚠️ 429エラー（レート制限）: ${e.message}');
+        debugPrint('   - 次回の読み込みで再試行します');
+      }
+
+      if (_isDisposed) return;
+
+      setState(() {
+        _isLoadingMore = false;
+        // 429エラー時は「全てのコンテンツを読み込み済み」と判断しない
+        // 一時的なエラーとして扱い、次回の読み込みを許可
+        // _noMoreContentは変更しない（trueのままでも次回試行可能にする）
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ 追加コンテンツ取得エラー: $e');
@@ -953,40 +1475,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    return GestureDetector(
-      onTap: () {
-        // タップで再生/一時停止を切り替え
-        if (controller.value.isPlaying) {
-          controller.pause();
-        } else {
-          controller.play();
-        }
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 動画プレイヤー
-          Center(
-            child: AspectRatio(
-              aspectRatio: controller.value.aspectRatio,
-              child: VideoPlayer(controller),
-            ),
-          ),
+    // 動画の再生状態を監視してUIを更新（逆スクロール時も正しく表示）
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, child) {
+        final isPlaying = value.isPlaying && value.isInitialized;
 
-          // 再生/一時停止ボタン（オーバーレイ）
-          if (!controller.value.isPlaying)
-            Container(
-              color: Colors.black.withOpacity(0.3),
-              child: Center(
-                child: Icon(
-                  Icons.play_circle_filled,
-                  size: 64,
-                  color: Colors.white.withOpacity(0.9),
+        return GestureDetector(
+          onTap: () {
+            // タップで再生/一時停止を切り替え
+            if (isPlaying) {
+              controller.pause();
+            } else {
+              controller.play();
+            }
+            // UIを更新
+            if (mounted) {
+              setState(() {});
+            }
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 動画プレイヤー
+              Center(
+                child: AspectRatio(
+                  aspectRatio: value.aspectRatio > 0
+                      ? value.aspectRatio
+                      : 16 / 9, // デフォルトのアスペクト比
+                  child: VideoPlayer(controller),
                 ),
               ),
-            ),
-        ],
-      ),
+
+              // 再生/一時停止ボタン（オーバーレイ）- 再生中は非表示
+              if (!isPlaying)
+                Container(
+                  color: Colors.black.withOpacity(0.3),
+                  child: Center(
+                    child: Icon(
+                      Icons.play_circle_filled,
+                      size: 64,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
