@@ -179,7 +179,7 @@ class HelpScreen extends StatelessWidget {
                 _buildContactItem(
                   icon: Icons.language,
                   label: 'ウェブサイト',
-                  value: 'https://spotlight.app/support',
+                  value: 'https://spotlight.app/index.html',
                 ),
                 const SizedBox(height: 12),
                 _buildContactItem(

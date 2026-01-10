@@ -197,19 +197,7 @@ class AboutScreen extends StatelessWidget {
               );
             },
           ),
-          _buildLinkCard(
-            icon: Icons.email,
-            title: 'お問い合わせ',
-            onTap: () {
-              // TODO: お問い合わせ画面への遷移を実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('お問い合わせページは準備中です'),
-                  backgroundColor: Color(0xFF1E1E1E),
-                ),
-              );
-            },
-          ),
+
 
           const SizedBox(height: 24),
 

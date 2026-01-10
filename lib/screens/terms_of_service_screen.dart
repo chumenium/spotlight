@@ -226,7 +226,7 @@ class TermsOfServiceScreen extends StatelessWidget {
 【運営者情報】
 運営者: SpotLight運営チーム
 メール: support@spotlight-app.click
-ウェブサイト: https://api.spotlight-app.click
+ウェブサイト: https://spotlight-app.click/index.html
 ''',
             ),
 
