@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _seekBarUpdateTimer;
   Timer? _seekDebounceTimer;
   Timer? _seekBarUpdateTimerAudio;
+  Timer? _loadMoreRetryTimer;
 
   // リアルタイム更新関連（段階12）
   Timer? _backgroundUpdateTimer;
@@ -129,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _seekBarUpdateTimer?.cancel();
     _seekDebounceTimer?.cancel();
     _seekBarUpdateTimerAudio?.cancel();
+    _loadMoreRetryTimer?.cancel();
 
     // PageControllerを破棄
     _pageController.dispose();
@@ -812,6 +814,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // _noMoreContentはtrueにしない（次回の読み込みを許可するため）
           // _hasMorePostsもfalseにしない（次回の読み込みを許可するため）
         });
+        _scheduleLoadMoreRetry(delaySeconds: e.retryAfterSeconds ?? 2);
         return; // 429エラー時は待機せずに即座に終了
       } catch (e) {
         if (kDebugMode) {
@@ -822,6 +825,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _isLoadingMore = false;
         });
+        _scheduleLoadMoreRetry(delaySeconds: 5);
         return;
       }
 
@@ -849,6 +853,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (kDebugMode) {
               debugPrint('⚠️ 空の結果: 取得履歴をクリアして、次回の読み込みで再試行します。');
             }
+            _scheduleLoadMoreRetry();
             return;
           }
         } catch (e) {
@@ -1214,6 +1219,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // 一時的なエラーとして扱い、次回の読み込みを許可
         // _noMoreContentは変更しない（trueのままでも次回試行可能にする）
       });
+      _scheduleLoadMoreRetry(delaySeconds: e.retryAfterSeconds ?? 2);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ 追加コンテンツ取得エラー: $e');
@@ -1225,9 +1231,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isLoadingMore = false;
         // エラー時は次の読み込みを試みることを許可
       });
+      _scheduleLoadMoreRetry(delaySeconds: 5);
     } finally {
       _processQueuedLoadMore();
     }
+  }
+
+  void _scheduleLoadMoreRetry({int delaySeconds = 2}) {
+    _loadMoreRetryTimer?.cancel();
+    _loadMoreRetryTimer = Timer(Duration(seconds: delaySeconds), () {
+      if (_isDisposed || _isLoadingMore || _noMoreContent) return;
+      final currentPageValue = _pageController.hasClients
+          ? _pageController.page ?? _currentIndex
+          : _currentIndex.toDouble();
+      final isNearEnd = _currentIndex >= _posts.length - 1 ||
+          currentPageValue >= _posts.length - 0.5;
+
+      if (isNearEnd) {
+        _loadMoreContents();
+      }
+    });
   }
 
   @override
@@ -2106,112 +2129,155 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 下部コントロール（段階2: 実装完了）
   Widget _buildBottomControls(Post post) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom + 12;
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withOpacity(0.8),
-            ],
-          ),
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 12,
+          bottom: bottomPadding,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 投稿者情報（タップ可能）
-            GestureDetector(
-              onTap: () {
-                // ユーザープロフィール画面に遷移
-                if (kDebugMode) {
-                  debugPrint('👤 ユーザープロフィール画面に遷移: ${post.username}');
-                }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => UserProfileScreen(
-                      userId: post.userId.isEmpty ? '' : post.userId,
-                      username: post.username,
-                      userIconUrl: post.userIconUrl,
-                      userIconPath: post.userIconPath,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Colors.black.withOpacity(0.8),
+              ],
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 420;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (kDebugMode) {
+                          debugPrint('👤 ユーザープロフィール画面に遷移: ${post.username}');
+                        }
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => UserProfileScreen(
+                              userId: post.userId.isEmpty ? '' : post.userId,
+                              username: post.username,
+                              userIconUrl: post.userIconUrl,
+                              userIconPath: post.userIconPath,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: isWide ? 22 : 18,
+                            backgroundColor:
+                                SpotLightColors.getSpotlightColor(0),
+                            child: ClipOval(
+                              child: post.userIconUrl != null &&
+                                      post.userIconUrl!.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: post.userIconUrl!,
+                                      fit: BoxFit.cover,
+                                      memCacheWidth: 96,
+                                      memCacheHeight: 96,
+                                      placeholder: (context, url) => Container(
+                                        color:
+                                            SpotLightColors.getSpotlightColor(
+                                                0),
+                                      ),
+                                      errorWidget: (context, url, error) =>
+                                          Container(
+                                        color:
+                                            SpotLightColors.getSpotlightColor(
+                                                0),
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color:
+                                          SpotLightColors.getSpotlightColor(0),
+                                      child: const Icon(
+                                        Icons.person,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        post.username,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white10,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        _getTimeAgo(post.createdAt.toLocal()),
+                                        style: TextStyle(
+                                          color: Colors.grey[400],
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                _ScrollingTitle(
+                                  text: post.title,
+                                  style: TextStyle(
+                                    color: Colors.grey[100],
+                                    fontSize: isWide ? 16 : 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 );
               },
-              child: Row(
-                children: [
-                  // ユーザーアイコン
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: SpotLightColors.getSpotlightColor(0),
-                    child: ClipOval(
-                      child: post.userIconUrl != null &&
-                              post.userIconUrl!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: post.userIconUrl!,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 80,
-                              memCacheHeight: 80,
-                              placeholder: (context, url) => Container(
-                                color: SpotLightColors.getSpotlightColor(0),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: SpotLightColors.getSpotlightColor(0),
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              color: SpotLightColors.getSpotlightColor(0),
-                              child: const Icon(
-                                Icons.person,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // ユーザー名
-                  Text(
-                    post.username,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
             ),
-            const SizedBox(height: 12),
-            // 投稿時刻
-            Text(
-              _getTimeAgo(post.createdAt.toLocal()),
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 12),
-            // タイトル（段階11: スクロールタイトル対応）
-            _ScrollingTitle(
-              text: post.title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -2254,7 +2320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           icon: Icons.chat_bubble_outline,
           color: Colors.white,
           label: '${post.comments}',
-          onTap: () => _handleCommentButton(post, index),
+          onTap: () => _handleCommentButton(post),
         ),
         const SizedBox(height: 20),
         // プレイリスト追加ボタン（段階9: 実装完了）
@@ -2658,67 +2724,535 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// コメントボタンの処理（段階8）
-  Future<void> _handleCommentButton(Post post, int index) async {
+  Future<void> _handleCommentButton(Post post) async {
     if (kDebugMode) {
       debugPrint('💬 コメントボタン: postId=${post.id}');
     }
 
-    // コメントを取得
-    final comments = await CommentService.getComments(post.id);
+    final commentController = TextEditingController();
+    bool isLoading = true;
+    bool hasRequestedComments = false;
+    bool isSheetOpen = true;
+    List<Comment> comments = [];
+    int? replyingToCommentId;
 
-    if (!mounted) return;
+    Future<List<Comment>> refreshComments(StateSetter setModalState) async {
+      if (!isSheetOpen) {
+        return comments;
+      }
+      try {
+        setModalState(() {
+          if (isSheetOpen) {
+            isLoading = true;
+          }
+        });
+      } catch (e) {
+        return comments;
+      }
 
-    // ボトムシートでコメント一覧を表示
+      if (post.id.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ refreshComments: 投稿IDが空です');
+        }
+        return comments;
+      }
+
+      if (_currentIndex >= 0 && _currentIndex < _posts.length) {
+        final currentPost = _posts[_currentIndex];
+        if (currentPost.id != post.id) {
+          if (kDebugMode) {
+            debugPrint('⚠️ refreshComments: データの不一致を検出');
+            debugPrint('  - 期待されるpostId: ${post.id}');
+            debugPrint('  - 実際のpostId: ${currentPost.id}');
+            debugPrint('  - 期待されるusername: ${post.username}');
+            debugPrint('  - 実際のusername: ${currentPost.username}');
+          }
+          final fetchedComments =
+              await CommentService.getComments(currentPost.id);
+          if (!mounted || !isSheetOpen) {
+            return comments;
+          }
+          try {
+            setModalState(() {
+              if (isSheetOpen) {
+                comments = fetchedComments;
+                isLoading = false;
+              }
+            });
+          } catch (e) {
+            return comments;
+          }
+          return fetchedComments;
+        }
+      }
+
+      final fetchedComments = await CommentService.getComments(post.id);
+      if (!mounted || !isSheetOpen) {
+        return comments;
+      }
+      try {
+        setModalState(() {
+          if (isSheetOpen) {
+            comments = fetchedComments;
+            isLoading = false;
+          }
+        });
+      } catch (e) {
+        return comments;
+      }
+
+      if (kDebugMode) {
+        debugPrint('💬 コメント一覧を更新: ${fetchedComments.length}件の親コメント');
+        final totalCount = _countAllComments(fetchedComments);
+        debugPrint('💬 コメント総数（返信含む）: $totalCount件');
+      }
+
+      return fetchedComments;
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _CommentBottomSheet(
-        post: post,
-        comments: comments,
-        onCommentAdded: () async {
-          // コメントを再取得して更新
-          final updatedComments = await CommentService.getComments(post.id);
-          if (mounted) {
-            // コメント数を更新
-            final postIndex = _posts.indexWhere((p) => p.id == post.id);
-            if (postIndex >= 0 && postIndex < _posts.length) {
-              // コメント数をカウント（すべてのコメントと返信を含む）
-              int totalComments = 0;
-              for (final comment in updatedComments) {
-                totalComments++; // 親コメント
-                totalComments += comment.replies.length; // 返信
-              }
-
-              setState(() {
-                _posts[postIndex] = Post(
-                  id: post.id,
-                  userId: post.userId,
-                  username: post.username,
-                  userIconPath: post.userIconPath,
-                  userIconUrl: post.userIconUrl,
-                  title: post.title,
-                  content: post.content,
-                  contentPath: post.contentPath,
-                  type: post.type,
-                  mediaUrl: post.mediaUrl,
-                  thumbnailUrl: post.thumbnailUrl,
-                  likes: post.likes,
-                  playNum: post.playNum,
-                  link: post.link,
-                  comments: totalComments,
-                  shares: post.shares,
-                  isSpotlighted: post.isSpotlighted,
-                  isText: post.isText,
-                  nextContentId: post.nextContentId,
-                  createdAt: post.createdAt,
-                );
-              });
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            if (!isSheetOpen) {
+              return const SizedBox.shrink();
             }
-          }
-        },
-      ),
-    );
+
+            if (!hasRequestedComments) {
+              hasRequestedComments = true;
+              refreshComments(setModalState);
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.7,
+              minChildSize: 0.5,
+              maxChildSize: 0.9,
+              builder: (context, scrollController) {
+                final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.85),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(20)),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      top: 20,
+                      left: 20,
+                      right: 20,
+                      bottom: 20 + keyboardHeight,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'コメント',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () async {
+                                FocusScope.of(context).unfocus();
+                                await Future.delayed(
+                                    const Duration(milliseconds: 100));
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
+                              icon:
+                                  const Icon(Icons.close, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Expanded(
+                          child: isLoading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFFFF6B35),
+                                  ),
+                                )
+                              : comments.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'コメントはありません',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      controller: scrollController,
+                                      itemCount: comments.length,
+                                      itemBuilder: (context, index) {
+                                        final comment = comments[index];
+                                        return _buildCommentItem(
+                                          comment,
+                                          replyingToCommentId:
+                                              replyingToCommentId,
+                                          onReplyPressed: (commentId) {
+                                            if (!isSheetOpen) return;
+                                            setModalState(() {
+                                              if (isSheetOpen) {
+                                                if (replyingToCommentId ==
+                                                    commentId) {
+                                                  replyingToCommentId = null;
+                                                  commentController.clear();
+                                                } else {
+                                                  replyingToCommentId =
+                                                      commentId;
+                                                  commentController.clear();
+                                                }
+                                              }
+                                            });
+                                          },
+                                          onReportPressed: (selectedComment) {
+                                            _showCommentReportDialog(
+                                              selectedComment,
+                                              post,
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                        ),
+                        if (replyingToCommentId != null)
+                          Builder(
+                            builder: (context) {
+                              Comment? replyingToComment;
+                              void findComment(List<Comment> commentList) {
+                                for (final comment in commentList) {
+                                  if (comment.commentID ==
+                                      replyingToCommentId) {
+                                    replyingToComment = comment;
+                                    return;
+                                  }
+                                  if (comment.replies.isNotEmpty) {
+                                    findComment(comment.replies);
+                                  }
+                                }
+                              }
+
+                              findComment(comments);
+
+                              if (replyingToComment == null) {
+                                return const SizedBox.shrink();
+                              }
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[900],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFFF6B35)
+                                        .withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 3,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFF6B35),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.reply,
+                                                color: Color(0xFFFF6B35),
+                                                size: 14,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                replyingToComment!.username,
+                                                style: const TextStyle(
+                                                  color: Color(0xFFFF6B35),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            replyingToComment!.commenttext,
+                                            style: TextStyle(
+                                              color: Colors.grey[300],
+                                              fontSize: 12,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: () {
+                                        if (!isSheetOpen) return;
+                                        setModalState(() {
+                                          if (isSheetOpen) {
+                                            replyingToCommentId = null;
+                                            commentController.clear();
+                                          }
+                                        });
+                                      },
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.grey,
+                                        size: 18,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            children: [
+                              const CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Color(0xFFFF6B35),
+                                child: Icon(Icons.person,
+                                    size: 16, color: Colors.white),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: isSheetOpen
+                                    ? TextField(
+                                        controller: commentController,
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                        decoration: InputDecoration(
+                                          hintText: replyingToCommentId != null
+                                              ? '返信を入力...'
+                                              : 'コメントを追加...',
+                                          hintStyle: TextStyle(
+                                              color: Colors.grey[400]),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                          filled: true,
+                                          fillColor: Colors.grey[800],
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 10,
+                                          ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                              const SizedBox(width: 10),
+                              IconButton(
+                                onPressed: () async {
+                                  if (!isSheetOpen) return;
+                                  final commentText =
+                                      commentController.text.trim();
+                                  if (commentText.isEmpty) return;
+
+                                  try {
+                                    setModalState(() {
+                                      if (isSheetOpen) {
+                                        isLoading = true;
+                                      }
+                                    });
+                                  } catch (e) {
+                                    return;
+                                  }
+
+                                  final success =
+                                      await CommentService.addComment(
+                                    post.id,
+                                    commentText,
+                                    parentCommentId: replyingToCommentId,
+                                  );
+
+                                  if (!isSheetOpen || !mounted) return;
+
+                                  if (success) {
+                                    final wasReplying =
+                                        replyingToCommentId != null;
+
+                                    commentController.clear();
+
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          replyingToCommentId = null;
+                                        }
+                                      });
+                                    } catch (e) {
+                                      return;
+                                    }
+
+                                    if (wasReplying) {
+                                      await Future.delayed(
+                                          const Duration(milliseconds: 500));
+                                    } else {
+                                      await Future.delayed(
+                                          const Duration(milliseconds: 200));
+                                    }
+
+                                    final updatedComments =
+                                        await refreshComments(setModalState);
+                                    if (!isSheetOpen || !mounted) return;
+
+                                    final updatedTotal =
+                                        _countAllComments(updatedComments);
+
+                                    if (kDebugMode) {
+                                      debugPrint(
+                                          '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
+                                      if (_currentIndex >= 0 &&
+                                          _currentIndex < _posts.length) {
+                                        debugPrint(
+                                            '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
+                                        debugPrint(
+                                            '💬 現在の投稿ID: ${_posts[_currentIndex].id}');
+                                        debugPrint(
+                                            '💬 現在の投稿username: ${_posts[_currentIndex].username}');
+                                      }
+                                      debugPrint(
+                                          '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
+                                      if (wasReplying) {
+                                        debugPrint('💬 返信追加後のコメント一覧を更新しました');
+                                      }
+                                    }
+
+                                    if (mounted && !_isDisposed) {
+                                      if (_currentIndex >= 0 &&
+                                          _currentIndex < _posts.length) {
+                                        final currentPost =
+                                            _posts[_currentIndex];
+                                        if (currentPost.id == post.id &&
+                                            currentPost.id.isNotEmpty) {
+                                          setState(() {
+                                            _posts[_currentIndex] = Post(
+                                              id: currentPost.id,
+                                              userId: currentPost.userId,
+                                              username: currentPost.username,
+                                              userIconPath:
+                                                  currentPost.userIconPath,
+                                              userIconUrl:
+                                                  currentPost.userIconUrl,
+                                              title: currentPost.title,
+                                              content: currentPost.content,
+                                              contentPath:
+                                                  currentPost.contentPath,
+                                              type: currentPost.type,
+                                              mediaUrl: currentPost.mediaUrl,
+                                              thumbnailUrl:
+                                                  currentPost.thumbnailUrl,
+                                              likes: currentPost.likes,
+                                              playNum: currentPost.playNum,
+                                              link: currentPost.link,
+                                              comments: updatedTotal,
+                                              shares: currentPost.shares,
+                                              isSpotlighted:
+                                                  currentPost.isSpotlighted,
+                                              isText: currentPost.isText,
+                                              nextContentId:
+                                                  currentPost.nextContentId,
+                                              createdAt: currentPost.createdAt,
+                                            );
+                                          });
+                                        } else if (kDebugMode) {
+                                          debugPrint('⚠️ コメント追加: データの不一致を検出');
+                                          debugPrint(
+                                              '  - 期待されるpostId: ${post.id}');
+                                          debugPrint(
+                                              '  - 実際のpostId: ${currentPost.id}');
+                                          debugPrint(
+                                              '  - 期待されるusername: ${post.username}');
+                                          debugPrint(
+                                              '  - 実際のusername: ${currentPost.username}');
+                                        }
+                                      } else if (kDebugMode) {
+                                        debugPrint(
+                                            '⚠️ コメント追加: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+                                      }
+                                    }
+                                  } else {
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          isLoading = false;
+                                        }
+                                      });
+                                    } catch (e) {
+                                      return;
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.send,
+                                    color: Color(0xFFFF6B35)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    ).then((_) {
+      isSheetOpen = false;
+    }).whenComplete(() {
+      try {
+        commentController.dispose();
+      } catch (_) {}
+    });
+  }
+
+  int _countAllComments(List<Comment> commentList) {
+    var total = 0;
+    for (final comment in commentList) {
+      total++; // 親コメントをカウント
+      if (comment.replies.isNotEmpty) {
+        total += _countAllComments(comment.replies);
+      }
+    }
+    if (kDebugMode) {
+      debugPrint('💬 コメント数カウント: 親コメント=${commentList.length}件, 合計=$total件');
+    }
+    return total;
   }
 
   /// 通報ボタンを構築（段階10）
@@ -2796,280 +3330,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-/// コメントボトムシート（段階8）
-class _CommentBottomSheet extends StatefulWidget {
-  final Post post;
-  final List<Comment> comments;
-  final VoidCallback onCommentAdded;
-
-  const _CommentBottomSheet({
-    required this.post,
-    required this.comments,
-    required this.onCommentAdded,
-  });
-
-  @override
-  State<_CommentBottomSheet> createState() => _CommentBottomSheetState();
-}
-
-class _CommentBottomSheetState extends State<_CommentBottomSheet> {
-  final TextEditingController _commentController = TextEditingController();
-  List<Comment> _comments = [];
-  bool _isLoading = false;
-  bool _isSubmitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _comments = widget.comments;
-  }
-
-  @override
-  void dispose() {
-    _commentController.dispose();
-    super.dispose();
-  }
-
-  /// コメントを投稿
-  Future<void> _submitComment() async {
-    final text = _commentController.text.trim();
-    if (text.isEmpty || _isSubmitting) return;
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      final success = await CommentService.addComment(
-        widget.post.id,
-        text,
-      );
-
-      if (!mounted) return;
-
-      if (success) {
-        _commentController.clear();
-        // コメントを再取得
-        final updatedComments =
-            await CommentService.getComments(widget.post.id);
-        setState(() {
-          _comments = updatedComments;
-        });
-        // 親ウィジェットに通知
-        widget.onCommentAdded();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('コメントの投稿に失敗しました'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ コメント投稿エラー: $e');
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('エラーが発生しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
-    }
-  }
-
-  /// コメント数をカウント
-  int _countAllComments(List<Comment> commentList) {
-    int count = 0;
-    for (final comment in commentList) {
-      count++; // 親コメント
-      if (comment.replies.isNotEmpty) {
-        count += comment.replies.length; // 返信
-      }
-    }
-    return count;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            children: [
-              // ヘッダー
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Colors.grey[800]!,
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'コメント ${_countAllComments(_comments)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // コメント一覧
-              Expanded(
-                child: _comments.isEmpty
-                    ? Center(
-                        child: Text(
-                          'コメントがありません',
-                          style: TextStyle(
-                            color: Colors.grey[400],
-                            fontSize: 16,
-                          ),
+/// コメント一覧ヘルパー
+Widget _buildCommentItem(
+  Comment comment, {
+  required int? replyingToCommentId,
+  required void Function(int) onReplyPressed,
+  required void Function(Comment) onReportPressed,
+}) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: SpotLightColors.getSpotlightColor(0),
+              child: ClipOval(
+                child: comment.userIconUrl != null &&
+                        comment.userIconUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: comment.userIconUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: SpotLightColors.getSpotlightColor(0),
                         ),
-                      )
-                    : ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _comments.length,
-                        itemBuilder: (context, index) {
-                          final comment = _comments[index];
-                          return _buildCommentItem(comment);
-                        },
-                      ),
-              ),
-              // コメント入力欄
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[900],
-                  border: Border(
-                    top: BorderSide(
-                      color: Colors.grey[800]!,
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _commentController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'コメントを入力...',
-                          hintStyle: TextStyle(color: Colors.grey[400]),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.grey[700]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.grey[700]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFFF6B35),
-                            ),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[800],
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                        maxLines: null,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: _isSubmitting ? null : _submitComment,
-                      icon: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFFFF6B35),
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send,
-                              color: Color(0xFFFF6B35),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// コメントアイテムを構築（段階8）
-  Widget _buildCommentItem(Comment comment) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ユーザーアイコン
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: SpotLightColors.getSpotlightColor(0),
-                child: ClipOval(
-                  child: comment.userIconUrl != null &&
-                          comment.userIconUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: comment.userIconUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: SpotLightColors.getSpotlightColor(0),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: SpotLightColors.getSpotlightColor(0),
-                            child: const Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        )
-                      : Container(
+                        errorWidget: (context, url, error) => Container(
                           color: SpotLightColors.getSpotlightColor(0),
                           child: const Icon(
                             Icons.person,
@@ -3077,117 +3365,146 @@ class _CommentBottomSheetState extends State<_CommentBottomSheet> {
                             size: 20,
                           ),
                         ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // コメント内容
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          comment.username,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatCommentTime(comment.commenttimestamp),
-                          style: TextStyle(
-                            color: Colors.grey[400],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      comment.commenttext,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // 通報ボタン（段階10: 実装完了）
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: Colors.grey[400], size: 20),
-                color: Colors.grey[900],
-                onSelected: (value) {
-                  if (value == 'report') {
-                    _showCommentReportDialogInSheet(comment);
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag, color: Colors.red[400], size: 20),
-                        const SizedBox(width: 8),
-                        const Text(
-                          '通報',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          // 返信
-          if (comment.replies.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(left: 52),
-              child: Column(
-                children: comment.replies.map((reply) {
-                  return _buildReplyItem(reply);
-                }).toList(),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// 返信アイテムを構築（段階8）
-  Widget _buildReplyItem(Comment reply) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: SpotLightColors.getSpotlightColor(0),
-            child: ClipOval(
-              child: reply.userIconUrl != null && reply.userIconUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: reply.userIconUrl!,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: SpotLightColors.getSpotlightColor(0),
-                      ),
-                      errorWidget: (context, url, error) => Container(
+                      )
+                    : Container(
                         color: SpotLightColors.getSpotlightColor(0),
                         child: const Icon(
                           Icons.person,
                           color: Colors.white,
-                          size: 16,
+                          size: 20,
                         ),
                       ),
-                    )
-                  : Container(
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Text(
+                              comment.username,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatCommentTime(comment.commenttimestamp),
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (comment.parentcommentID == null)
+                        TextButton(
+                          onPressed: () {
+                            final targetId = comment.commentID;
+                            if (targetId != null) {
+                              onReplyPressed(targetId);
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            minimumSize: const Size(0, 0),
+                          ),
+                          child: Text(
+                            '返信',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    comment.commenttext,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: Colors.grey[400], size: 20),
+              color: Colors.grey[900],
+              onSelected: (value) {
+                if (value == 'report') {
+                  onReportPressed(comment);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      Icon(Icons.flag, color: Colors.red[400], size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '通報',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        if (comment.replies.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 52),
+            child: Column(
+              children: comment.replies.map((reply) {
+                return _buildReplyItem(
+                  reply,
+                  onReportPressed: onReportPressed,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+Widget _buildReplyItem(
+  Comment reply, {
+  required void Function(Comment) onReportPressed,
+}) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor: SpotLightColors.getSpotlightColor(0),
+          child: ClipOval(
+            child: reply.userIconUrl != null && reply.userIconUrl!.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: reply.userIconUrl!,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: SpotLightColors.getSpotlightColor(0),
+                    ),
+                    errorWidget: (context, url, error) => Container(
                       color: SpotLightColors.getSpotlightColor(0),
                       child: const Icon(
                         Icons.person,
@@ -3195,97 +3512,101 @@ class _CommentBottomSheetState extends State<_CommentBottomSheet> {
                         size: 16,
                       ),
                     ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      reply.username,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  )
+                : Container(
+                    color: SpotLightColors.getSpotlightColor(0),
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 16,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatCommentTime(reply.commenttimestamp),
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  reply.commenttext,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
                   ),
-                ),
-              ],
-            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  /// コメント時間をフォーマット（段階8）
-  String _formatCommentTime(String timestamp) {
-    try {
-      final dateTime = DateTime.parse(timestamp);
-      final now = DateTime.now();
-      final difference = now.difference(dateTime);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}日前';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}時間前';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}分前';
-      } else {
-        return 'たった今';
-      }
-    } catch (e) {
-      return timestamp;
-    }
-  }
-
-  /// コメント通報ダイアログを表示（段階10: _CommentBottomSheetState用）
-  void _showCommentReportDialogInSheet(Comment comment) {
-    // 自分のコメントかどうかをチェック
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final currentUserId = authProvider.currentUser?.id;
-    final commentUserId = comment.userId;
-
-    if (currentUserId != null &&
-        commentUserId != null &&
-        currentUserId.toString().trim() == commentUserId.trim()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('自分のコメントは通報できません'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
         ),
-      );
-      return;
-    }
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    reply.username,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatCommentTime(reply.commenttimestamp),
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 11,
+                    ),
+                  ),
+                  const Spacer(),
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert,
+                        color: Colors.grey[400], size: 18),
+                    color: Colors.grey[900],
+                    onSelected: (value) {
+                      if (value == 'report') {
+                        onReportPressed(reply);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'report',
+                        child: Row(
+                          children: [
+                            Icon(Icons.flag, color: Colors.red[400], size: 20),
+                            const SizedBox(width: 8),
+                            const Text(
+                              '通報',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                reply.commenttext,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
-    showDialog(
-      context: context,
-      builder: (context) => _CommentReportDialog(
-        comment: comment,
-        post: widget.post,
-      ),
-    );
+String _formatCommentTime(String timestamp) {
+  try {
+    final dateTime = DateTime.parse(timestamp);
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}日前';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}時間前';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}分前';
+    } else {
+      return 'たった今';
+    }
+  } catch (e) {
+    return timestamp;
   }
 }
 
