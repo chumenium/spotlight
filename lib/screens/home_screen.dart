@@ -6,7 +6,6 @@ import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'dart:async';
-import 'dart:math' as math;
 import '../models/post.dart';
 import '../models/comment.dart';
 import '../services/post_service.dart';
@@ -45,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingMore = false;
   bool _hasMorePosts = true;
   bool _noMoreContent = false;
+  bool _hasQueuedLoadMore = false;
 
   // 取得済みコンテンツID管理（重複除外用）
   final Set<String> _fetchedContentIds = <String>{};
@@ -84,8 +84,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // スポットライト関連（段階7）
   bool _isSpotlighting = false;
-  double _swipeOffset = 0.0;
-  double? _lastPanY;
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
@@ -475,20 +473,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 次のページを事前読み込み
     _preloadNextPages(index);
 
-    // 最後から5件前になったら追加コンテンツを読み込む（高頻度スクロール対応：早めに読み込み）
-    // または、最後のページに到達した時も読み込む
-    if ((index >= _posts.length - 5 || index >= _posts.length - 1) &&
-        !_isLoadingMore &&
-        !_noMoreContent) {
+    // 余裕をもって追加コンテンツを読み込む
+    if (_shouldTriggerPrefetch(index)) {
       if (kDebugMode) {
         debugPrint(
-            '📄 読み込み条件チェック: index=$index, posts=${_posts.length}, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
+            '📄 読み込み条件チェック（余裕あり）: index=$index, posts=${_posts.length}, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
       }
-      _loadMoreContents();
+      _scheduleLoadMoreWithGrace();
     } else if (kDebugMode && index >= _posts.length - 3) {
       debugPrint(
           '📄 読み込みスキップ: index=$index, _isLoadingMore=$_isLoadingMore, _noMoreContent=$_noMoreContent');
     }
+  }
+
+  bool _shouldTriggerPrefetch(int index) {
+    if (_posts.isEmpty) return false;
+    final prefetchThreshold = _posts.length > 8 ? _posts.length - 8 : 0;
+    return index >= prefetchThreshold;
   }
 
   /// メディアページ変更時の処理（段階4-5: 動画・音声の初期化・再生）
@@ -705,6 +706,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _initializedVideos.remove(videoIndex);
       }
     }
+  }
+
+  void _scheduleLoadMoreWithGrace() {
+    if (_isDisposed || _noMoreContent) return;
+    if (_isLoadingMore) {
+      if (!_hasQueuedLoadMore) {
+        _hasQueuedLoadMore = true;
+        if (kDebugMode) {
+          debugPrint('🌀 スポットライト読み込みをキューに追加しました');
+        }
+      }
+      return;
+    }
+
+    _loadMoreContents();
+  }
+
+  void _processQueuedLoadMore() {
+    if (_isDisposed ||
+        _hasQueuedLoadMore == false ||
+        _isLoadingMore ||
+        _noMoreContent) {
+      return;
+    }
+
+    _hasQueuedLoadMore = false;
+    if (kDebugMode) {
+      debugPrint('🚀 キューから追加の読み込みを開始します');
+    }
+
+    Future.microtask(() {
+      if (_isDisposed || _isLoadingMore || _noMoreContent) return;
+      _loadMoreContents();
+    });
   }
 
   /// 追加コンテンツを読み込む（段階3: 無限スクロール）
@@ -1190,6 +1225,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isLoadingMore = false;
         // エラー時は次の読み込みを試みることを許可
       });
+    } finally {
+      _processQueuedLoadMore();
     }
   }
 
@@ -1311,64 +1348,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 投稿アイテムを構築（段階4: 動画コンテンツ表示を追加、段階7: 上スワイプジェスチャー対応）
   Widget _buildPostItem(Post post, int index) {
     return GestureDetector(
-      // 上スワイプでスポットライト（段階7）
-      onVerticalDragUpdate: (details) {
-        _handlePanUpdate(details, post, index);
-      },
-      onVerticalDragEnd: (details) {
-        _handlePanEnd(details, post, index);
-      },
       child: Container(
         color: Colors.black,
         child: Stack(
           children: [
             // コンテンツ表示（段階4-6）
             _buildPostContent(post, index),
-
-            // スポットライトスワイプインジケーター（段階7）
-            if (_swipeOffset > 0 && _currentIndex == index)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Transform.translate(
-                  offset: Offset(0, -_swipeOffset),
-                  child: Container(
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          SpotLightColors.getSpotlightColor(0).withOpacity(0.8),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.flashlight_on,
-                            size: 32,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'スポットライト',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
 
             // 下部コントロール（段階2: 実装完了）
             _buildBottomControls(post),
@@ -2423,44 +2408,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _isSpotlighting = false;
       });
-    }
-  }
-
-  /// スポットライト状態をリセット（段階7）
-  void _resetSpotlightState() {
-    setState(() {
-      _swipeOffset = 0.0;
-      _lastPanY = null;
-    });
-  }
-
-  /// ジェスチャー処理 - パン更新（段階7: 上スワイプでスポットライト）
-  void _handlePanUpdate(DragUpdateDetails details, Post post, int index) {
-    if (!mounted || _currentIndex != index) return;
-
-    // 上方向へのスワイプのみを検出
-    if (details.delta.dy < 0) {
-      setState(() {
-        _swipeOffset = math.max(0, _swipeOffset - details.delta.dy);
-        _lastPanY = details.globalPosition.dy;
-      });
-    }
-  }
-
-  /// ジェスチャー処理 - パン終了（段階7: 上スワイプでスポットライト実行）
-  void _handlePanEnd(DragEndDetails details, Post post, int index) {
-    if (!mounted || _currentIndex != index) {
-      _resetSpotlightState();
-      return;
-    }
-
-    // スワイプが十分な場合は即座にスポットライト実行
-    if (_swipeOffset > 80) {
-      _executeSpotlight(post, index);
-      _resetSpotlightState();
-    } else {
-      // スワイプが不十分な場合は元に戻す
-      _resetSpotlightState();
     }
   }
 
