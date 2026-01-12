@@ -85,6 +85,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // スポットライト関連（段階7）
   bool _isSpotlighting = false;
+  String? _pendingTargetPostId;
+  bool _isFetchingTargetPost = false;
 
   // プレースホルダー表示状態
   bool _isShowingLoadingPlaceholder = false;
@@ -314,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 '📄 初期読み込み完了: ${uniquePosts.length}件, _hasMorePosts=$_hasMorePosts');
           }
         });
+        _schedulePendingTargetCheck();
 
         if (kDebugMode) {
           debugPrint(
@@ -543,6 +546,89 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final navigationProvider =
             Provider.of<NavigationProvider>(context, listen: false);
         navigationProvider.notifyProfileHistoryUpdated();
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final navigationProvider = Provider.of<NavigationProvider>(context);
+    final targetPostId = navigationProvider.targetPostId;
+    if (targetPostId != null && targetPostId != _pendingTargetPostId) {
+      _pendingTargetPostId = targetPostId;
+      _insertProviderPostIfNeeded(targetPostId);
+      _fetchTargetPost(targetPostId);
+      _schedulePendingTargetCheck();
+    }
+    _tryJumpToPendingTarget();
+  }
+
+  void _schedulePendingTargetCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isDisposed) return;
+      _tryJumpToPendingTarget();
+    });
+  }
+
+  void _insertProviderPostIfNeeded(String postId) {
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
+    final providerPost = navigationProvider.targetPost;
+    if (providerPost == null || providerPost.id != postId) return;
+    if (_posts.any((existing) => existing.id == postId)) return;
+
+    setState(() {
+      _posts.insert(0, providerPost);
+      _addFetchedContentId(postId);
+    });
+  }
+
+  Future<void> _fetchTargetPost(String postId) async {
+    if (_isFetchingTargetPost) return;
+    _isFetchingTargetPost = true;
+    try {
+      final post = await PostService.fetchContentById(postId);
+      if (post == null || _isDisposed) return;
+      if (_posts.any((existing) => existing.id == post.id)) return;
+
+      setState(() {
+        _posts.insert(0, post);
+        _addFetchedContentId(post.id);
+      });
+      _schedulePendingTargetCheck();
+    } finally {
+      _isFetchingTargetPost = false;
+    }
+  }
+
+  void _tryJumpToPendingTarget() {
+    if (_pendingTargetPostId == null || _posts.isEmpty || _isDisposed) return;
+    final targetIndex =
+        _posts.indexWhere((post) => post.id == _pendingTargetPostId);
+    if (targetIndex < 0 || targetIndex >= _posts.length) return;
+
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isDisposed || !mounted) return;
+      if (targetIndex >= _posts.length) return;
+      if (!_pageController.hasClients) {
+        _schedulePendingTargetCheck();
+        return;
+      }
+      _pageController.jumpToPage(targetIndex);
+      if (mounted) {
+        setState(() {
+          _currentIndex = targetIndex;
+        });
+      }
+      _handleMediaPageChange(targetIndex);
+      navigationProvider.clearTargetPostId();
+      _pendingTargetPostId = null;
+      if (kDebugMode) {
+        debugPrint('📱 ナビゲーション: targetPostIdを表示しました (index=$targetIndex)');
       }
     });
   }
@@ -964,6 +1050,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   _isLoadingMore = false;
                   _hasMorePosts = randomUniquePosts.length >= 3;
                 });
+                _schedulePendingTargetCheck();
 
                 if (kDebugMode) {
                   debugPrint(
@@ -1112,6 +1199,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // ただし、取得件数が少ない場合は、次回の読み込みで終了する可能性が高い
             _hasMorePosts = uniquePosts.length >= 3; // 3件以上取得できた場合は続きがあると判断
           });
+          _schedulePendingTargetCheck();
 
           if (kDebugMode) {
             debugPrint(
