@@ -64,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Map<int, String?> _playlistFirstContentThumbnails = {};
   // バッジポップアップのオーバーレイ
   OverlayEntry? _badgeOverlayEntry;
+  int _lastHistoryTrigger = 0;
 
   /// アイコンキャッシュをクリア（アイコン更新時に呼び出し）
   ///
@@ -188,6 +189,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
+    if (_lastHistoryTrigger !=
+        navigationProvider.profileHistoryRefreshTrigger) {
+      _lastHistoryTrigger = navigationProvider.profileHistoryRefreshTrigger;
+      _fetchHistory();
+    }
+  }
+
   /// プロフィールデータをリフレッシュ（プルリフレッシュ用）
   Future<void> _refreshProfileData() async {
     if (kDebugMode) {
@@ -232,10 +245,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
           final userData = responseData['data'] as Map<String, dynamic>;
           final bio = userData['bio'] as String?;
-          
+
           if (mounted) {
             setState(() {
               _bio = bio;
@@ -515,8 +529,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               fit: BoxFit.contain,
               filterQuality: FilterQuality.high,
               isAntiAlias: true,
-              cacheWidth: (160 * MediaQuery.of(context).devicePixelRatio).round(),
-              cacheHeight: (45 * MediaQuery.of(context).devicePixelRatio).round(),
+              cacheWidth:
+                  (160 * MediaQuery.of(context).devicePixelRatio).round(),
+              cacheHeight:
+                  (45 * MediaQuery.of(context).devicePixelRatio).round(),
               errorBuilder: (context, error, stackTrace) {
                 // ロゴ画像が見つからない場合は何も表示しない
                 return const SizedBox.shrink();
@@ -602,10 +618,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // iconPathを優先的に使用（バックエンドから取得した最新の値）
           if (iconPath.isNotEmpty) {
             // default_icon.pngの場合はS3のCloudFront URLを使用
-            if (iconPath == 'default_icon.png' || 
+            if (iconPath == 'default_icon.png' ||
                 iconPath == '/icon/default_icon.png' ||
                 iconPath.endsWith('/default_icon.png')) {
-              baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+              baseIconUrl =
+                  '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
               if (kDebugMode) {
                 debugPrint(
                     '🖼️ プロフィール: S3のデフォルトアイコンを使用: $baseIconUrl (iconPath: $iconPath)');
@@ -646,7 +663,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           } else {
             // iconPathがない場合はS3のデフォルトアイコンを使用
-            baseIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+            baseIconUrl =
+                '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
             if (kDebugMode) {
               debugPrint('🖼️ プロフィール: S3のデフォルトアイコンを使用 (iconPath: $iconPath)');
@@ -722,7 +740,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         }
                         // エラー時はS3のdefault_icon.pngを表示
                         return CachedNetworkImage(
-                          imageUrl: '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png',
+                          imageUrl:
+                              '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png',
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
@@ -765,7 +784,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).textTheme.titleLarge?.color,
+                            color:
+                                Theme.of(context).textTheme.titleLarge?.color,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -875,7 +895,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Icon(
         badge.icon,
         color: Colors.white,
-        size: 24,  //名前横バッジサイズ
+        size: 24, //名前横バッジサイズ
       ),
     );
   }
@@ -896,7 +916,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
+                      color: Theme.of(context).textTheme.titleLarge?.color ??
+                          const Color(0xFF1A1A1A),
                     ),
                   ),
                   TextButton(
@@ -922,8 +943,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Divider(
                 height: 1,
                 thickness: 1,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.grey[800] 
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[800]
                     : Colors.grey[300],
                 indent: 0,
                 endIndent: 0,
@@ -957,7 +978,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '投稿がありません',
                             style: TextStyle(
-                              color: Theme.of(context).textTheme.bodyMedium?.color,
+                              color:
+                                  Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1289,7 +1311,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Text(
                 _getTruncatedTitle(_getSafeTitle(post.title)),
                 style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color ?? const Color(0xFF2C2C2C),
+                  color: Theme.of(context).textTheme.bodyMedium?.color ??
+                      const Color(0xFF2C2C2C),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1319,7 +1342,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
+                      color: Theme.of(context).textTheme.titleLarge?.color ??
+                          const Color(0xFF1A1A1A),
                     ),
                   ),
                   TextButton(
@@ -1345,8 +1369,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Divider(
                 height: 1,
                 thickness: 1,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.grey[800] 
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[800]
                     : Colors.grey[300],
                 indent: 0,
                 endIndent: 0,
@@ -1380,7 +1404,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '視聴履歴がありません',
                             style: TextStyle(
-                              color: Theme.of(context).textTheme.bodyMedium?.color,
+                              color:
+                                  Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1626,7 +1651,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(
               playlist.title,
               style: TextStyle(
-                color: Theme.of(context).textTheme.bodyMedium?.color ?? const Color(0xFF2C2C2C),
+                color: Theme.of(context).textTheme.bodyMedium?.color ??
+                    const Color(0xFF2C2C2C),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1655,7 +1681,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
+                      color: Theme.of(context).textTheme.titleLarge?.color ??
+                          const Color(0xFF1A1A1A),
                     ),
                   ),
                   TextButton(
@@ -1681,8 +1708,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Divider(
                 height: 1,
                 thickness: 1,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.grey[800] 
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[800]
                     : Colors.grey[300],
                 indent: 0,
                 endIndent: 0,
@@ -1716,7 +1743,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             '再生リストがありません',
                             style: TextStyle(
-                              color: Theme.of(context).textTheme.bodyMedium?.color,
+                              color:
+                                  Theme.of(context).textTheme.bodyMedium?.color,
                               fontSize: 14,
                             ),
                           ),
@@ -1775,7 +1803,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.titleLarge?.color ?? const Color(0xFF1A1A1A),
+                          color:
+                              Theme.of(context).textTheme.titleLarge?.color ??
+                                  const Color(0xFF1A1A1A),
                         ),
                       ),
                       Text(
@@ -1791,8 +1821,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Divider(
                     height: 1,
                     thickness: 1,
-                    color: Theme.of(context).brightness == Brightness.dark 
-                        ? Colors.grey[800] 
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[800]
                         : Colors.grey[300],
                     indent: 0,
                     endIndent: 0,
@@ -1822,12 +1852,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTapDown: isUnlocked
                         ? (_) => _showBadgeOverlay(context, badge)
                         : null,
-                    onTapUp: isUnlocked
-                        ? (_) => _hideBadgeOverlay()
-                        : null,
-                    onTapCancel: isUnlocked
-                        ? () => _hideBadgeOverlay()
-                        : null,
+                    onTapUp: isUnlocked ? (_) => _hideBadgeOverlay() : null,
+                    onTapCancel: isUnlocked ? () => _hideBadgeOverlay() : null,
                     child: Container(
                       width: 80,
                       margin: const EdgeInsets.only(right: 12),
@@ -1880,10 +1906,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             badge.name,
                             style: TextStyle(
                               color: isUnlocked
-                                  ? (Theme.of(context).brightness == Brightness.dark
+                                  ? (Theme.of(context).brightness ==
+                                          Brightness.dark
                                       ? Colors.white
                                       : const Color(0xFF2C2C2C))
-                                  : (Theme.of(context).brightness == Brightness.dark
+                                  : (Theme.of(context).brightness ==
+                                          Brightness.dark
                                       ? Colors.grey[600]
                                       : Colors.grey[700]),
                               fontSize: 10,
@@ -1912,11 +1940,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final overlay = Overlay.of(context);
     final screenSize = MediaQuery.of(context).size;
-    
+
     // ポップアップのサイズを計算
     const popupWidth = 280.0;
     const popupHeight = 400.0;
-    
+
     // ポップアップの位置を計算（画面中央に配置）
     final left = (screenSize.width - popupWidth) / 2;
     final top = (screenSize.height - popupHeight) / 2;
@@ -1984,8 +2012,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 16),
                   // 獲得条件（管理者バッジの場合は特別な表示）
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
                     decoration: BoxDecoration(
                       color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.grey[800]
@@ -2174,22 +2202,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: ListTile(
         leading: Icon(
           icon,
-          color: theme.textTheme.bodyLarge?.color ?? 
-                 (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
+          color: theme.textTheme.bodyLarge?.color ??
+              (theme.brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF2C2C2C)),
           size: 24,
         ),
         title: Text(
           title,
           style: TextStyle(
-            color: theme.textTheme.bodyLarge?.color ?? 
-                   (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
+            color: theme.textTheme.bodyLarge?.color ??
+                (theme.brightness == Brightness.dark
+                    ? Colors.white
+                    : const Color(0xFF2C2C2C)),
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
         ),
         trailing: Icon(
           Icons.chevron_right,
-          color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
+          color: theme.brightness == Brightness.dark
+              ? Colors.grey[400]
+              : Colors.grey[600],
           size: 20,
         ),
         onTap: onTap,
@@ -2203,8 +2237,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Divider(
       height: 1,
       thickness: 1,
-      color: theme.brightness == Brightness.dark 
-          ? Colors.grey[800] 
+      color: theme.brightness == Brightness.dark
+          ? Colors.grey[800]
           : Colors.grey[300],
       indent: 0,
       endIndent: 0,
@@ -2224,21 +2258,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: ListTile(
               leading: Icon(
                 isGuest ? Icons.exit_to_app : Icons.logout_rounded,
-                color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
+                color: theme.brightness == Brightness.dark
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
                 size: 24,
               ),
               title: Text(
                 isGuest ? 'ログイン画面へ戻る' : 'ログアウト',
                 style: TextStyle(
-                  color: theme.textTheme.bodyLarge?.color ?? 
-                         (theme.brightness == Brightness.dark ? Colors.white : const Color(0xFF2C2C2C)),
+                  color: theme.textTheme.bodyLarge?.color ??
+                      (theme.brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF2C2C2C)),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               trailing: Icon(
                 Icons.chevron_right,
-                color: theme.brightness == Brightness.dark ? Colors.grey[400] : Colors.grey[600],
+                color: theme.brightness == Brightness.dark
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
                 size: 20,
               ),
               onTap: () async {
@@ -2249,11 +2289,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     backgroundColor: Theme.of(context).cardColor,
                     title: Text(
                       'ログアウト',
-                      style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
+                      style: TextStyle(
+                          color: Theme.of(context).textTheme.titleLarge?.color),
                     ),
                     content: Text(
                       isGuest ? 'ログイン画面に戻りますか？' : 'ログアウトしてログイン画面に戻りますか？',
-                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                      style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyMedium?.color),
                     ),
                     actions: [
                       TextButton(
@@ -2332,7 +2374,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 title: Text(
                   'アイコンを設定',
-                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                  style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyLarge?.color),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -2533,7 +2576,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint('🔗 古いアイコンURL: $oldIconUrl');
           if (user?.iconPath != null) {
             final oldIconPath = user!.iconPath!;
-            if (oldIconPath.contains('default_icon') || 
+            if (oldIconPath.contains('default_icon') ||
                 oldIconPath.endsWith('default_icon.png')) {
               debugPrint('ℹ️ 古いアイコンはdefault_iconのため、バックエンド側で削除されません');
             } else {
@@ -3241,7 +3284,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // S3のCloudFront URLからデフォルトアイコンを読み込む
     // DB上ではdefault_icon.pngになっているが、S3のspotlight-contents/icon/default_icon.pngを使用
     const defaultIconPath = '/icon/default_icon.png';
-    final defaultIconUrl = '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
+    final defaultIconUrl =
+        '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
     if (kDebugMode) {
       debugPrint('🖼️ S3のデフォルトアイコン確認中: $defaultIconUrl');
@@ -3249,31 +3293,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     bool refreshed = false;
-    
+
     try {
       // S3のデフォルトアイコンが利用可能かを確認（非同期で実行、エラーは無視）
-      http.head(Uri.parse(defaultIconUrl)).timeout(
+      http
+          .head(Uri.parse(defaultIconUrl))
+          .timeout(
             const Duration(seconds: 3),
             onTimeout: () => http.Response('', 404),
-          ).then((response) {
-            if (kDebugMode) {
-              if (response.statusCode == 200) {
-                debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
-              } else {
-                debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
-              }
-            }
-          }).catchError((e) {
-            // エラーは無視（S3の確認はオプション）
-            if (kDebugMode) {
-              debugPrint('⚠️ S3のデフォルトアイコン確認エラー（無視）: $e');
-            }
-          });
+          )
+          .then((response) {
+        if (kDebugMode) {
+          if (response.statusCode == 200) {
+            debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
+          } else {
+            debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
+          }
+        }
+      }).catchError((e) {
+        // エラーは無視（S3の確認はオプション）
+        if (kDebugMode) {
+          debugPrint('⚠️ S3のデフォルトアイコン確認エラー（無視）: $e');
+        }
+      });
 
       // バックエンドから最新のユーザー情報を再取得して反映（admin情報も含む）
       // refreshUserInfoFromBackendはupdateUserInfoを内部で呼び出すため、
       // バックエンドから取得したadmin情報も正しく反映される
-      refreshed = await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
+      refreshed =
+          await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
 
       if (kDebugMode) {
         if (refreshed) {

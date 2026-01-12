@@ -92,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
+  String? _lastRecordedPostId;
 
   @override
   void initState() {
@@ -507,6 +508,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isDisposed || index < 0 || index >= _posts.length) return;
 
     final post = _posts[index];
+    _recordPlayHistoryIfNeeded(post);
 
     // 動画コンテンツの場合（段階4）
     if (post.postType == PostType.video) {
@@ -518,15 +520,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (controller != null &&
             controller.value.isInitialized &&
             !controller.value.isPlaying) {
-          _currentPlayingVideo = index;
-          controller.play();
-          controller.setLooping(true);
-          _startSeekBarUpdateTimer();
-
-          if (mounted) {
-            setState(() {});
-          }
-
+          _startVideoPlayback(index);
           if (kDebugMode) {
             debugPrint('✅ 逆スクロール時の動画再生: postId=${post.id}, index=$index');
           }
@@ -539,6 +533,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _recordPlayHistoryIfNeeded(Post post) {
+    if (post.id.isEmpty) return;
+    if (_lastRecordedPostId == post.id) return;
+    _lastRecordedPostId = post.id;
+
+    PostService.recordPlayHistory(post.id).then((success) {
+      if (success && !_isDisposed) {
+        final navigationProvider =
+            Provider.of<NavigationProvider>(context, listen: false);
+        navigationProvider.notifyProfileHistoryUpdated();
+      }
+    });
+  }
+
   /// 動画コントローラーを初期化（段階4）
   Future<void> _initializeVideoController(int postIndex, Post post) async {
     if (_isDisposed || postIndex < 0 || postIndex >= _posts.length) return;
@@ -549,22 +557,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (controller != null && controller.value.isInitialized) {
         // 現在表示中の動画を確実に再生（逆スクロール時も対応）
         if (_currentIndex == postIndex) {
-          _currentPlayingVideo = postIndex;
-
-          // 動画が停止している場合は再生
           if (!controller.value.isPlaying) {
-            controller.play();
-            controller.setLooping(true);
-            _startSeekBarUpdateTimer();
-
+            _startVideoPlayback(postIndex);
             if (kDebugMode) {
               debugPrint('✅ 既存動画を再生しました: postId=${post.id}, index=$postIndex');
             }
-          }
-
-          // UIを更新（再生マークを非表示にするため）
-          if (mounted) {
-            setState(() {});
           }
         }
       }
@@ -620,6 +617,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // リスナーを追加
       controller.addListener(_onVideoPositionChanged);
+      _applyDefaultVideoSettings(controller);
 
       setState(() {
         _videoControllers[postIndex] = controller;
@@ -628,10 +626,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // 現在表示中の動画を再生
       if (_currentIndex == postIndex) {
-        _currentPlayingVideo = postIndex;
-        controller.play();
-        controller.setLooping(true);
-        _startSeekBarUpdateTimer();
+        _startVideoPlayback(postIndex);
 
         if (kDebugMode) {
           debugPrint('✅ 動画を初期化・再生しました: postId=${post.id}, index=$postIndex');
@@ -676,6 +671,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // setState(() { ... });
       }
     });
+  }
+
+  void _applyDefaultVideoSettings(VideoPlayerController controller) {
+    if (!controller.value.isLooping) {
+      controller.setLooping(true);
+    }
+    if (controller.value.volume != 1.0) {
+      controller.setVolume(1.0);
+    }
+  }
+
+  void _startVideoPlayback(int index) {
+    final controller = _videoControllers[index];
+    if (controller == null || !controller.value.isInitialized) return;
+    _applyDefaultVideoSettings(controller);
+
+    if (!controller.value.isPlaying) {
+      controller.play();
+    }
+
+    _currentPlayingVideo = index;
+    _startSeekBarUpdateTimer();
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// 次のページを事前読み込み（段階4: 動画プレイヤーの事前初期化）
@@ -1528,9 +1549,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // 動画プレイヤー
               Center(
                 child: AspectRatio(
-                  aspectRatio: value.aspectRatio > 0
-                      ? value.aspectRatio
-                      : 16 / 9, // デフォルトのアスペクト比
+                  aspectRatio: _resolveVideoAspectRatio(value),
                   child: VideoPlayer(controller),
                 ),
               ),
@@ -1552,6 +1571,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       },
     );
+  }
+
+  double _resolveVideoAspectRatio(VideoPlayerValue value) {
+    final width = value.size.width;
+    final height = value.size.height;
+
+    if (width > 0 && height > 0) {
+      return width / height;
+    }
+
+    if (value.aspectRatio > 0 && value.aspectRatio.isFinite) {
+      return value.aspectRatio;
+    }
+
+    return 16 / 9;
   }
 
   /// 音声コンテンツを構築（段階5）
@@ -2595,9 +2629,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Navigator.of(context).pop();
 
               try {
-                final playlistId = await PlaylistService.createPlaylist(title);
+                var playlistId = await PlaylistService.createPlaylist(title);
+                if ((playlistId == null || playlistId <= 0) && mounted) {
+                  // playlistidが返らなかった／0だった場合、取得して一致するタイトルを探す
+                  final refreshed = await PlaylistService.getPlaylists();
+                  final matched = refreshed.firstWhere(
+                    (item) => item.title.trim() == title && item.playlistid > 0,
+                    orElse: () =>
+                        Playlist(playlistid: 0, title: '', thumbnailpath: null),
+                  );
+                  playlistId =
+                      matched.playlistid > 0 ? matched.playlistid : null;
+                }
+
                 if (playlistId != null && mounted) {
-                  // 新しく作成したプレイリストに追加
                   final success = await PlaylistService.addContentToPlaylist(
                     playlistId,
                     post.id,

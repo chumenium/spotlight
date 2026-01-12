@@ -5,11 +5,13 @@ class NavigationProvider with ChangeNotifier {
   String? _targetPostId; // ホーム画面で表示する投稿ID
   String? _targetPostTitle; // ホーム画面で表示する投稿のタイトル（検証用）
   int _notificationRefreshTrigger = 0; // 通知再読み込み用のトリガー
+  int _profileHistoryRefreshTrigger = 0;
 
   int get currentIndex => _currentIndex;
   String? get targetPostId => _targetPostId;
   String? get targetPostTitle => _targetPostTitle;
   int get notificationRefreshTrigger => _notificationRefreshTrigger;
+  int get profileHistoryRefreshTrigger => _profileHistoryRefreshTrigger;
 
   void setCurrentIndex(int index) {
     if (_currentIndex != index) {
@@ -56,6 +58,12 @@ class NavigationProvider with ChangeNotifier {
     _currentIndex = 0;
     _targetPostId = null;
     _targetPostTitle = null;
+    _profileHistoryRefreshTrigger = 0;
+    notifyListeners();
+  }
+
+  void notifyProfileHistoryUpdated() {
+    _profileHistoryRefreshTrigger++;
     notifyListeners();
   }
 }
