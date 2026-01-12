@@ -86,6 +86,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // スポットライト関連（段階7）
   bool _isSpotlighting = false;
 
+  // プレースホルダー表示状態
+  bool _isShowingLoadingPlaceholder = false;
+  bool _wasShowingLoadingPlaceholderAtLoadStart = false;
+
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
 
@@ -472,6 +476,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 現在の投稿の動画を再生（段階4）
     _handleMediaPageChange(index);
 
+    // 読み込み中プレースホルダー表示状態を判定
+    final hasMoreContent = !_noMoreContent || _isLoadingMore;
+    _isShowingLoadingPlaceholder = hasMoreContent && index == _posts.length;
+
     // 次のページを事前読み込み
     _preloadNextPages(index);
 
@@ -754,6 +762,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    _wasShowingLoadingPlaceholderAtLoadStart = _isShowingLoadingPlaceholder;
+
     if (kDebugMode) {
       debugPrint(
           '📄 _loadMoreContents: 開始 (_hasMorePosts=$_hasMorePosts, posts=${_posts.length})');
@@ -767,6 +777,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final loadingStartPageIndex = currentPageValue?.round() ?? _currentIndex;
     _loadingStartIndex = loadingStartPageIndex;
+
+    final isViewingLoadingPlaceholder = (_pageController.hasClients
+            ? (currentPageValue?.round() ?? _currentIndex)
+            : _currentIndex) ==
+        _posts.length;
+    _wasShowingLoadingPlaceholderAtLoadStart =
+        isViewingLoadingPlaceholder || _currentIndex >= _posts.length;
 
     setState(() {
       _isLoadingMore = true;
@@ -1063,7 +1080,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // 読み込み成功時は、読み込み開始時に読み込み中プレースホルダーが表示されていた場合は必ず自動遷移
           final shouldAutoNavigate = wasViewingLoadingPlaceholderAtStart ||
               wasNearLastPostAtStart ||
-              isCurrentlyViewingLoadingPlaceholder;
+              isCurrentlyViewingLoadingPlaceholder ||
+              _wasShowingLoadingPlaceholderAtLoadStart;
 
           // 新しい投稿を追加
           setState(() {
@@ -1101,7 +1119,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final shouldAutoNavigateNow =
                 isCurrentlyViewingLoadingPlaceholder ||
                     wasViewingLoadingPlaceholderAtStart ||
-                    wasNearLastPostAtStart;
+                    wasNearLastPostAtStart ||
+                    _wasShowingLoadingPlaceholderAtLoadStart;
 
             if (kDebugMode) {
               debugPrint(
@@ -1234,6 +1253,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _scheduleLoadMoreRetry(delaySeconds: 5);
     } finally {
       _processQueuedLoadMore();
+      _wasShowingLoadingPlaceholderAtLoadStart = false;
     }
   }
 
@@ -4218,23 +4238,37 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
       );
     }
 
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return ClipRect(
-          child: OverflowBox(
-            maxWidth: double.infinity,
-            alignment: Alignment.centerLeft,
-            child: Transform.translate(
-              offset: Offset(
-                  _animation.value.dx * MediaQuery.of(context).size.width, 0),
-              child: Text(
-                widget.text,
-                style: widget.style,
-                maxLines: 1,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(context).size.width;
+        return AnimatedBuilder(
+          animation: _animation,
+          builder: (context, child) {
+            final offsetX = _animation.value.dx * availableWidth;
+            return ClipRect(
+              child: SizedBox(
+                width: availableWidth,
+                child: Stack(
+                  children: [
+                    Transform.translate(
+                      offset: Offset(offsetX, 0),
+                      child: SizedBox(
+                        width: availableWidth,
+                        child: Text(
+                          widget.text,
+                          style: widget.style,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
