@@ -15,9 +15,9 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
-// Web版で使用するHTML API
-import 'dart:html' as html
-    show VideoElement, CanvasElement, Blob, Url, FileReader;
+// Web版で使用するHTML API（モバイルビルドでは使用しないためコメントアウト）
+// import 'dart:html' as html
+//     show VideoElement, CanvasElement, Blob, Url, FileReader;
 import '../utils/spotlight_colors.dart';
 import '../services/post_service.dart';
 
@@ -664,6 +664,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   // Web版で動画からサムネイルを生成（HTML5 Video API + Canvas API）
+  //
+  // ※ 元々は dart:html を使った実装でしたが、
+  //   モバイルビルド（Android/iOS）では dart:html が利用できないため
+  //   ここではスタブ実装にしてあります。
+  //   Web専用サムネイル生成機能の元コードは下にコメントとして残しています。
+  Future<Uint8List?> _generateVideoThumbnailWeb(Uint8List videoBytes) async {
+    // 現状は常に null を返し、呼び出し側でプレースホルダー生成にフォールバックします。
+    return null;
+  }
+
+  /*
+  // 旧実装（Web専用、dart:html 依存）
   Future<Uint8List?> _generateVideoThumbnailWeb(Uint8List videoBytes) async {
     if (!kIsWeb) {
       return null;
@@ -786,6 +798,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return null;
     }
   }
+  */
 
   // 動画から最初のフレームをサムネイルとして抽出
   // Web版ではHTML5 Video API + Canvas APIを使用
