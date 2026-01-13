@@ -1948,7 +1948,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final mediaUrl = post.mediaUrl;
+    // 音声のURLを決定
+    String? mediaUrl = post.mediaUrl;
+
+    // Post.fromJson で mediaUrl が設定されなかった場合でも、
+    // contentPath にCloudFrontの完全URLが入っているケースがあるためフォールバックする
+    if ((mediaUrl == null || mediaUrl.isEmpty) && post.contentPath.isNotEmpty) {
+      mediaUrl = post.contentPath;
+      if (kDebugMode) {
+        debugPrint(
+            '🎧 音声URLフォールバック: postId=${post.id}, contentPath=${post.contentPath} を使用します');
+      }
+    }
+
     if (mediaUrl == null || mediaUrl.isEmpty) {
       if (kDebugMode) {
         debugPrint('⚠️ 音声URLが空です: postId=${post.id}');

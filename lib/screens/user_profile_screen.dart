@@ -51,7 +51,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _displayUsername = widget.username;
     _iconUrl = widget.userIconUrl;
     _iconPath = widget.userIconPath;
-    
+
     if (kDebugMode) {
       debugPrint('👤 UserProfileScreen初期化:');
       debugPrint('  userId: ${widget.userId}');
@@ -59,7 +59,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       debugPrint('  userIconUrl: ${widget.userIconUrl}');
       debugPrint('  userIconPath: ${widget.userIconPath}');
     }
-    
+
     _fetchUserProfile();
     // 新しいAPIではプロフィール情報と投稿一覧を同時に取得するため、_fetchUserPostsは不要
   }
@@ -85,7 +85,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       // usernameを取得（userIdが空の場合はwidget.usernameを使用）
       final username = widget.username ?? '';
-      
+
       if (username.isEmpty) {
         setState(() {
           _errorMessage = 'ユーザー名が必要です';
@@ -118,15 +118,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (kDebugMode) {
           debugPrint('👤 ユーザープロフィール取得レスポンス:');
           debugPrint('  status: ${responseData['status']}');
           debugPrint('  data: ${responseData.toString()}');
         }
-        
+
         // レスポンス形式: {"status": "success", "data": {...}}
-        if (responseData['status'] != 'success' || responseData['data'] == null) {
+        if (responseData['status'] != 'success' ||
+            responseData['data'] == null) {
           if (mounted) {
             setState(() {
               _errorMessage = 'ユーザー情報の取得に失敗しました';
@@ -138,7 +139,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         }
 
         final userData = responseData['data'] as Map<String, dynamic>;
-        
+
         if (kDebugMode) {
           debugPrint('👤 取得したユーザーデータ:');
           debugPrint('  username: ${userData['username']}');
@@ -146,27 +147,28 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           debugPrint('  spotlightnum: ${userData['spotlightnum']}');
           debugPrint('  contents: ${userData['contents']}');
         }
-        
+
         // ユーザー情報を設定
-        final resolvedUsername = userData['username'] as String? ?? widget.username ?? '';
+        final resolvedUsername =
+            userData['username'] as String? ?? widget.username ?? '';
         final userIcon = userData['usericon'] as String? ?? widget.userIconPath;
         final spotlightNum = userData['spotlightnum'] as int? ?? 0;
         final bio = userData['bio'] as String?;
         final contents = userData['contents'] as List<dynamic>? ?? [];
-        
+
         if (kDebugMode) {
           debugPrint('👤 投稿データ数: ${contents.length}');
           if (contents.isNotEmpty) {
             debugPrint('👤 最初の投稿データ: ${contents.first}');
           }
         }
-        
+
         // 投稿を取得（APIレスポンスをPost.fromJsonが期待する形式に変換）
         final posts = contents.map((json) {
           // APIレスポンスのフィールド名をPost.fromJsonが期待する形式に変換
           // thumbnailurlは既にCloudFront URLとして正規化されている可能性がある
           final thumbnailUrl = json['thumbnailurl'] as String?;
-          
+
           final postJson = <String, dynamic>{
             'contentID': json['contentID'],
             'id': json['contentID']?.toString() ?? '',
@@ -178,8 +180,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             // thumbnailurlをthumbnailpathとして設定
             // _normalizeContentUrlは既に完全なURLの場合はそのまま返す
             'thumbnailpath': thumbnailUrl,
-            // linkをcontentpathとして設定
-            'contentpath': json['link'],
+            // メディア本体のURL（contentpath）があればそれを優先し、
+            // 互換性のために存在しない場合は従来どおりlinkをfallbackとして使う
+            'contentpath': json['contentpath'] ?? json['link'],
             // ユーザー名を追加（親のデータから）
             'username': resolvedUsername,
             // その他の必須フィールド
@@ -187,7 +190,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             'textflag': false, // デフォルト値
             'commentnum': 0, // デフォルト値
           };
-          
+
           if (kDebugMode) {
             debugPrint('📦 投稿データ変換:');
             debugPrint('  contentID: ${postJson['contentID']}');
@@ -197,9 +200,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             debugPrint('  spotlightnum: ${postJson['spotlightnum']}');
             debugPrint('  playnum: ${postJson['playnum']}');
           }
-          
-          final post = Post.fromJson(postJson, backendUrl: AppConfig.backendUrl);
-          
+
+          final post =
+              Post.fromJson(postJson, backendUrl: AppConfig.backendUrl);
+
           if (kDebugMode) {
             debugPrint('📦 Post.fromJson完了:');
             debugPrint('  id: ${post.id}');
@@ -207,10 +211,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
             debugPrint('  mediaUrl: ${post.mediaUrl}');
           }
-          
+
           return post;
         }).toList();
-        
+
         if (mounted) {
           setState(() {
             _displayUsername = resolvedUsername;
@@ -219,10 +223,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _isAdmin = userData['admin'] as bool? ?? false;
             _bio = bio;
             _userPosts = posts;
-            
+
             // アイコンURLを生成
             if (_iconPath != null && _iconPath!.isNotEmpty) {
-              if (_iconPath!.startsWith('http://') || 
+              if (_iconPath!.startsWith('http://') ||
                   _iconPath!.startsWith('https://')) {
                 _iconUrl = _iconPath;
               } else {
@@ -231,7 +235,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             } else {
               _iconUrl = widget.userIconUrl;
             }
-            
+
             _isLoadingProfile = false;
             _isLoadingPosts = false;
           });
@@ -343,7 +347,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     String? iconUrl = _iconUrl;
     if (iconUrl == null || iconUrl.isEmpty) {
       if (_iconPath != null && _iconPath!.isNotEmpty) {
-        if (_iconPath!.startsWith('http://') || 
+        if (_iconPath!.startsWith('http://') ||
             _iconPath!.startsWith('https://')) {
           iconUrl = _iconPath;
         } else {
@@ -428,7 +432,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget _buildAdminBadgeIcon() {
     final adminBadge = BadgeManager.getBadgeById(999);
     if (adminBadge == null) return const SizedBox.shrink();
-    
+
     return Container(
       width: 24,
       height: 24,
@@ -484,7 +488,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Widget _buildBadgeSection() {
     final unlockedBadges = BadgeManager.getUnlockedBadges(_spotlightCount);
-    
+
     // 管理者バッジを追加
     final displayBadges = List<Badge>.from(unlockedBadges);
     if (_isAdmin == true) {
@@ -495,7 +499,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
 
     // 管理者バッジと開発者バッジを除外した通常バッジ
-    final normalBadges = displayBadges.where((b) => b.id != 999 && b.id != 777).toList();
+    final normalBadges =
+        displayBadges.where((b) => b.id != 999 && b.id != 777).toList();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -638,14 +643,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Widget _buildPostThumbnail(Post post) {
     final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
-    
+
     return GestureDetector(
       onTap: () {
         // ホーム画面に遷移して、その投稿を表示
         if (kDebugMode) {
           debugPrint('👤 投稿タップ: ${post.id} - ${post.title}');
         }
-        final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+        final navigationProvider =
+            Provider.of<NavigationProvider>(context, listen: false);
         navigationProvider.navigateToHome(
           postId: post.id.toString(),
           postTitle: post.title,
@@ -708,7 +714,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ),
                 ),
               ),
-            
+
             // グラデーションオーバーレイ（下部）
             Positioned(
               bottom: 0,
@@ -788,4 +794,3 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 }
-
