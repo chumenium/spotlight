@@ -555,10 +555,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     final navigationProvider = Provider.of<NavigationProvider>(context);
     final targetPostId = navigationProvider.targetPostId;
+    final targetPost = navigationProvider.targetPost;
+
+    if (kDebugMode) {
+      debugPrint(
+          '📱 [didChangeDependencies] targetPostId=$targetPostId, targetPost=${targetPost != null ? "存在(Id: ${targetPost.id})" : "null"}, _pendingTargetPostId=$_pendingTargetPostId');
+    }
+
     if (targetPostId != null && targetPostId != _pendingTargetPostId) {
       _pendingTargetPostId = targetPostId;
-      _insertProviderPostIfNeeded(targetPostId);
-      _fetchTargetPost(targetPostId);
+      // targetPostが挿入された場合は、API呼び出しをスキップ
+      final inserted = _insertProviderPostIfNeeded(targetPostId);
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [didChangeDependencies] _insertProviderPostIfNeeded結果: inserted=$inserted');
+      }
+      if (!inserted) {
+        // targetPostが挿入されなかった場合のみ、APIから取得を試みる
+        if (kDebugMode) {
+          debugPrint(
+              '📱 [didChangeDependencies] targetPostが挿入されなかったため、APIから取得を試みます: postId=$targetPostId');
+        }
+        _fetchTargetPost(targetPostId);
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '📱 [didChangeDependencies] targetPostが挿入されたため、API呼び出しをスキップします');
+        }
+      }
       _schedulePendingTargetCheck();
     }
     _tryJumpToPendingTarget();
@@ -571,17 +595,96 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  void _insertProviderPostIfNeeded(String postId) {
+  /// targetPostを挿入または更新（既に存在する場合は更新）
+  /// 戻り値: 挿入または更新された場合はtrue、スキップされた場合はfalse
+  bool _insertProviderPostIfNeeded(String postId) {
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
     final providerPost = navigationProvider.targetPost;
-    if (providerPost == null || providerPost.id != postId) return;
-    if (_posts.any((existing) => existing.id == postId)) return;
 
-    setState(() {
-      _posts.insert(0, providerPost);
-      _addFetchedContentId(postId);
-    });
+    if (kDebugMode) {
+      debugPrint('📱 [insertProviderPost] 開始: postId=$postId');
+      debugPrint(
+          '  - providerPost: ${providerPost != null ? "存在(Id: ${providerPost.id}, username: ${providerPost.username})" : "null"}');
+      debugPrint('  - _posts.length: ${_posts.length}');
+      debugPrint('  - 既存投稿のID: ${_posts.map((p) => p.id).toList()}');
+    }
+
+    if (providerPost == null) {
+      if (kDebugMode) {
+        debugPrint('📱 [insertProviderPost] providerPostがnullのため、スキップします');
+      }
+      return false;
+    }
+
+    if (providerPost.id != postId) {
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [insertProviderPost] providerPost.id(${providerPost.id}) != postId($postId)のため、スキップします');
+      }
+      return false;
+    }
+
+    // まずは、usernameやuserIconPathが空でもPostを挿入または更新する
+    // これにより、少なくともコンテンツは表示される
+    // 既存の投稿を探す
+    final existingIndex =
+        _posts.indexWhere((existing) => existing.id == postId);
+
+    if (existingIndex >= 0) {
+      // 既存の投稿がある場合、targetPostで更新
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [insertProviderPost] 既存の投稿を更新します: postId=$postId, index=$existingIndex');
+        debugPrint(
+            '  - 既存: username=${_posts[existingIndex].username}, userIconPath=${_posts[existingIndex].userIconPath}');
+        debugPrint(
+            '  - 更新後: username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
+      }
+
+      setState(() {
+        // 既存の投稿をtargetPostで置き換え
+        _posts[existingIndex] = providerPost;
+        // 既に存在するので、取得済みIDには追加しない
+      });
+
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [insertProviderPost] 既存の投稿を更新しました: postId=$postId, username=${providerPost.username}');
+      }
+    } else {
+      // 既存の投稿がない場合、新規に挿入
+      setState(() {
+        _posts.insert(0, providerPost);
+        _addFetchedContentId(postId);
+      });
+
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [insertProviderPost] targetPostを挿入しました: postId=$postId, username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
+      }
+    }
+
+    // usernameやuserIconPathが空の場合、バックグラウンドでAPIから取得して更新する
+    if (providerPost.username.isEmpty || providerPost.userIconPath.isEmpty) {
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [insertProviderPost] ユーザー情報が不完全なため、バックグラウンドで補完します: username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
+      }
+      // バックグラウンドでAPIから取得して更新（非同期で実行）
+      _fetchTargetPost(postId).then((_) {
+        if (kDebugMode) {
+          debugPrint('📱 [insertProviderPost] バックグラウンド補完完了: postId=$postId');
+        }
+      }).catchError((e) {
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ [insertProviderPost] バックグラウンド補完エラー: postId=$postId, error=$e');
+        }
+      });
+    }
+
+    return true;
   }
 
   Future<void> _fetchTargetPost(String postId) async {
@@ -590,12 +693,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final post = await PostService.fetchContentById(postId);
       if (post == null || _isDisposed) return;
-      if (_posts.any((existing) => existing.id == post.id)) return;
 
-      setState(() {
-        _posts.insert(0, post);
-        _addFetchedContentId(post.id);
-      });
+      // 既存の投稿を探す
+      final existingIndex =
+          _posts.indexWhere((existing) => existing.id == post.id);
+
+      if (existingIndex >= 0) {
+        // 既存の投稿がある場合、APIから取得した完全な情報で更新
+        if (kDebugMode) {
+          debugPrint(
+              '📱 [fetchTargetPost] 既存の投稿を更新します: postId=$postId, index=$existingIndex');
+          debugPrint(
+              '  - 既存: username=${_posts[existingIndex].username}, userIconPath=${_posts[existingIndex].userIconPath}');
+          debugPrint(
+              '  - 更新後: username=${post.username}, userIconPath=${post.userIconPath}');
+        }
+
+        setState(() {
+          _posts[existingIndex] = post;
+        });
+      } else {
+        // 既存の投稿がない場合、新規に挿入
+        setState(() {
+          _posts.insert(0, post);
+          _addFetchedContentId(post.id);
+        });
+      }
+
       _schedulePendingTargetCheck();
     } finally {
       _isFetchingTargetPost = false;

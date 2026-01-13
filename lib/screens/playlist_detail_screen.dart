@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
 import '../services/playlist_service.dart';
+import '../services/post_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
@@ -77,31 +78,68 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         return;
       }
 
-      // API仕様書のレスポンスからPostオブジェクトを作成
-      // Post.fromJsonを使用してS3（CloudFront）のURLを正しく処理
-      // バックエンドが返すlinkとthumbnailpathは相対パス（/content/movie/filename.mp4など）の可能性がある
+      // まず、バックエンドから返されたデータでPostオブジェクトを作成
       final List<Post> posts = [];
+      final List<String> missingUserInfoIds = [];
+
       for (final item in contentsJson) {
         try {
-          // linkをcontentpathとして使用
-          // バックエンドが返すlinkはCloudFront URLまたは相対パス（/content/movie/filename.mp4など）
-          final link = item['link']?.toString();
+          final contentId = item['contentID']?.toString() ?? '';
+          if (contentId.isEmpty) continue;
 
-          // Post.fromJsonで使用するために、linkをcontentpathとして設定
+          // linkをcontentpathとして使用
+          final link = item['link']?.toString();
           final postData = Map<String, dynamic>.from(item);
+          postData['contentID'] = contentId;
           if (link != null && link.isNotEmpty) {
             postData['contentpath'] = link;
           }
 
           // Post.fromJsonを使用（S3（CloudFront）のURLを正しく処理）
-          // Post.fromJson内の_normalizeContentUrlが/content/movie/filename.mp4形式をCloudFront URLに変換
           final post =
               Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
           posts.add(post);
+
+          // usernameやuserIconPathが空の場合、後で補完が必要
+          if (post.username.isEmpty || post.userIconPath.isEmpty) {
+            missingUserInfoIds.add(contentId);
+          }
         } catch (e) {
           if (kDebugMode) {
             debugPrint('❌ [プレイリスト詳細] Post作成エラー: $e');
             debugPrint('   - 項目: $item');
+          }
+        }
+      }
+
+      // usernameやuserIconPathが不足している投稿のみ、段階的に補完
+      if (missingUserInfoIds.isNotEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+              '📝 [プレイリスト詳細] ユーザー情報が不足している投稿を補完します: ${missingUserInfoIds.length}件');
+        }
+
+        // バックエンドのdebounce_request(ttl=0.5)を回避するため、順次処理（1件ずつ）
+        for (final contentId in missingUserInfoIds) {
+          try {
+            final post = await PostService.fetchContentById(contentId);
+            if (post != null &&
+                (post.username.isNotEmpty || post.userIconPath.isNotEmpty)) {
+              // 既存の投稿を更新
+              final existingIndex = posts.indexWhere((p) => p.id == contentId);
+              if (existingIndex >= 0) {
+                posts[existingIndex] = post;
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ [プレイリスト詳細] 補完エラー: contentID=$contentId, error=$e');
+            }
+          }
+
+          // 次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
+          if (contentId != missingUserInfoIds.last) {
+            await Future.delayed(const Duration(milliseconds: 600));
           }
         }
       }

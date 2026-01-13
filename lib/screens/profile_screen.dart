@@ -1454,7 +1454,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (postIdStr.isNotEmpty) {
             final navigationProvider =
                 Provider.of<NavigationProvider>(context, listen: false);
-            navigationProvider.navigateToHome(postId: postIdStr);
+            navigationProvider.navigateToHome(postId: postIdStr, post: post);
 
             if (kDebugMode) {
               debugPrint(
