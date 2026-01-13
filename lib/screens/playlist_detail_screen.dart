@@ -119,27 +119,40 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               '📝 [プレイリスト詳細] ユーザー情報が不足している投稿を補完します: ${missingUserInfoIds.length}件');
         }
 
-        // バックエンドのdebounce_request(ttl=0.5)を回避するため、順次処理（1件ずつ）
-        for (final contentId in missingUserInfoIds) {
-          try {
-            final post = await PostService.fetchContentById(contentId);
-            if (post != null &&
-                (post.username.isNotEmpty || post.userIconPath.isNotEmpty)) {
-              // 既存の投稿を更新
-              final existingIndex = posts.indexWhere((p) => p.id == contentId);
-              if (existingIndex >= 0) {
-                posts[existingIndex] = post;
+        // バックエンドのdebounce_request(ttl=0.5)を回避するため、2件ずつ処理（待機時間を短縮）
+        const batchSize = 2;
+        for (int i = 0; i < missingUserInfoIds.length; i += batchSize) {
+          final batch = missingUserInfoIds.skip(i).take(batchSize).toList();
+
+          // バッチ内は順次処理（429エラーを回避）
+          for (final contentId in batch) {
+            try {
+              final post = await PostService.fetchContentById(contentId);
+              if (post != null &&
+                  (post.username.isNotEmpty || post.userIconPath.isNotEmpty)) {
+                // 既存の投稿を更新
+                final existingIndex =
+                    posts.indexWhere((p) => p.id == contentId);
+                if (existingIndex >= 0) {
+                  posts[existingIndex] = post;
+                }
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint(
+                    '⚠️ [プレイリスト詳細] 補完エラー: contentID=$contentId, error=$e');
               }
             }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ [プレイリスト詳細] 補完エラー: contentID=$contentId, error=$e');
+
+            // バッチ内の次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
+            if (contentId != batch.last) {
+              await Future.delayed(const Duration(milliseconds: 600));
             }
           }
 
-          // 次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
-          if (contentId != missingUserInfoIds.last) {
-            await Future.delayed(const Duration(milliseconds: 600));
+          // 次のバッチの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、300ms空ける）
+          if (i + batchSize < missingUserInfoIds.length) {
+            await Future.delayed(const Duration(milliseconds: 300));
           }
         }
       }

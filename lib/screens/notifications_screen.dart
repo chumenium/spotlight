@@ -100,8 +100,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   fit: BoxFit.contain,
                   filterQuality: FilterQuality.high,
                   isAntiAlias: true,
-                  cacheWidth: (160 * MediaQuery.of(context).devicePixelRatio).round(),
-                  cacheHeight: (45 * MediaQuery.of(context).devicePixelRatio).round(),
+                  cacheWidth:
+                      (160 * MediaQuery.of(context).devicePixelRatio).round(),
+                  cacheHeight:
+                      (45 * MediaQuery.of(context).devicePixelRatio).round(),
                   errorBuilder: (context, error, stackTrace) {
                     // ロゴ画像が見つからない場合は何も表示しない
                     return const SizedBox.shrink();
@@ -113,10 +115,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               IconButton(
                 icon: Icon(
                   Icons.done_all,
-                  color: Theme.of(context).appBarTheme.iconTheme?.color ?? 
-                         (Theme.of(context).brightness == Brightness.dark 
-                             ? Colors.white 
-                             : const Color(0xFF1A1A1A)),
+                  color: Theme.of(context).appBarTheme.iconTheme?.color ??
+                      (Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF1A1A1A)),
                 ),
                 onPressed: () {
                   setState(() {
@@ -151,8 +153,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               isScrollable: true,
               indicatorColor: SpotLightColors.primaryOrange,
               indicatorWeight: 3,
-              labelColor: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.white 
+              labelColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
                   : const Color(0xFF1A1A1A),
               unselectedLabelColor: Colors.grey,
               labelStyle: const TextStyle(
@@ -324,6 +326,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       ),
       child: InkWell(
         onTap: () {
+          // 既読にする
           setState(() {
             final index = notifications.indexOf(notification);
             notifications[index] = NotificationItem(
@@ -338,15 +341,27 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               thumbnailUrl: notification.thumbnailUrl,
               createdAt: notification.createdAt,
               isRead: true,
+              commentID: notification.commentID,
             );
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${notification.title}をタップしました'),
-              duration: const Duration(seconds: 1),
-              backgroundColor: Theme.of(context).cardColor,
-            ),
-          );
+
+          // 投稿IDがある場合、ホーム画面に遷移
+          if (notification.postId != null) {
+            final navigationProvider =
+                Provider.of<NavigationProvider>(context, listen: false);
+
+            // コメント通知または返信通知の場合、コメント画面を開く
+            final isCommentNotification =
+                notification.type == NotificationType.comment ||
+                    notification.type == NotificationType.reply;
+
+            navigationProvider.navigateToHome(
+              postId: notification.postId,
+              postTitle: notification.postTitle,
+              commentId: notification.commentID,
+              shouldOpenComments: isCommentNotification,
+            );
+          }
         },
         child: Padding(
           // 左端の余白を半分に減らす（8px）
@@ -379,10 +394,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                                   ? FontWeight.normal
                                   : FontWeight.bold,
                               fontSize: 14,
-                              color: Theme.of(context).textTheme.bodyLarge?.color ?? 
-                                     (Theme.of(context).brightness == Brightness.dark 
-                                         ? Colors.white 
-                                         : const Color(0xFF2C2C2C)),
+                              color: Theme.of(context)
+                                      .textTheme
+                                      .bodyLarge
+                                      ?.color ??
+                                  (Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : const Color(0xFF2C2C2C)),
                             ),
                           ),
                         ),
@@ -404,10 +423,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       notification.message,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Theme.of(context).textTheme.bodySmall?.color ?? 
-                               (Theme.of(context).brightness == Brightness.dark 
-                                   ? Colors.grey[300] 
-                                   : Colors.grey[600]),
+                        color: Theme.of(context).textTheme.bodySmall?.color ??
+                            (Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey[300]
+                                : Colors.grey[600]),
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

@@ -30,6 +30,7 @@ class NotificationItem {
   final String? thumbnailUrl;
   final DateTime createdAt;
   final bool isRead;
+  final int? commentID; // コメント通知の場合のコメントID
 
   NotificationItem({
     required this.id,
@@ -43,12 +44,19 @@ class NotificationItem {
     this.thumbnailUrl,
     required this.createdAt,
     this.isRead = false,
+    this.commentID,
   });
 
   // --------------------------
   // JSON → NotificationItem
   // --------------------------
   factory NotificationItem.fromJson(Map<String, dynamic> json) {
+    // commentIDを取得（バックエンドから取得できる場合）
+    int? commentID;
+    if (json['commentID'] != null) {
+      commentID = int.tryParse(json['commentID'].toString());
+    }
+    
     return NotificationItem(
       id: json['notificationID'].toString(),
       type: _typeFromString(json['type']),
@@ -61,6 +69,7 @@ class NotificationItem {
       thumbnailUrl: json['thumbnailpath'],
       createdAt: _parseDateTime(json['timestamp']),
       isRead: json['isread'] ?? false,
+      commentID: commentID,
     );
   }
 

@@ -6,6 +6,8 @@ class NavigationProvider with ChangeNotifier {
   String? _targetPostId; // ホーム画面で表示する投稿ID
   Post? _targetPost; // ホーム画面で表示する投稿（先行取得用）
   String? _targetPostTitle; // ホーム画面で表示する投稿のタイトル（検証用）
+  int? _targetCommentId; // コメント画面でハイライト表示するコメントID
+  bool _shouldOpenComments = false; // コメント画面を開くかどうか
   int _notificationRefreshTrigger = 0; // 通知再読み込み用のトリガー
   int _profileHistoryRefreshTrigger = 0;
 
@@ -13,6 +15,8 @@ class NavigationProvider with ChangeNotifier {
   String? get targetPostId => _targetPostId;
   Post? get targetPost => _targetPost;
   String? get targetPostTitle => _targetPostTitle;
+  int? get targetCommentId => _targetCommentId;
+  bool get shouldOpenComments => _shouldOpenComments;
   int get notificationRefreshTrigger => _notificationRefreshTrigger;
   int get profileHistoryRefreshTrigger => _profileHistoryRefreshTrigger;
 
@@ -23,10 +27,18 @@ class NavigationProvider with ChangeNotifier {
     }
   }
 
-  void navigateToHome({String? postId, String? postTitle, Post? post}) {
+  void navigateToHome({
+    String? postId,
+    String? postTitle,
+    Post? post,
+    int? commentId,
+    bool shouldOpenComments = false,
+  }) {
     _targetPostId = postId;
     _targetPost = post;
     _targetPostTitle = postTitle;
+    _targetCommentId = commentId;
+    _shouldOpenComments = shouldOpenComments;
     setCurrentIndex(0);
   }
 
@@ -55,6 +67,8 @@ class NavigationProvider with ChangeNotifier {
     _targetPostId = null;
     _targetPost = null;
     _targetPostTitle = null;
+    _targetCommentId = null;
+    _shouldOpenComments = false;
     notifyListeners();
   }
 
@@ -64,6 +78,8 @@ class NavigationProvider with ChangeNotifier {
     _targetPostId = null;
     _targetPost = null;
     _targetPostTitle = null;
+    _targetCommentId = null;
+    _shouldOpenComments = false;
     _profileHistoryRefreshTrigger = 0;
     notifyListeners();
   }

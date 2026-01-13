@@ -734,6 +734,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
+    final shouldOpenComments = navigationProvider.shouldOpenComments;
+    final targetCommentId = navigationProvider.targetCommentId;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isDisposed || !mounted) return;
@@ -749,10 +751,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
       _handleMediaPageChange(targetIndex);
+
+      // コメント画面を開く必要がある場合
+      if (shouldOpenComments && targetIndex < _posts.length) {
+        final post = _posts[targetIndex];
+        // 少し待ってからコメント画面を開く（投稿が表示されるのを待つ）
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && !_isDisposed) {
+            _handleCommentButton(post);
+          }
+        });
+      }
+
       navigationProvider.clearTargetPostId();
       _pendingTargetPostId = null;
       if (kDebugMode) {
         debugPrint('📱 ナビゲーション: targetPostIdを表示しました (index=$targetIndex)');
+        if (shouldOpenComments) {
+          debugPrint('💬 コメント画面を開きます: commentID=$targetCommentId');
+        }
       }
     });
   }
