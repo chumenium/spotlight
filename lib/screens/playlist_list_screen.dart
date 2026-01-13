@@ -231,6 +231,18 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        playlist.username?.isNotEmpty == true
+                                            ? playlist.username!
+                                            : 'ユーザー名なし',
+                                        style: TextStyle(
+                                          color: Colors.grey[400],
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ],
                                   ),
                                 ),

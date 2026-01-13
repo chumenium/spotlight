@@ -11,11 +11,15 @@ class Playlist {
   final int playlistid;
   final String title;
   final String? thumbnailpath;
+  final String? username;
+  final String? iconimgpath;
 
   Playlist({
     required this.playlistid,
     required this.title,
     this.thumbnailpath,
+    this.username,
+    this.iconimgpath,
   });
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
@@ -40,6 +44,8 @@ class Playlist {
       playlistid: playlistId,
       title: json['title']?.toString() ?? '',
       thumbnailpath: json['thumbnailpath']?.toString(),
+      username: json['username']?.toString(),
+      iconimgpath: json['iconimgpath']?.toString(),
     );
   }
 }

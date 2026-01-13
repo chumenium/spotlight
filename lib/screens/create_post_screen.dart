@@ -236,11 +236,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
             // 一時ファイルとして保存
             final tempDir = Directory.systemTemp;
-            final tempFile = File('${tempDir.path}/temp_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+            final tempFile = File(
+                '${tempDir.path}/temp_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
             await tempFile.writeAsBytes(originalImageBytes);
 
             // 画像を圧縮（品質85%、最大幅1920px）
-            final compressedFile = await FlutterImageCompress.compressAndGetFile(
+            final compressedFile =
+                await FlutterImageCompress.compressAndGetFile(
               tempFile.absolute.path,
               '${tempDir.path}/compressed_image_${DateTime.now().millisecondsSinceEpoch}.jpg',
               quality: 85, // 品質85%（バランス重視）
@@ -256,11 +258,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             imageFileSize = imageBytes.length;
 
             if (kDebugMode) {
-              final compressionRatio = (1 - imageFileSize / originalImageSize) * 100;
+              final compressionRatio =
+                  (1 - imageFileSize / originalImageSize) * 100;
               debugPrint(
                   '🖼️ 圧縮後の画像ファイルサイズ: ${(imageFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-              debugPrint(
-                  '🖼️ 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
+              debugPrint('🖼️ 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
             }
 
             // 一時ファイルを削除
@@ -354,11 +356,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             videoFileSize = await compressedVideoFile.length();
 
             if (kDebugMode) {
-              final compressionRatio = (1 - videoFileSize / originalVideoSize) * 100;
+              final compressionRatio =
+                  (1 - videoFileSize / originalVideoSize) * 100;
               debugPrint(
                   '📹 圧縮後の動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-              debugPrint(
-                  '📹 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
+              debugPrint('📹 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
             }
 
             // 圧縮後のファイルを読み込む
@@ -432,17 +434,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             final thumbnailPath = videoPath != null && videoPath.isNotEmpty
                 ? videoPath
                 : _selectedMedia!.path;
-            final thumbnailBytes =
-                await _generateVideoThumbnail(thumbnailPath);
+            final thumbnailBytes = await _generateVideoThumbnail(thumbnailPath);
             if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
               thumbBase64 = base64Encode(thumbnailBytes);
               if (kDebugMode) {
                 debugPrint('✅ 動画から最初のフレームをサムネイルとして抽出成功');
+                debugPrint(
+                    '   - サムネイルサイズ: ${thumbnailBytes.length} bytes (${(thumbnailBytes.length / 1024).toStringAsFixed(2)} KB)');
+                debugPrint(
+                    '   - base64サイズ: ${thumbBase64.length} bytes (${(thumbBase64.length / 1024).toStringAsFixed(2)} KB)');
               }
             } else {
               // サムネイル抽出に失敗した場合はプレースホルダーを使用
               if (kDebugMode) {
                 debugPrint('⚠️ 動画サムネイル抽出失敗、プレースホルダーを使用');
+                debugPrint('   - 動画パス: $thumbnailPath');
               }
               thumbBase64 = base64Encode(
                   _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
@@ -613,19 +619,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       // 動画から最初のフレーム（timeMs: 0）を抽出
       // タイムアウトを設定してバッファエラーを防ぐ
-      // より小さい解像度と品質でバッファ使用量を削減
+      // サムネイル用に適切な解像度と品質を設定
       String? thumbnailPath;
       try {
         thumbnailPath = await VideoThumbnail.thumbnailFile(
           video: videoPath,
           thumbnailPath: Directory.systemTemp.path,
           imageFormat: ImageFormat.JPEG,
-          maxWidth: 240, // 最大幅を240pxに削減（バッファ使用量削減）
-          maxHeight: 240, // 最大高さを240pxに削減
-          quality: 70, // JPEG品質を70に削減（バッファ使用量削減）
+          maxWidth: 640, // サムネイル用に適切な解像度（640px）
+          maxHeight: 360, // 16:9のアスペクト比を維持
+          quality: 85, // JPEG品質を85に設定（品質とファイルサイズのバランス）
           timeMs: 0, // 最初のフレーム（0ミリ秒）
         ).timeout(
-          const Duration(seconds: 8), // 8秒でタイムアウト（短縮）
+          const Duration(seconds: 15), // 15秒でタイムアウト
           onTimeout: () {
             if (kDebugMode) {
               debugPrint('⚠️ 動画サムネイル抽出タイムアウト');
@@ -724,7 +730,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         title: Text(
           '新しい投稿',
           style: TextStyle(
-            color: Theme.of(context).appBarTheme.foregroundColor ?? const Color(0xFF1A1A1A),
+            color: Theme.of(context).appBarTheme.foregroundColor ??
+                const Color(0xFF1A1A1A),
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -1449,7 +1456,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         backgroundColor: Theme.of(context).cardColor,
         title: Text(
           '背景を変更',
-          style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
+          style:
+              TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2073,31 +2081,31 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ],
           ),
           content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Android端末でのみ利用可能です！',
-              style: TextStyle(
-                color: theme.textTheme.bodyMedium?.color,
-                fontWeight: FontWeight.w500,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Android端末でのみ利用可能です！',
+                style: TextStyle(
+                  color: theme.textTheme.bodyMedium?.color,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '対応フォーマット:',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            _buildFeatureItem('🎵 MP3'),
-            _buildFeatureItem('🎵 M4A'),
-            _buildFeatureItem('🎵 AAC'),
-            _buildFeatureItem('🎵 WAV'),
-            _buildFeatureItem('🎵 OGG'),
-            _buildFeatureItem('🎵 FLAC'),
-          ],
-        ),
+              const SizedBox(height: 16),
+              const Text(
+                '対応フォーマット:',
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              _buildFeatureItem('🎵 MP3'),
+              _buildFeatureItem('🎵 M4A'),
+              _buildFeatureItem('🎵 AAC'),
+              _buildFeatureItem('🎵 WAV'),
+              _buildFeatureItem('🎵 OGG'),
+              _buildFeatureItem('🎵 FLAC'),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
