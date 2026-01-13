@@ -11,9 +11,13 @@ import 'dart:io' show File, Directory, Platform;
 import 'dart:async';
 import 'dart:ui';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
+// Web版で使用するHTML API
+import 'dart:html' as html
+    show VideoElement, CanvasElement, Blob, Url, FileReader;
 import '../utils/spotlight_colors.dart';
 import '../services/post_service.dart';
 
@@ -363,20 +367,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               debugPrint('📹 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
             }
 
-            // 圧縮後のファイルを読み込む
+            // 圧縮後のファイルを読み込む（サムネイル生成前に読み込む）
             bytes = await compressedVideoFile.readAsBytes();
-
-            // 圧縮後のファイルを削除（一時ファイル）
-            try {
-              await compressedVideoFile.delete();
-              if (kDebugMode) {
-                debugPrint('📹 圧縮後の一時ファイルを削除しました');
-              }
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ 圧縮後の一時ファイル削除エラー: $e');
-              }
-            }
           } catch (e) {
             if (kDebugMode) {
               debugPrint('❌ 動画圧縮エラー: $e');
@@ -421,19 +413,69 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         }
 
         // 動画から最初のフレームをサムネイルとして抽出
-        // Web版ではvideo_thumbnailが動作しないため、プレースホルダーを使用
+        // サムネイル生成は圧縮後のファイルが存在する間に行う必要がある
         if (kIsWeb) {
-          if (kDebugMode) {
-            debugPrint('⚠️ Web版では動画サムネイル抽出をスキップ、プレースホルダーを使用');
+          // Web版: HTML5 Video API + Canvas APIを使用
+          try {
+            if (kDebugMode) {
+              debugPrint('🎬 Web版: 動画からサムネイルを生成中...');
+            }
+            final thumbnailBytes = await _generateVideoThumbnailWeb(bytes);
+            if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
+              thumbBase64 = base64Encode(thumbnailBytes);
+              if (kDebugMode) {
+                debugPrint('✅ Web版: 動画から最初のフレームをサムネイルとして抽出成功');
+                debugPrint(
+                    '   - サムネイルサイズ: ${thumbnailBytes.length} bytes (${(thumbnailBytes.length / 1024).toStringAsFixed(2)} KB)');
+                debugPrint(
+                    '   - base64サイズ: ${thumbBase64.length} bytes (${(thumbBase64.length / 1024).toStringAsFixed(2)} KB)');
+              }
+            } else {
+              // サムネイル抽出に失敗した場合はプレースホルダーを使用
+              if (kDebugMode) {
+                debugPrint('⚠️ Web版: 動画サムネイル抽出失敗、プレースホルダーを使用');
+              }
+              thumbBase64 = base64Encode(
+                  _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+            }
+          } catch (e) {
+            // エラーが発生した場合はプレースホルダーを使用
+            if (kDebugMode) {
+              debugPrint('❌ Web版: 動画サムネイル抽出エラー: $e');
+              debugPrint('   プレースホルダーを使用します');
+            }
+            thumbBase64 = base64Encode(
+                _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
           }
-          thumbBase64 = base64Encode(
-              _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
         } else {
           try {
             // 圧縮後の動画からサムネイルを抽出（圧縮に失敗した場合は元の動画から）
-            final thumbnailPath = videoPath != null && videoPath.isNotEmpty
-                ? videoPath
-                : _selectedMedia!.path;
+            // 注意: videoPathが存在する場合は、そのファイルがまだ存在する必要がある
+            String thumbnailPath;
+            if (!kIsWeb && videoPath != null && videoPath.isNotEmpty) {
+              // モバイル版で圧縮が成功した場合、圧縮後のファイルからサムネイルを生成
+              final compressedFile = File(videoPath);
+              if (await compressedFile.exists()) {
+                thumbnailPath = videoPath;
+                if (kDebugMode) {
+                  debugPrint('📹 圧縮後の動画からサムネイルを生成: $thumbnailPath');
+                }
+              } else {
+                // 圧縮後のファイルが存在しない場合は元の動画から
+                thumbnailPath = _selectedMedia!.path;
+                if (kDebugMode) {
+                  debugPrint(
+                      '⚠️ 圧縮後のファイルが存在しないため、元の動画からサムネイルを生成: $thumbnailPath');
+                }
+              }
+            } else {
+              // 圧縮に失敗した場合やWeb版の場合は元の動画から
+              thumbnailPath = _selectedMedia!.path;
+              if (kDebugMode) {
+                debugPrint('📹 元の動画からサムネイルを生成: $thumbnailPath');
+              }
+            }
+
             final thumbnailBytes = await _generateVideoThumbnail(thumbnailPath);
             if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
               thumbBase64 = base64Encode(thumbnailBytes);
@@ -461,6 +503,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             }
             thumbBase64 = base64Encode(
                 _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
+          }
+        }
+
+        // サムネイル生成が完了した後、圧縮後の一時ファイルを削除（モバイル版のみ）
+        if (!kIsWeb && videoPath != null && videoPath.isNotEmpty) {
+          try {
+            final compressedFile = File(videoPath);
+            if (await compressedFile.exists()) {
+              await compressedFile.delete();
+              if (kDebugMode) {
+                debugPrint('📹 圧縮後の一時ファイルを削除しました: $videoPath');
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ 圧縮後の一時ファイル削除エラー: $e');
+            }
           }
         }
       } else if (type == 'audio') {
@@ -604,11 +663,135 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
   }
 
+  // Web版で動画からサムネイルを生成（HTML5 Video API + Canvas API）
+  Future<Uint8List?> _generateVideoThumbnailWeb(Uint8List videoBytes) async {
+    if (!kIsWeb) {
+      return null;
+    }
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🎬 Web版: 動画サムネイル抽出開始');
+      }
+
+      // Blobを作成
+      final blob = html.Blob([videoBytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      try {
+        // Video要素を作成
+        final video = html.VideoElement()
+          ..src = url
+          ..crossOrigin = 'anonymous';
+
+        // 動画のメタデータが読み込まれるまで待機
+        await video.onLoadedMetadata.first.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw TimeoutException('動画のメタデータ読み込みタイムアウト');
+          },
+        );
+
+        // 最初のフレームにシーク
+        video.currentTime = 0.0;
+
+        // フレームが読み込まれるまで待機
+        await video.onSeeked.first.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw TimeoutException('動画のシークタイムアウト');
+          },
+        );
+
+        // Canvas要素を作成
+        final canvas = html.CanvasElement(
+          width: 640,
+          height: 360,
+        );
+        final ctx = canvas.context2D;
+
+        // 動画のアスペクト比を維持して描画
+        final videoAspect = video.videoWidth / video.videoHeight;
+        final canvasAspect = 640.0 / 360.0;
+
+        double drawWidth, drawHeight, drawX, drawY;
+        if (videoAspect > canvasAspect) {
+          // 動画が横長の場合
+          drawHeight = 360.0;
+          drawWidth = 360.0 * videoAspect;
+          drawX = (640.0 - drawWidth) / 2.0;
+          drawY = 0.0;
+        } else {
+          // 動画が縦長の場合
+          drawWidth = 640.0;
+          drawHeight = 640.0 / videoAspect;
+          drawX = 0.0;
+          drawY = (360.0 - drawHeight) / 2.0;
+        }
+
+        // 背景を黒で塗りつぶし
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, 640, 360);
+
+        // 動画を描画
+        ctx.drawImageScaled(video, drawX, drawY, drawWidth, drawHeight);
+
+        // CanvasからBlobを取得（JPEG形式、品質85%）
+        final thumbnailBlob = await canvas.toBlob('image/jpeg', 0.85);
+
+        // BlobをUint8Listに変換
+        final reader = html.FileReader();
+        final completer = Completer<Uint8List>();
+
+        reader.onLoad.listen((e) {
+          final result = reader.result;
+          if (result is ByteBuffer) {
+            completer.complete(Uint8List.view(result));
+          } else {
+            completer.completeError('FileReaderの結果がByteBufferではありません');
+          }
+        });
+
+        reader.onError.listen((e) {
+          completer.completeError('FileReaderエラー');
+        });
+
+        reader.readAsArrayBuffer(thumbnailBlob);
+
+        final thumbnailBytes = await completer.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw TimeoutException('Blob読み込みタイムアウト');
+          },
+        );
+
+        // URLを解放
+        html.Url.revokeObjectUrl(url);
+
+        if (kDebugMode) {
+          debugPrint('✅ Web版: 動画サムネイル抽出成功: ${thumbnailBytes.length} bytes');
+        }
+
+        return thumbnailBytes;
+      } catch (e) {
+        // URLを解放
+        html.Url.revokeObjectUrl(url);
+        rethrow;
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ Web版: 動画サムネイル抽出エラー: $e');
+        debugPrint('   スタックトレース: $stackTrace');
+      }
+      return null;
+    }
+  }
+
   // 動画から最初のフレームをサムネイルとして抽出
-  // Web版では動作しないため、呼び出し側でkIsWebチェックを行う
+  // Web版ではHTML5 Video API + Canvas APIを使用
   Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
-    // Web版では使用しない（呼び出し側でチェック済み）
     if (kIsWeb) {
+      // Web版では使用しない（Web版は別の関数を使用）
       return null;
     }
 
