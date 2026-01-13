@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
 import '../services/playlist_service.dart';
-import '../services/post_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
@@ -78,9 +77,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         return;
       }
 
-      // まず、バックエンドから返されたデータでPostオブジェクトを作成
+      // バックエンドから返されたデータでPostオブジェクトを作成
       final List<Post> posts = [];
-      final List<String> missingUserInfoIds = [];
 
       for (final item in contentsJson) {
         try {
@@ -99,60 +97,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           final post =
               Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
           posts.add(post);
-
-          // usernameやuserIconPathが空の場合、後で補完が必要
-          if (post.username.isEmpty || post.userIconPath.isEmpty) {
-            missingUserInfoIds.add(contentId);
-          }
         } catch (e) {
           if (kDebugMode) {
             debugPrint('❌ [プレイリスト詳細] Post作成エラー: $e');
             debugPrint('   - 項目: $item');
-          }
-        }
-      }
-
-      // usernameやuserIconPathが不足している投稿のみ、段階的に補完
-      if (missingUserInfoIds.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint(
-              '📝 [プレイリスト詳細] ユーザー情報が不足している投稿を補完します: ${missingUserInfoIds.length}件');
-        }
-
-        // バックエンドのdebounce_request(ttl=0.5)を回避するため、2件ずつ処理（待機時間を短縮）
-        const batchSize = 2;
-        for (int i = 0; i < missingUserInfoIds.length; i += batchSize) {
-          final batch = missingUserInfoIds.skip(i).take(batchSize).toList();
-
-          // バッチ内は順次処理（429エラーを回避）
-          for (final contentId in batch) {
-            try {
-              final post = await PostService.fetchContentById(contentId);
-              if (post != null &&
-                  (post.username.isNotEmpty || post.userIconPath.isNotEmpty)) {
-                // 既存の投稿を更新
-                final existingIndex =
-                    posts.indexWhere((p) => p.id == contentId);
-                if (existingIndex >= 0) {
-                  posts[existingIndex] = post;
-                }
-              }
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint(
-                    '⚠️ [プレイリスト詳細] 補完エラー: contentID=$contentId, error=$e');
-              }
-            }
-
-            // バッチ内の次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
-            if (contentId != batch.last) {
-              await Future.delayed(const Duration(milliseconds: 600));
-            }
-          }
-
-          // 次のバッチの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、300ms空ける）
-          if (i + batchSize < missingUserInfoIds.length) {
-            await Future.delayed(const Duration(milliseconds: 300));
           }
         }
       }

@@ -443,19 +443,45 @@ class Post {
     final userId =
         json['user_id'] as String? ?? json['firebase_uid'] as String? ?? '';
 
+    // usernameを安全に取得（デバッグ用）
+    String debugUsername = '';
+    final debugUsernameValue = json['username'];
+    if (debugUsernameValue != null) {
+      if (debugUsernameValue is String) {
+        debugUsername = debugUsernameValue;
+      } else if (debugUsernameValue is int) {
+        debugUsername = debugUsernameValue.toString();
+      } else {
+        debugUsername = debugUsernameValue.toString();
+      }
+    }
+
     if (kDebugMode &&
         userId.isEmpty &&
-        (json['username'] as String? ?? '').isNotEmpty) {
+        debugUsername.isNotEmpty) {
       debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
       debugPrint('  contentID: $contentIdStr');
-      debugPrint('  username: ${json['username']}');
+      debugPrint('  username: $debugUsername');
       debugPrint('  利用可能なフィールド: ${json.keys.toList()}');
+    }
+
+    // usernameを安全に取得（数値型の場合は文字列に変換）
+    String usernameStr = '';
+    final usernameValue = json['username'];
+    if (usernameValue != null) {
+      if (usernameValue is String) {
+        usernameStr = usernameValue;
+      } else if (usernameValue is int) {
+        usernameStr = usernameValue.toString();
+      } else {
+        usernameStr = usernameValue.toString();
+      }
     }
 
     return Post(
       id: contentIdStr,
       userId: userId,
-      username: json['username'] as String? ?? '',
+      username: usernameStr,
       userIconPath: iconPath,
       userIconUrl: userIconUrl,
       title: json['title'] as String? ?? '',

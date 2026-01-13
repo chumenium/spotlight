@@ -623,10 +623,18 @@ class PostService {
 
       final responseData = jsonDecode(response.body);
 
-      if (responseData['status'] != 'success' || responseData['data'] == null) {
+      if (responseData['status'] != 'success') {
         if (kDebugMode) {
-          debugPrint('📝 [視聴履歴] APIレスポンスエラー: ${responseData['status']}');
-          debugPrint('📝 [視聴履歴] レスポンスデータ: ${responseData.toString()}');
+          debugPrint('❌ [視聴履歴] APIレスポンスエラー: status=${responseData['status']}');
+          debugPrint('❌ [視聴履歴] レスポンスデータ: ${responseData.toString()}');
+        }
+        return [];
+      }
+
+      if (responseData['data'] == null) {
+        if (kDebugMode) {
+          debugPrint('⚠️ [視聴履歴] APIレスポンスのdataがnullです');
+          debugPrint('⚠️ [視聴履歴] レスポンスデータ: ${responseData.toString()}');
         }
         return [];
       }
@@ -808,9 +816,7 @@ class PostService {
       }
 
       // ステップ4: バックエンドから返されたデータでPostオブジェクトを作成
-      // usernameやiconimgpathが含まれていない場合は、後で補完する
       final Map<String, Post> contentMap = {};
-      final List<String> missingUserInfoIds = [];
 
       if (limitedContentIds.isNotEmpty) {
         if (kDebugMode) {
@@ -827,18 +833,24 @@ class PostService {
 
               // Postオブジェクトに変換
               try {
+                if (kDebugMode) {
+                  debugPrint('📝 [視聴履歴] Post変換開始: contentID=$contentId');
+                  debugPrint(
+                      '📝 [視聴履歴] mergedDataのキー: ${mergedData.keys.toList()}');
+                }
                 final post =
                     Post.fromJson(mergedData, backendUrl: AppConfig.backendUrl);
                 contentMap[contentId] = post;
-
-                // usernameやuserIconPathが空の場合、後で補完が必要
-                if (post.username.isEmpty || post.userIconPath.isEmpty) {
-                  missingUserInfoIds.add(contentId);
-                }
-              } catch (e) {
                 if (kDebugMode) {
                   debugPrint(
-                      '⚠️ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
+                      '✅ [視聴履歴] Post変換成功: contentID=$contentId, title=${post.title}, username=${post.username}');
+                }
+              } catch (e, stackTrace) {
+                if (kDebugMode) {
+                  debugPrint(
+                      '❌ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
+                  debugPrint('❌ [視聴履歴] スタックトレース: $stackTrace');
+                  debugPrint('❌ [視聴履歴] mergedData: $mergedData');
                 }
               }
             }
@@ -849,96 +861,9 @@ class PostService {
           }
         }
 
-        // ステップ4.5: usernameやuserIconPathが不足している投稿のみ、段階的に補完
-        if (missingUserInfoIds.isNotEmpty) {
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [視聴履歴] ユーザー情報が不足している投稿を補完します: ${missingUserInfoIds.length}件');
-          }
-
-          // バックエンドのdebounce_request(ttl=0.5)を回避するため、2件ずつ処理（待機時間を短縮）
-          const batchSize = 2;
-          for (int i = 0; i < missingUserInfoIds.length; i += batchSize) {
-            final batch = missingUserInfoIds.skip(i).take(batchSize).toList();
-
-            // バッチ内は順次処理（429エラーを回避）
-            for (final contentId in batch) {
-              try {
-                final post = await fetchContentById(contentId);
-                if (post != null) {
-                  // 元のPostオブジェクトを取得
-                  final originalPost = contentMap[contentId];
-                  if (originalPost != null) {
-                    // usernameやuserIconPathが空でない場合のみ更新
-                    if (post.username.isNotEmpty ||
-                        post.userIconPath.isNotEmpty) {
-                      if (kDebugMode) {
-                        debugPrint(
-                            '✅ [視聴履歴] 補完成功: contentID=$contentId, username="${post.username}"');
-                      }
-                      contentMap[contentId] = post;
-                    } else {
-                      // usernameやuserIconPathが空の場合、元のPostオブジェクトを保持
-                      if (kDebugMode) {
-                        debugPrint(
-                            '⚠️ [視聴履歴] 補完結果が空: contentID=$contentId, username="${post.username}", userIconPath="${post.userIconPath}"');
-                      }
-                      // 元のPostオブジェクトを保持（何もしない）
-                    }
-                  } else {
-                    // 元のPostオブジェクトが存在しない場合（通常は発生しない）
-                    if (kDebugMode) {
-                      debugPrint(
-                          '⚠️ [視聴履歴] 元のPostオブジェクトが見つかりません: contentID=$contentId');
-                    }
-                    contentMap[contentId] = post;
-                  }
-                } else {
-                  if (kDebugMode) {
-                    debugPrint(
-                        '⚠️ [視聴履歴] fetchContentByIdがnullを返しました: contentID=$contentId');
-                  }
-                  // 元のPostオブジェクトを保持（何もしない）
-                }
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ [視聴履歴] 補完エラー: contentID=$contentId, error=$e');
-                }
-                // 元のPostオブジェクトを保持（何もしない）
-              }
-
-              // バッチ内の次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
-              if (contentId != batch.last) {
-                await Future.delayed(const Duration(milliseconds: 600));
-              }
-            }
-
-            // 次のバッチの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、300ms空ける）
-            if (i + batchSize < missingUserInfoIds.length) {
-              await Future.delayed(const Duration(milliseconds: 300));
-            }
-          }
-
-          // 補完処理が完了した後、まだusernameやuserIconPathが空のPostオブジェクトを確認
-          if (kDebugMode) {
-            for (final contentId in missingUserInfoIds) {
-              final post = contentMap[contentId];
-              if (post != null &&
-                  (post.username.isEmpty || post.userIconPath.isEmpty)) {
-                debugPrint(
-                    '⚠️ [視聴履歴] 補完後もユーザー情報が不足: contentID=$contentId, username="${post.username}", userIconPath="${post.userIconPath}"');
-              }
-            }
-          }
-        }
-
         if (kDebugMode) {
           debugPrint(
               '📝 [視聴履歴] コンテンツ情報取得完了: ${contentMap.length}件 / ${limitedContentIds.length}件');
-          if (missingUserInfoIds.isNotEmpty) {
-            debugPrint(
-                '📝 [視聴履歴] ユーザー情報が不足していた投稿数: ${missingUserInfoIds.length}件');
-          }
         }
       }
 
@@ -1052,9 +977,8 @@ class PostService {
             debugPrint('📝 自分の投稿数: ${postsJson.length}');
           }
 
-          // まず、バックエンドから返されたデータでPostオブジェクトを作成
+          // バックエンドから返されたデータでPostオブジェクトを作成
           final List<Post> posts = [];
-          final List<String> missingUserInfoIds = [];
 
           for (final json in postsJson) {
             final contentId = json['contentID']?.toString() ?? '';
@@ -1068,61 +992,10 @@ class PostService {
               final post =
                   Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
               posts.add(post);
-
-              // usernameやuserIconPathが空の場合、後で補完が必要
-              if (post.username.isEmpty || post.userIconPath.isEmpty) {
-                missingUserInfoIds.add(contentId);
-              }
             } catch (e) {
               if (kDebugMode) {
                 debugPrint(
                     '⚠️ [自分の投稿] Post変換エラー: contentID=$contentId, error=$e');
-              }
-            }
-          }
-
-          // usernameやuserIconPathが不足している投稿のみ、段階的に補完
-          if (missingUserInfoIds.isNotEmpty) {
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 [自分の投稿] ユーザー情報が不足している投稿を補完します: ${missingUserInfoIds.length}件');
-            }
-
-            // バックエンドのdebounce_request(ttl=0.5)を回避するため、2件ずつ処理（待機時間を短縮）
-            const batchSize = 2;
-            for (int i = 0; i < missingUserInfoIds.length; i += batchSize) {
-              final batch = missingUserInfoIds.skip(i).take(batchSize).toList();
-
-              // バッチ内は順次処理（429エラーを回避）
-              for (final contentId in batch) {
-                try {
-                  final post = await fetchContentById(contentId);
-                  if (post != null &&
-                      (post.username.isNotEmpty ||
-                          post.userIconPath.isNotEmpty)) {
-                    // 既存の投稿を更新
-                    final existingIndex =
-                        posts.indexWhere((p) => p.id == contentId);
-                    if (existingIndex >= 0) {
-                      posts[existingIndex] = post;
-                    }
-                  }
-                } catch (e) {
-                  if (kDebugMode) {
-                    debugPrint(
-                        '⚠️ [自分の投稿] 補完エラー: contentID=$contentId, error=$e');
-                  }
-                }
-
-                // バッチ内の次のリクエストの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、600ms空ける）
-                if (contentId != batch.last) {
-                  await Future.delayed(const Duration(milliseconds: 600));
-                }
-              }
-
-              // 次のバッチの前に待機（バックエンドのdebounce_request(ttl=0.5)を回避するため、300ms空ける）
-              if (i + batchSize < missingUserInfoIds.length) {
-                await Future.delayed(const Duration(milliseconds: 300));
               }
             }
           }
