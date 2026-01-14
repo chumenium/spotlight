@@ -3898,7 +3898,12 @@ Widget _buildReplyItem(
 
 String _formatCommentTime(String timestamp) {
   try {
-    final dateTime = DateTime.parse(timestamp).toLocal();
+    // タイムスタンプをパース（サーバーがUTC時刻を返す場合、タイムゾーン情報がない場合は'Z'を追加してUTCとして解釈）
+    // タイムゾーン情報（Z、+、-の後に数字）がない場合、Zを追加
+    final hasTimezone = timestamp.endsWith('Z') || 
+        RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(timestamp);
+    final timestampToParse = hasTimezone ? timestamp : '${timestamp}Z';
+    final dateTime = DateTime.parse(timestampToParse).toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
