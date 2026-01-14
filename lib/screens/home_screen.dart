@@ -4493,17 +4493,30 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 5),
       vsync: this,
     );
 
     _animation = Tween<Offset>(
       begin: Offset.zero,
-      end: const Offset(-0.5, 0),
+      end: const Offset(1.0, 0),
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.linear,
     ));
+
+    // アニメーション完了後に待機時間を入れてからリセット
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && _needsScroll) {
+        // 待機時間後にリセットして再開
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && _needsScroll) {
+            _controller.reset();
+            _controller.forward();
+          }
+        });
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkIfNeedsScroll();
@@ -4519,20 +4532,29 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
   void _checkIfNeedsScroll() {
     final renderObject = context.findRenderObject();
     if (renderObject is RenderBox) {
+      final availableWidth = renderObject.size.width;
+      
+      // テキストの実際の幅を測定（制限なし）
       final textPainter = TextPainter(
         text: TextSpan(text: widget.text, style: widget.style),
         maxLines: 1,
         textDirection: TextDirection.ltr,
       );
-      textPainter.layout(maxWidth: renderObject.size.width);
+      textPainter.layout();
+      final textWidth = textPainter.width;
 
-      if (textPainter.didExceedMaxLines ||
-          textPainter.width > renderObject.size.width) {
+      // テキストの幅が利用可能な幅を超えている場合のみスクロール
+      if (textWidth > availableWidth) {
         if (mounted) {
           setState(() {
             _needsScroll = true;
           });
-          _controller.repeat();
+          // 最初の位置で少し待機してからスクロール開始
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted && _needsScroll) {
+              _controller.forward();
+            }
+          });
         }
       }
     }
@@ -4554,10 +4576,24 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         final availableWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
+        
+        // テキストの実際の幅を測定
+        final textPainter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        final textWidth = textPainter.width;
+        
+        // スクロールする距離を計算
+        final scrollDistance = textWidth - availableWidth;
+        
         return AnimatedBuilder(
           animation: _animation,
           builder: (context, child) {
-            final offsetX = _animation.value.dx * availableWidth;
+            // アニメーション値（0.0から1.0）を使ってスクロール距離を計算
+            final offsetX = -scrollDistance * _animation.value.dx;
             return ClipRect(
               child: SizedBox(
                 width: availableWidth,
@@ -4565,14 +4601,11 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
                   children: [
                     Transform.translate(
                       offset: Offset(offsetX, 0),
-                      child: SizedBox(
-                        width: availableWidth,
-                        child: Text(
-                          widget.text,
-                          style: widget.style,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      child: Text(
+                        widget.text,
+                        style: widget.style,
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
                       ),
                     ),
                   ],
