@@ -93,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isSpotlighting = false;
   String? _pendingTargetPostId;
   bool _isFetchingTargetPost = false;
+  bool _isCommentSheetVisible = false;
 
   // プレースホルダー表示状態
   bool _isShowingLoadingPlaceholder = false;
@@ -129,7 +130,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     // NavigationProviderの変更を監視（ナビゲーション変更時にメディア再生を制御）
-    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
     _lastNavigationIndex = navigationProvider.currentIndex;
     _navigationListener = () {
       if (_isDisposed) return;
@@ -148,7 +150,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // NavigationProviderのリスナーを解除
     if (_navigationListener != null) {
-      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.removeListener(_navigationListener!);
       _navigationListener = null;
     }
@@ -668,12 +671,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 現在表示中の投稿のメディアを自動再生
       if (!_isDisposed && _currentIndex >= 0 && _currentIndex < _posts.length) {
         final currentPost = _posts[_currentIndex];
-        
+
         // 前回再生していた動画がある場合、それが現在の投稿と同じなら再開
         if (_lastPlayingVideoBeforeNavigation != null &&
             _lastPlayingVideoBeforeNavigation == _currentIndex &&
             currentPost.postType == PostType.video) {
-          final controller = _videoControllers[_lastPlayingVideoBeforeNavigation];
+          final controller =
+              _videoControllers[_lastPlayingVideoBeforeNavigation];
           if (controller != null &&
               controller.value.isInitialized &&
               !controller.value.isPlaying) {
@@ -804,6 +808,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } else {
       // 既存の投稿がない場合、新規に挿入
+      _shiftMediaStateForInsertedIndex(0);
       setState(() {
         _posts.insert(0, providerPost);
         _addFetchedContentId(postId);
@@ -864,6 +869,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       } else {
         // 既存の投稿がない場合、新規に挿入
+        _shiftMediaStateForInsertedIndex(0);
         setState(() {
           _posts.insert(0, post);
           _addFetchedContentId(post.id);
@@ -922,6 +928,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     });
+  }
+
+  /// インデックス0 などで投稿を挿入した際にメディア管理マップを再インデックス
+  void _shiftMediaStateForInsertedIndex(int insertionIndex) {
+    if (insertionIndex < 0) return;
+
+    final shiftedVideoControllers = <int, VideoPlayerController>{};
+    _videoControllers.forEach((index, controller) {
+      final newIndex = index >= insertionIndex ? index + 1 : index;
+      shiftedVideoControllers[newIndex] = controller;
+    });
+    _videoControllers
+      ..clear()
+      ..addAll(shiftedVideoControllers);
+
+    final shiftedInitializedVideos = _initializedVideos
+        .map((index) => index >= insertionIndex ? index + 1 : index)
+        .toSet();
+    _initializedVideos
+      ..clear()
+      ..addAll(shiftedInitializedVideos);
+
+    final shiftedAudioPlayers = <int, AudioPlayer>{};
+    _audioPlayers.forEach((index, player) {
+      final newIndex = index >= insertionIndex ? index + 1 : index;
+      shiftedAudioPlayers[newIndex] = player;
+    });
+    _audioPlayers
+      ..clear()
+      ..addAll(shiftedAudioPlayers);
+
+    final shiftedInitializedAudios = _initializedAudios
+        .map((index) => index >= insertionIndex ? index + 1 : index)
+        .toSet();
+    _initializedAudios
+      ..clear()
+      ..addAll(shiftedInitializedAudios);
+
+    if (_currentPlayingVideo != null &&
+        _currentPlayingVideo! >= insertionIndex) {
+      _currentPlayingVideo = _currentPlayingVideo! + 1;
+    }
+    if (_lastPlayingVideoBeforeNavigation != null &&
+        _lastPlayingVideoBeforeNavigation! >= insertionIndex) {
+      _lastPlayingVideoBeforeNavigation =
+          _lastPlayingVideoBeforeNavigation! + 1;
+    }
+
+    if (_currentPlayingAudio != null &&
+        _currentPlayingAudio! >= insertionIndex) {
+      _currentPlayingAudio = _currentPlayingAudio! + 1;
+    }
+    if (_lastPlayingAudioBeforeNavigation != null &&
+        _lastPlayingAudioBeforeNavigation! >= insertionIndex) {
+      _lastPlayingAudioBeforeNavigation =
+          _lastPlayingAudioBeforeNavigation! + 1;
+    }
+
+    if (_currentIndex >= insertionIndex) {
+      _currentIndex += 1;
+    }
   }
 
   /// 動画コントローラーを初期化（段階4）
@@ -2122,17 +2189,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_initializedAudios.contains(postIndex)) {
       final player = _audioPlayers[postIndex];
       if (player != null) {
-      // 現在表示中の音声を再生
-      if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
-        // 他の動画と音声をすべて停止してから再生
-        _stopAllVideos();
-        _stopAllAudios();
-        _currentPlayingAudio = postIndex;
-        if (!player.playing) {
-          player.play();
-          _startSeekBarUpdateTimerAudio();
+        // 現在表示中の音声を再生
+        if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
+          // 他の動画と音声をすべて停止してから再生
+          _stopAllVideos();
+          _stopAllAudios();
+          _currentPlayingAudio = postIndex;
+          if (!player.playing) {
+            player.play();
+            _startSeekBarUpdateTimerAudio();
+          }
         }
-      }
       }
       return;
     }
@@ -3226,6 +3293,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (kDebugMode) {
       debugPrint('💬 コメントボタン: postId=${post.id}');
     }
+    if (_isCommentSheetVisible) {
+      if (kDebugMode) {
+        debugPrint('⚠️ コメントシートは既に開いています');
+      }
+      return;
+    }
+    _isCommentSheetVisible = true;
 
     final commentController = TextEditingController();
     bool isLoading = true;
@@ -3308,435 +3382,442 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return fetchedComments;
     }
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            if (!isSheetOpen) {
-              return const SizedBox.shrink();
-            }
+    try {
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              if (!isSheetOpen) {
+                return const SizedBox.shrink();
+              }
 
-            if (!hasRequestedComments) {
-              hasRequestedComments = true;
-              refreshComments(setModalState);
-            }
+              if (!hasRequestedComments) {
+                hasRequestedComments = true;
+                refreshComments(setModalState);
+              }
 
-            return DraggableScrollableSheet(
-              initialChildSize: 0.7,
-              minChildSize: 0.5,
-              maxChildSize: 0.9,
-              builder: (context, scrollController) {
-                final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+              return DraggableScrollableSheet(
+                initialChildSize: 0.7,
+                minChildSize: 0.5,
+                maxChildSize: 0.9,
+                builder: (context, scrollController) {
+                  final keyboardHeight =
+                      MediaQuery.of(context).viewInsets.bottom;
 
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.85),
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(20)),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1,
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.85),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(20)),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.1),
+                        width: 1,
+                      ),
                     ),
-                  ),
-                  child: Container(
-                    padding: EdgeInsets.only(
-                      top: 20,
-                      left: 20,
-                      right: 20,
-                      bottom: 20 + keyboardHeight,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'コメント',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () async {
-                                FocusScope.of(context).unfocus();
-                                await Future.delayed(
-                                    const Duration(milliseconds: 100));
-                                if (mounted) {
-                                  Navigator.pop(context);
-                                }
-                              },
-                              icon:
-                                  const Icon(Icons.close, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: isLoading
-                              ? const Center(
-                                  child: CircularProgressIndicator(
-                                    color: Color(0xFFFF6B35),
-                                  ),
-                                )
-                              : comments.isEmpty
-                                  ? const Center(
-                                      child: Text(
-                                        'コメントはありません',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    )
-                                  : ListView.builder(
-                                      controller: scrollController,
-                                      itemCount: comments.length,
-                                      itemBuilder: (context, index) {
-                                        final comment = comments[index];
-                                        return _buildCommentItem(
-                                          comment,
-                                          replyingToCommentId:
-                                              replyingToCommentId,
-                                          onReplyPressed: (commentId) {
-                                            if (!isSheetOpen) return;
-                                            setModalState(() {
-                                              if (isSheetOpen) {
-                                                if (replyingToCommentId ==
-                                                    commentId) {
-                                                  replyingToCommentId = null;
-                                                  commentController.clear();
-                                                } else {
-                                                  replyingToCommentId =
-                                                      commentId;
-                                                  commentController.clear();
-                                                }
-                                              }
-                                            });
-                                          },
-                                          onReportPressed: (selectedComment) {
-                                            _showCommentReportDialog(
-                                              selectedComment,
-                                              post,
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                        ),
-                        if (replyingToCommentId != null)
-                          Builder(
-                            builder: (context) {
-                              Comment? replyingToComment;
-                              void findComment(List<Comment> commentList) {
-                                for (final comment in commentList) {
-                                  if (comment.commentID ==
-                                      replyingToCommentId) {
-                                    replyingToComment = comment;
-                                    return;
-                                  }
-                                  if (comment.replies.isNotEmpty) {
-                                    findComment(comment.replies);
-                                  }
-                                }
-                              }
-
-                              findComment(comments);
-
-                              if (replyingToComment == null) {
-                                return const SizedBox.shrink();
-                              }
-
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[900],
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFFFF6B35)
-                                        .withOpacity(0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 3,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF6B35),
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.reply,
-                                                color: Color(0xFFFF6B35),
-                                                size: 14,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                replyingToComment!.username,
-                                                style: const TextStyle(
-                                                  color: Color(0xFFFF6B35),
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            replyingToComment!.commenttext,
-                                            style: TextStyle(
-                                              color: Colors.grey[300],
-                                              fontSize: 12,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      onPressed: () {
-                                        if (!isSheetOpen) return;
-                                        setModalState(() {
-                                          if (isSheetOpen) {
-                                            replyingToCommentId = null;
-                                            commentController.clear();
-                                          }
-                                        });
-                                      },
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.grey,
-                                        size: 18,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
+                    child: Container(
+                      padding: EdgeInsets.only(
+                        top: 20,
+                        left: 20,
+                        right: 20,
+                        bottom: 20 + keyboardHeight,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Color(0xFFFF6B35),
-                                child: Icon(Icons.person,
-                                    size: 16, color: Colors.white),
+                              const Text(
+                                'コメント',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: isSheetOpen
-                                    ? TextField(
-                                        controller: commentController,
-                                        style: const TextStyle(
-                                            color: Colors.white),
-                                        decoration: InputDecoration(
-                                          hintText: replyingToCommentId != null
-                                              ? '返信を入力...'
-                                              : 'コメントを追加...',
-                                          hintStyle: TextStyle(
-                                              color: Colors.grey[400]),
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                            borderSide: BorderSide.none,
-                                          ),
-                                          filled: true,
-                                          fillColor: Colors.grey[800],
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 10,
-                                          ),
-                                        ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                              const SizedBox(width: 10),
                               IconButton(
                                 onPressed: () async {
-                                  if (!isSheetOpen) return;
-                                  final commentText =
-                                      commentController.text.trim();
-                                  if (commentText.isEmpty) return;
-
-                                  try {
-                                    setModalState(() {
-                                      if (isSheetOpen) {
-                                        isLoading = true;
-                                      }
-                                    });
-                                  } catch (e) {
-                                    return;
-                                  }
-
-                                  final success =
-                                      await CommentService.addComment(
-                                    post.id,
-                                    commentText,
-                                    parentCommentId: replyingToCommentId,
-                                  );
-
-                                  if (!isSheetOpen || !mounted) return;
-
-                                  if (success) {
-                                    final wasReplying =
-                                        replyingToCommentId != null;
-
-                                    commentController.clear();
-
-                                    try {
-                                      setModalState(() {
-                                        if (isSheetOpen) {
-                                          replyingToCommentId = null;
-                                        }
-                                      });
-                                    } catch (e) {
-                                      return;
-                                    }
-
-                                    if (wasReplying) {
-                                      await Future.delayed(
-                                          const Duration(milliseconds: 500));
-                                    } else {
-                                      await Future.delayed(
-                                          const Duration(milliseconds: 200));
-                                    }
-
-                                    final updatedComments =
-                                        await refreshComments(setModalState);
-                                    if (!isSheetOpen || !mounted) return;
-
-                                    final updatedTotal =
-                                        _countAllComments(updatedComments);
-
-                                    if (kDebugMode) {
-                                      debugPrint(
-                                          '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
-                                      if (_currentIndex >= 0 &&
-                                          _currentIndex < _posts.length) {
-                                        debugPrint(
-                                            '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
-                                        debugPrint(
-                                            '💬 現在の投稿ID: ${_posts[_currentIndex].id}');
-                                        debugPrint(
-                                            '💬 現在の投稿username: ${_posts[_currentIndex].username}');
-                                      }
-                                      debugPrint(
-                                          '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
-                                      if (wasReplying) {
-                                        debugPrint('💬 返信追加後のコメント一覧を更新しました');
-                                      }
-                                    }
-
-                                    if (mounted && !_isDisposed) {
-                                      if (_currentIndex >= 0 &&
-                                          _currentIndex < _posts.length) {
-                                        final currentPost =
-                                            _posts[_currentIndex];
-                                        if (currentPost.id == post.id &&
-                                            currentPost.id.isNotEmpty) {
-                                          setState(() {
-                                            _posts[_currentIndex] = Post(
-                                              id: currentPost.id,
-                                              userId: currentPost.userId,
-                                              username: currentPost.username,
-                                              userIconPath:
-                                                  currentPost.userIconPath,
-                                              userIconUrl:
-                                                  currentPost.userIconUrl,
-                                              title: currentPost.title,
-                                              content: currentPost.content,
-                                              contentPath:
-                                                  currentPost.contentPath,
-                                              type: currentPost.type,
-                                              mediaUrl: currentPost.mediaUrl,
-                                              thumbnailUrl:
-                                                  currentPost.thumbnailUrl,
-                                              likes: currentPost.likes,
-                                              playNum: currentPost.playNum,
-                                              link: currentPost.link,
-                                              comments: updatedTotal,
-                                              shares: currentPost.shares,
-                                              isSpotlighted:
-                                                  currentPost.isSpotlighted,
-                                              isText: currentPost.isText,
-                                              nextContentId:
-                                                  currentPost.nextContentId,
-                                              createdAt: currentPost.createdAt,
-                                            );
-                                          });
-                                        } else if (kDebugMode) {
-                                          debugPrint('⚠️ コメント追加: データの不一致を検出');
-                                          debugPrint(
-                                              '  - 期待されるpostId: ${post.id}');
-                                          debugPrint(
-                                              '  - 実際のpostId: ${currentPost.id}');
-                                          debugPrint(
-                                              '  - 期待されるusername: ${post.username}');
-                                          debugPrint(
-                                              '  - 実際のusername: ${currentPost.username}');
-                                        }
-                                      } else if (kDebugMode) {
-                                        debugPrint(
-                                            '⚠️ コメント追加: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
-                                      }
-                                    }
-                                  } else {
-                                    try {
-                                      setModalState(() {
-                                        if (isSheetOpen) {
-                                          isLoading = false;
-                                        }
-                                      });
-                                    } catch (e) {
-                                      return;
-                                    }
+                                  FocusScope.of(context).unfocus();
+                                  await Future.delayed(
+                                      const Duration(milliseconds: 100));
+                                  if (mounted) {
+                                    isSheetOpen = false;
+                                    Navigator.pop(context);
                                   }
                                 },
-                                icon: const Icon(Icons.send,
-                                    color: Color(0xFFFF6B35)),
+                                icon: const Icon(Icons.close,
+                                    color: Colors.white),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 20),
+                          Expanded(
+                            child: isLoading
+                                ? const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFFF6B35),
+                                    ),
+                                  )
+                                : comments.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          'コメントはありません',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        controller: scrollController,
+                                        itemCount: comments.length,
+                                        itemBuilder: (context, index) {
+                                          final comment = comments[index];
+                                          return _buildCommentItem(
+                                            comment,
+                                            replyingToCommentId:
+                                                replyingToCommentId,
+                                            onReplyPressed: (commentId) {
+                                              if (!isSheetOpen) return;
+                                              setModalState(() {
+                                                if (isSheetOpen) {
+                                                  if (replyingToCommentId ==
+                                                      commentId) {
+                                                    replyingToCommentId = null;
+                                                    commentController.clear();
+                                                  } else {
+                                                    replyingToCommentId =
+                                                        commentId;
+                                                    commentController.clear();
+                                                  }
+                                                }
+                                              });
+                                            },
+                                            onReportPressed: (selectedComment) {
+                                              _showCommentReportDialog(
+                                                selectedComment,
+                                                post,
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
+                          ),
+                          if (replyingToCommentId != null)
+                            Builder(
+                              builder: (context) {
+                                Comment? replyingToComment;
+                                void findComment(List<Comment> commentList) {
+                                  for (final comment in commentList) {
+                                    if (comment.commentID ==
+                                        replyingToCommentId) {
+                                      replyingToComment = comment;
+                                      return;
+                                    }
+                                    if (comment.replies.isNotEmpty) {
+                                      findComment(comment.replies);
+                                    }
+                                  }
+                                }
+
+                                findComment(comments);
+
+                                if (replyingToComment == null) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[900],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFFF6B35)
+                                          .withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 3,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF6B35),
+                                          borderRadius:
+                                              BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.reply,
+                                                  color: Color(0xFFFF6B35),
+                                                  size: 14,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  replyingToComment!.username,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFFF6B35),
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              replyingToComment!.commenttext,
+                                              style: TextStyle(
+                                                color: Colors.grey[300],
+                                                fontSize: 12,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () {
+                                          if (!isSheetOpen) return;
+                                          setModalState(() {
+                                            if (isSheetOpen) {
+                                              replyingToCommentId = null;
+                                              commentController.clear();
+                                            }
+                                          });
+                                        },
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: Colors.grey,
+                                          size: 18,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                const CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Color(0xFFFF6B35),
+                                  child: Icon(Icons.person,
+                                      size: 16, color: Colors.white),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: isSheetOpen
+                                      ? TextField(
+                                          controller: commentController,
+                                          style: const TextStyle(
+                                              color: Colors.white),
+                                          decoration: InputDecoration(
+                                            hintText:
+                                                replyingToCommentId != null
+                                                    ? '返信を入力...'
+                                                    : 'コメントを追加...',
+                                            hintStyle: TextStyle(
+                                                color: Colors.grey[400]),
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            filled: true,
+                                            fillColor: Colors.grey[800],
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 10,
+                                            ),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                const SizedBox(width: 10),
+                                IconButton(
+                                  onPressed: () async {
+                                    if (!isSheetOpen) return;
+                                    final commentText =
+                                        commentController.text.trim();
+                                    if (commentText.isEmpty) return;
+
+                                    try {
+                                      setModalState(() {
+                                        if (isSheetOpen) {
+                                          isLoading = true;
+                                        }
+                                      });
+                                    } catch (e) {
+                                      return;
+                                    }
+
+                                    final success =
+                                        await CommentService.addComment(
+                                      post.id,
+                                      commentText,
+                                      parentCommentId: replyingToCommentId,
+                                    );
+
+                                    if (!isSheetOpen || !mounted) return;
+
+                                    if (success) {
+                                      final wasReplying =
+                                          replyingToCommentId != null;
+
+                                      commentController.clear();
+
+                                      try {
+                                        setModalState(() {
+                                          if (isSheetOpen) {
+                                            replyingToCommentId = null;
+                                          }
+                                        });
+                                      } catch (e) {
+                                        return;
+                                      }
+
+                                      if (wasReplying) {
+                                        await Future.delayed(
+                                            const Duration(milliseconds: 500));
+                                      } else {
+                                        await Future.delayed(
+                                            const Duration(milliseconds: 200));
+                                      }
+
+                                      final updatedComments =
+                                          await refreshComments(setModalState);
+                                      if (!isSheetOpen || !mounted) return;
+
+                                      final updatedTotal =
+                                          _countAllComments(updatedComments);
+
+                                      if (kDebugMode) {
+                                        debugPrint(
+                                            '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
+                                        if (_currentIndex >= 0 &&
+                                            _currentIndex < _posts.length) {
+                                          debugPrint(
+                                              '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
+                                          debugPrint(
+                                              '💬 現在の投稿ID: ${_posts[_currentIndex].id}');
+                                          debugPrint(
+                                              '💬 現在の投稿username: ${_posts[_currentIndex].username}');
+                                        }
+                                        debugPrint(
+                                            '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
+                                        if (wasReplying) {
+                                          debugPrint('💬 返信追加後のコメント一覧を更新しました');
+                                        }
+                                      }
+
+                                      if (mounted && !_isDisposed) {
+                                        if (_currentIndex >= 0 &&
+                                            _currentIndex < _posts.length) {
+                                          final currentPost =
+                                              _posts[_currentIndex];
+                                          if (currentPost.id == post.id &&
+                                              currentPost.id.isNotEmpty) {
+                                            setState(() {
+                                              _posts[_currentIndex] = Post(
+                                                id: currentPost.id,
+                                                userId: currentPost.userId,
+                                                username: currentPost.username,
+                                                userIconPath:
+                                                    currentPost.userIconPath,
+                                                userIconUrl:
+                                                    currentPost.userIconUrl,
+                                                title: currentPost.title,
+                                                content: currentPost.content,
+                                                contentPath:
+                                                    currentPost.contentPath,
+                                                type: currentPost.type,
+                                                mediaUrl: currentPost.mediaUrl,
+                                                thumbnailUrl:
+                                                    currentPost.thumbnailUrl,
+                                                likes: currentPost.likes,
+                                                playNum: currentPost.playNum,
+                                                link: currentPost.link,
+                                                comments: updatedTotal,
+                                                shares: currentPost.shares,
+                                                isSpotlighted:
+                                                    currentPost.isSpotlighted,
+                                                isText: currentPost.isText,
+                                                nextContentId:
+                                                    currentPost.nextContentId,
+                                                createdAt:
+                                                    currentPost.createdAt,
+                                              );
+                                            });
+                                          } else if (kDebugMode) {
+                                            debugPrint('⚠️ コメント追加: データの不一致を検出');
+                                            debugPrint(
+                                                '  - 期待されるpostId: ${post.id}');
+                                            debugPrint(
+                                                '  - 実際のpostId: ${currentPost.id}');
+                                            debugPrint(
+                                                '  - 期待されるusername: ${post.username}');
+                                            debugPrint(
+                                                '  - 実際のusername: ${currentPost.username}');
+                                          }
+                                        } else if (kDebugMode) {
+                                          debugPrint(
+                                              '⚠️ コメント追加: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+                                        }
+                                      }
+                                    } else {
+                                      try {
+                                        setModalState(() {
+                                          if (isSheetOpen) {
+                                            isLoading = false;
+                                          }
+                                        });
+                                      } catch (e) {
+                                        return;
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.send,
+                                      color: Color(0xFFFF6B35)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    ).then((_) {
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    } finally {
       isSheetOpen = false;
-    }).whenComplete(() {
+      _isCommentSheetVisible = false;
       try {
         commentController.dispose();
       } catch (_) {}
-    });
+    }
   }
 
   int _countAllComments(List<Comment> commentList) {
@@ -4710,7 +4791,7 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
       }
 
       final availableWidth = renderObject.size.width;
-      
+
       // テキストの実際の幅を測定（制限なし）
       final textPainter = TextPainter(
         text: TextSpan(text: widget.text, style: widget.style),
@@ -4753,7 +4834,7 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         final availableWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.of(context).size.width;
-        
+
         // テキストの実際の幅を測定
         final textPainter = TextPainter(
           text: TextSpan(text: widget.text, style: widget.style),
@@ -4762,10 +4843,10 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         );
         textPainter.layout();
         final textWidth = textPainter.width;
-        
+
         // スクロールする距離を計算
         final scrollDistance = textWidth - availableWidth;
-        
+
         return AnimatedBuilder(
           animation: _animation,
           builder: (context, child) {
