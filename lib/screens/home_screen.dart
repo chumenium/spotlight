@@ -3254,10 +3254,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// アプリ内ディープリンクおよび表示用のWeb URLを生成
+  String _buildDeepLink(Post post) {
+    return 'spotlight://content/${post.id}';
+  }
+
+  String _buildWebLink(Post post) {
+    final deeplink = Uri.encodeComponent(_buildDeepLink(post));
+    return '${AppConfig.backendUrl}/content/${post.id}?deeplink=$deeplink';
+  }
+
   /// リンクをクリップボードにコピー（段階9）
   void _copyLinkToClipboard(Post post) {
-    // 投稿の共有リンクを生成（実際のアプリでは適切なURLを生成）
-    final shareUrl = '${AppConfig.backendUrl}/content/${post.id}';
+    final shareUrl = _buildWebLink(post);
 
     Clipboard.setData(ClipboardData(text: shareUrl));
 
@@ -3272,16 +3281,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// システム共有機能を使用（段階9）
   void _shareWithSystem(Post post) {
-    // 共有テキストを生成
-    final shareText =
-        '${post.title}\n${AppConfig.backendUrl}/content/${post.id}';
+    final webLink = _buildWebLink(post);
+    final shareText = '${post.title}\n$webLink\n(app: ${_buildDeepLink(post)})';
 
-    // クリップボードにコピーして共有（実際のアプリではshare_plusパッケージを使用）
     Clipboard.setData(ClipboardData(text: shareText));
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('リンクをコピーしました（共有機能は実装中）'),
+        content: Text('共有用リンクをコピーしました（spotlightアプリで開けます）'),
         backgroundColor: Colors.blue,
         duration: Duration(seconds: 2),
       ),
