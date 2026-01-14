@@ -66,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Set<int> _initializedAudios = {};
   int? _currentPlayingAudio;
 
+  // 画面遷移時のメディア再生状態管理
+  int? _lastNavigationIndex;
+  int? _lastPlayingVideoBeforeNavigation;
+  int? _lastPlayingAudioBeforeNavigation;
+
   // シークバー関連（段階11）
   bool _isSeeking = false;
   bool _isSeekingAudio = false;
@@ -556,6 +561,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final navigationProvider = Provider.of<NavigationProvider>(context);
     final targetPostId = navigationProvider.targetPostId;
     final targetPost = navigationProvider.targetPost;
+    final currentNavIndex = navigationProvider.currentIndex;
+
+    // 画面遷移時のメディア再生制御
+    _handleNavigationMediaControl(currentNavIndex);
 
     if (kDebugMode) {
       debugPrint(
@@ -586,6 +595,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _schedulePendingTargetCheck();
     }
     _tryJumpToPendingTarget();
+  }
+
+  /// 画面遷移時のメディア再生制御
+  void _handleNavigationMediaControl(int currentNavIndex) {
+    // 初回呼び出し時は前回のインデックスを記録して終了
+    if (_lastNavigationIndex == null) {
+      _lastNavigationIndex = currentNavIndex;
+      return;
+    }
+
+    // ナビゲーションインデックスが変更されていない場合は何もしない
+    if (_lastNavigationIndex == currentNavIndex) {
+      return;
+    }
+
+    // ホーム画面（インデックス0）から別画面に遷移した場合
+    if (_lastNavigationIndex == 0 && currentNavIndex != 0) {
+      if (kDebugMode) {
+        debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
+      }
+
+      // 現在再生中の動画を一時停止
+      if (_currentPlayingVideo != null) {
+        final controller = _videoControllers[_currentPlayingVideo];
+        if (controller != null &&
+            controller.value.isInitialized &&
+            controller.value.isPlaying) {
+          _lastPlayingVideoBeforeNavigation = _currentPlayingVideo;
+          controller.pause();
+          if (kDebugMode) {
+            debugPrint('⏸️ [画面遷移] 動画を一時停止: index=$_currentPlayingVideo');
+          }
+        }
+      }
+
+      // 現在再生中の音声を一時停止
+      if (_currentPlayingAudio != null) {
+        final player = _audioPlayers[_currentPlayingAudio];
+        if (player != null && player.playing) {
+          _lastPlayingAudioBeforeNavigation = _currentPlayingAudio;
+          player.pause();
+          if (kDebugMode) {
+            debugPrint('⏸️ [画面遷移] 音声を一時停止: index=$_currentPlayingAudio');
+          }
+        }
+      }
+    }
+    // 別画面からホーム画面に戻った場合
+    else if (_lastNavigationIndex != 0 && currentNavIndex == 0) {
+      if (kDebugMode) {
+        debugPrint(
+            '📱 [画面遷移] 別画面からホーム画面に戻る: previousIndex=$_lastNavigationIndex');
+      }
+
+      // 前回再生していた動画を再開
+      if (_lastPlayingVideoBeforeNavigation != null) {
+        final controller = _videoControllers[_lastPlayingVideoBeforeNavigation];
+        if (controller != null &&
+            controller.value.isInitialized &&
+            !controller.value.isPlaying) {
+          // 現在表示中の投稿が前回再生していた動画と同じ場合のみ再開
+          if (_currentIndex == _lastPlayingVideoBeforeNavigation) {
+            controller.play();
+            _currentPlayingVideo = _lastPlayingVideoBeforeNavigation;
+            if (kDebugMode) {
+              debugPrint(
+                  '▶️ [画面遷移] 動画を再開: index=$_lastPlayingVideoBeforeNavigation');
+            }
+          }
+        }
+        // 再開後はクリア（次回の遷移時に備える）
+        _lastPlayingVideoBeforeNavigation = null;
+      }
+
+      // 前回再生していた音声を再開
+      if (_lastPlayingAudioBeforeNavigation != null) {
+        final player = _audioPlayers[_lastPlayingAudioBeforeNavigation];
+        if (player != null && !player.playing) {
+          // 現在表示中の投稿が前回再生していた音声と同じ場合のみ再開
+          if (_currentIndex == _lastPlayingAudioBeforeNavigation) {
+            player.play();
+            _currentPlayingAudio = _lastPlayingAudioBeforeNavigation;
+            if (kDebugMode) {
+              debugPrint(
+                  '▶️ [画面遷移] 音声を再開: index=$_lastPlayingAudioBeforeNavigation');
+            }
+          }
+        }
+        // 再開後はクリア（次回の遷移時に備える）
+        _lastPlayingAudioBeforeNavigation = null;
+      }
+    }
+
+    // 前回のナビゲーションインデックスを更新
+    _lastNavigationIndex = currentNavIndex;
   }
 
   void _schedulePendingTargetCheck() {
@@ -3920,7 +4024,7 @@ String _formatCommentTime(String timestamp) {
   try {
     // タイムスタンプをパース（サーバーがUTC時刻を返す場合、タイムゾーン情報がない場合は'Z'を追加してUTCとして解釈）
     // タイムゾーン情報（Z、+、-の後に数字）がない場合、Zを追加
-    final hasTimezone = timestamp.endsWith('Z') || 
+    final hasTimezone = timestamp.endsWith('Z') ||
         RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(timestamp);
     final timestampToParse = hasTimezone ? timestamp : '${timestamp}Z';
     final dateTime = DateTime.parse(timestampToParse).toLocal();
