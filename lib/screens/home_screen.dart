@@ -3918,7 +3918,7 @@ Widget _buildReplyItem(
 
 String _formatCommentTime(String timestamp) {
   try {
-    final dateTime = DateTime.parse(timestamp);
+    final dateTime = DateTime.parse(timestamp).toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
