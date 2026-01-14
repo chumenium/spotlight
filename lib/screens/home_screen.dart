@@ -642,6 +642,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             '  - 更新後: username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
       }
 
+      // 既存の投稿の動画コントローラーをクリア（mediaUrlが更新される可能性があるため）
+      final oldPost = _posts[existingIndex];
+      if (oldPost.postType == PostType.video) {
+        final controller = _videoControllers[existingIndex];
+        if (controller != null) {
+          controller.removeListener(_onVideoPositionChanged);
+          controller.pause();
+          controller.dispose();
+          _videoControllers.remove(existingIndex);
+          _initializedVideos.remove(existingIndex);
+          if (_currentPlayingVideo == existingIndex) {
+            _currentPlayingVideo = null;
+          }
+          if (kDebugMode) {
+            debugPrint(
+                '📱 [insertProviderPost] 既存の動画コントローラーをクリアしました: index=$existingIndex');
+          }
+        }
+      }
+
       setState(() {
         // 既存の投稿をtargetPostで置き換え
         _posts[existingIndex] = providerPost;
