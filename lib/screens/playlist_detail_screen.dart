@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
+import '../services/post_service.dart';
 import '../services/playlist_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
@@ -123,6 +124,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           debugPrint('📋 [プレイリスト詳細] 状態更新完了: ${_contents.length}件');
         }
       }
+
+      if (posts.isNotEmpty) {
+        final enrichedPosts = await _enrichPlaylistContents(posts);
+        if (mounted) {
+          setState(() {
+            _contents = enrichedPosts;
+          });
+        }
+      }
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('❌ [プレイリスト詳細] エラー: $e');
@@ -136,6 +146,31 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         });
       }
     }
+  }
+
+  Future<List<Post>> _enrichPlaylistContents(List<Post> posts) async {
+    if (posts.isEmpty) return posts;
+
+    if (kDebugMode) {
+      debugPrint('📋 [プレイリスト詳細] ユーザー情報補完: ${posts.length}件のコンテンツを取得します');
+    }
+
+    final futures = posts.map((post) => PostService.fetchContentById(post.id));
+    final details = await Future.wait<Post?>(futures);
+
+    final enriched = <Post>[];
+    for (var i = 0; i < posts.length; i++) {
+      enriched.add(details[i] ?? posts[i]);
+    }
+
+    if (kDebugMode) {
+      final enrichedCount =
+          enriched.where((post) => post.userId.isNotEmpty).length;
+      debugPrint(
+          '📋 [プレイリスト詳細] 補完結果: ${enrichedCount}/${posts.length}件でuserIdを取得');
+    }
+
+    return enriched;
   }
 
   /// 日付を相対時間に変換
