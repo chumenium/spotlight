@@ -70,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int? _lastNavigationIndex;
   int? _lastPlayingVideoBeforeNavigation;
   int? _lastPlayingAudioBeforeNavigation;
+  VoidCallback? _navigationListener;
 
   // シークバー関連（段階11）
   bool _isSeeking = false;
@@ -127,6 +128,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // ライフサイクル監視を追加
     WidgetsBinding.instance.addObserver(this);
 
+    // NavigationProviderの変更を監視（ナビゲーション変更時にメディア再生を制御）
+    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    _lastNavigationIndex = navigationProvider.currentIndex;
+    _navigationListener = () {
+      if (_isDisposed) return;
+      final currentNavIndex = navigationProvider.currentIndex;
+      _handleNavigationMediaControl(currentNavIndex);
+    };
+    navigationProvider.addListener(_navigationListener!);
+
     // 初期データ読み込み（段階2で実装）
     _loadInitialPosts();
   }
@@ -134,6 +145,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _isDisposed = true;
+
+    // NavigationProviderのリスナーを解除
+    if (_navigationListener != null) {
+      final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.removeListener(_navigationListener!);
+      _navigationListener = null;
+    }
 
     // ライフサイクル監視を解除
     WidgetsBinding.instance.removeObserver(this);
@@ -616,31 +634,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
       }
 
-      // 現在再生中の動画を一時停止
+      // 現在再生中の動画を記録して停止
       if (_currentPlayingVideo != null) {
         final controller = _videoControllers[_currentPlayingVideo];
         if (controller != null &&
             controller.value.isInitialized &&
             controller.value.isPlaying) {
           _lastPlayingVideoBeforeNavigation = _currentPlayingVideo;
-          controller.pause();
-          if (kDebugMode) {
-            debugPrint('⏸️ [画面遷移] 動画を一時停止: index=$_currentPlayingVideo');
-          }
         }
       }
 
-      // 現在再生中の音声を一時停止
+      // 現在再生中の音声を記録して停止
       if (_currentPlayingAudio != null) {
         final player = _audioPlayers[_currentPlayingAudio];
         if (player != null && player.playing) {
           _lastPlayingAudioBeforeNavigation = _currentPlayingAudio;
-          player.pause();
-          if (kDebugMode) {
-            debugPrint('⏸️ [画面遷移] 音声を一時停止: index=$_currentPlayingAudio');
-          }
         }
       }
+
+      // すべての動画を確実に停止（裏で再生されている可能性があるため）
+      _stopAllVideos();
+
+      // すべての音声を確実に停止（裏で再生されている可能性があるため）
+      _stopAllAudios();
     }
     // 別画面からホーム画面に戻った場合
     else if (_lastNavigationIndex != 0 && currentNavIndex == 0) {
@@ -649,14 +665,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             '📱 [画面遷移] 別画面からホーム画面に戻る: previousIndex=$_lastNavigationIndex');
       }
 
-      // 前回再生していた動画を再開
-      if (_lastPlayingVideoBeforeNavigation != null) {
-        final controller = _videoControllers[_lastPlayingVideoBeforeNavigation];
-        if (controller != null &&
-            controller.value.isInitialized &&
-            !controller.value.isPlaying) {
-          // 現在表示中の投稿が前回再生していた動画と同じ場合のみ再開
-          if (_currentIndex == _lastPlayingVideoBeforeNavigation) {
+      // 現在表示中の投稿のメディアを自動再生
+      if (!_isDisposed && _currentIndex >= 0 && _currentIndex < _posts.length) {
+        final currentPost = _posts[_currentIndex];
+        
+        // 前回再生していた動画がある場合、それが現在の投稿と同じなら再開
+        if (_lastPlayingVideoBeforeNavigation != null &&
+            _lastPlayingVideoBeforeNavigation == _currentIndex &&
+            currentPost.postType == PostType.video) {
+          final controller = _videoControllers[_lastPlayingVideoBeforeNavigation];
+          if (controller != null &&
+              controller.value.isInitialized &&
+              !controller.value.isPlaying) {
             controller.play();
             _currentPlayingVideo = _lastPlayingVideoBeforeNavigation;
             if (kDebugMode) {
@@ -664,28 +684,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   '▶️ [画面遷移] 動画を再開: index=$_lastPlayingVideoBeforeNavigation');
             }
           }
+        } else if (currentPost.postType == PostType.video) {
+          // 前回の動画と異なる場合は、現在の投稿の動画を再生
+          _handleMediaPageChange(_currentIndex);
         }
-        // 再開後はクリア（次回の遷移時に備える）
-        _lastPlayingVideoBeforeNavigation = null;
-      }
 
-      // 前回再生していた音声を再開
-      if (_lastPlayingAudioBeforeNavigation != null) {
-        final player = _audioPlayers[_lastPlayingAudioBeforeNavigation];
-        if (player != null && !player.playing) {
-          // 現在表示中の投稿が前回再生していた音声と同じ場合のみ再開
-          if (_currentIndex == _lastPlayingAudioBeforeNavigation) {
+        // 前回再生していた音声がある場合、それが現在の投稿と同じなら再開
+        if (_lastPlayingAudioBeforeNavigation != null &&
+            _lastPlayingAudioBeforeNavigation == _currentIndex &&
+            currentPost.postType == PostType.audio) {
+          final player = _audioPlayers[_lastPlayingAudioBeforeNavigation];
+          if (player != null && !player.playing) {
             player.play();
             _currentPlayingAudio = _lastPlayingAudioBeforeNavigation;
+            _startSeekBarUpdateTimerAudio();
             if (kDebugMode) {
               debugPrint(
                   '▶️ [画面遷移] 音声を再開: index=$_lastPlayingAudioBeforeNavigation');
             }
           }
+        } else if (currentPost.postType == PostType.audio) {
+          // 前回の音声と異なる場合は、現在の投稿の音声を再生
+          _handleMediaPageChange(_currentIndex);
         }
-        // 再開後はクリア（次回の遷移時に備える）
-        _lastPlayingAudioBeforeNavigation = null;
       }
+
+      // 再開後はクリア（次回の遷移時に備える）
+      _lastPlayingVideoBeforeNavigation = null;
+      _lastPlayingAudioBeforeNavigation = null;
     }
 
     // 前回のナビゲーションインデックスを更新
@@ -1033,7 +1059,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// すべての動画を停止する
+  void _stopAllVideos() {
+    for (final entry in _videoControllers.entries) {
+      final controller = entry.value;
+      if (controller != null && controller.value.isInitialized) {
+        if (controller.value.isPlaying) {
+          controller.pause();
+          controller.seekTo(Duration.zero);
+          if (kDebugMode) {
+            debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
+          }
+        }
+      }
+    }
+    _currentPlayingVideo = null;
+  }
+
+  /// すべての音声を停止する
+  void _stopAllAudios() {
+    for (final entry in _audioPlayers.entries) {
+      final player = entry.value;
+      if (player != null && player.playing) {
+        player.pause();
+        player.seek(Duration.zero);
+        if (kDebugMode) {
+          debugPrint('⏸️ すべての音声を停止: index=${entry.key}');
+        }
+      }
+    }
+    _currentPlayingAudio = null;
+  }
+
   void _startVideoPlayback(int index) {
+    // 他の動画と音声をすべて停止してから再生
+    _stopAllVideos();
+    _stopAllAudios();
+
     final controller = _videoControllers[index];
     if (controller == null || !controller.value.isInitialized) return;
     _applyDefaultVideoSettings(controller);
@@ -2060,14 +2122,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_initializedAudios.contains(postIndex)) {
       final player = _audioPlayers[postIndex];
       if (player != null) {
-        // 現在表示中の音声を再生
-        if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
-          _currentPlayingAudio = postIndex;
-          if (!player.playing) {
-            player.play();
-            _startSeekBarUpdateTimerAudio();
-          }
+      // 現在表示中の音声を再生
+      if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
+        // 他の動画と音声をすべて停止してから再生
+        _stopAllVideos();
+        _stopAllAudios();
+        _currentPlayingAudio = postIndex;
+        if (!player.playing) {
+          player.play();
+          _startSeekBarUpdateTimerAudio();
         }
+      }
       }
       return;
     }
@@ -2108,6 +2173,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // 現在表示中の音声を再生
       if (_currentIndex == postIndex) {
+        // 他の動画と音声をすべて停止してから再生
+        _stopAllVideos();
+        _stopAllAudios();
         _currentPlayingAudio = postIndex;
         player.play();
         _startSeekBarUpdateTimerAudio();
@@ -4636,6 +4704,11 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
   void _checkIfNeedsScroll() {
     final renderObject = context.findRenderObject();
     if (renderObject is RenderBox) {
+      // 20文字以上の場合のみスクロール可能
+      if (widget.text.length < 20) {
+        return;
+      }
+
       final availableWidth = renderObject.size.width;
       
       // テキストの実際の幅を測定（制限なし）

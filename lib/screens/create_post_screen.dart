@@ -21,32 +21,6 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
 import '../utils/spotlight_colors.dart';
 import '../services/post_service.dart';
 
-// テキストオーバーレイ用のモデル
-class TextOverlay {
-  String text;
-  Offset position;
-  bool isFocused;
-  TextEditingController controller;
-  FocusNode focusNode;
-  String id;
-  double width;
-
-  TextOverlay({
-    required this.text,
-    required this.position,
-    this.isFocused = false,
-    required this.controller,
-    required this.focusNode,
-    required this.id,
-    this.width = 220,
-  });
-
-  void dispose() {
-    controller.dispose();
-    focusNode.dispose();
-  }
-}
-
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
 
@@ -64,10 +38,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedMedia;
 
-  // テキストオーバーレイ管理
-  final List<TextOverlay> _textOverlays = [];
-  String? _selectedOverlayId;
-
   // 音声ファイル選択用
   PlatformFile? _selectedAudio;
   AudioPlayer? _audioPlayer;
@@ -77,10 +47,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   VideoPlayerController? _videoPlayerController;
   bool _isVideoPlaying = false;
   VoidCallback? _videoPlayerListener;
-
-  // 画像+テキスト合成用
-  final GlobalKey _compositeKey = GlobalKey();
-  Uint8List? _compositedImageBytes;
 
   @override
   void initState() {
@@ -99,10 +65,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   void dispose() {
     _titleController.dispose();
     _tagController.dispose();
-    for (var overlay in _textOverlays) {
-      overlay.dispose();
-    }
-    _textOverlays.clear();
     _audioPlayer?.dispose();
     // 動画プレイヤーのクリーンアップ
     _cleanupVideoPlayer();
@@ -182,21 +144,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return;
     }
 
-    // 画像 + テキストの場合は合成して単一の画像にする
-    if (_selectedMedia != null &&
-        !_isSelectedMediaVideo() &&
-        _textOverlays.isNotEmpty) {
-      final bytes = await _exportCompositeImage();
-      if (bytes != null) {
-        _compositedImageBytes = bytes; // このPNGが投稿用の単一画像になります
-      } else {
-        _showSnackBar('画像の合成に失敗しました', Colors.red);
-        return;
-      }
-    } else {
-      _compositedImageBytes = null;
-    }
-
     setState(() {
       _isPosting = true;
     });
@@ -218,13 +165,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         if (kIsWeb) {
           // Web版: XFileから直接読み取る（Web版では圧縮をスキップ）
-          imageBytes =
-              _compositedImageBytes ?? await _selectedMedia!.readAsBytes();
+          imageBytes = await _selectedMedia!.readAsBytes();
           imageFileSize = imageBytes.length;
         } else {
           // モバイル版: 画像を圧縮してファイルサイズを抑える
-          final originalImageBytes =
-              _compositedImageBytes ?? await _selectedMedia!.readAsBytes();
+          final originalImageBytes = await _selectedMedia!.readAsBytes();
           final originalImageSize = originalImageBytes.length;
 
           if (kDebugMode) {
@@ -604,10 +549,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             _audioPlayer = null;
             _selectedAudio = null;
             _isAudioPlaying = false;
-            for (var overlay in _textOverlays) {
-              overlay.dispose();
-            }
-            _textOverlays.clear();
           });
           // モーダルを閉じる
           Navigator.of(context).pop();
@@ -959,237 +900,244 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       body: Stack(
         children: [
           SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // タイトル入力セクション
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'タイトル',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _titleController,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                        inputFormatters: [
-                          LengthLimitingTextInputFormatter(_titleMaxLength),
-                        ],
-                        decoration: InputDecoration(
-                          hintText: '投稿のタイトルを入力',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF2A2A2A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+                final availableHeight = constraints.maxHeight - keyboardHeight;
+                
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: availableHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${_titleController.text.length}/$_titleMaxLength',
-                            style: TextStyle(
-                              color:
-                                  _titleController.text.length > _titleMaxLength
-                                      ? Colors.red
-                                      : Colors.grey,
-                              fontSize: 12,
+                      // タイトル入力セクション
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'タイトル',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _titleController,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                              inputFormatters: [
+                                LengthLimitingTextInputFormatter(_titleMaxLength),
+                              ],
+                              decoration: InputDecoration(
+                                hintText: '投稿のタイトルを入力',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 16,
+                                ),
+                                filled: true,
+                                fillColor: const Color(0xFF2A2A2A),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${_titleController.text.length}/$_titleMaxLength',
+                                  style: TextStyle(
+                                    color:
+                                        _titleController.text.length > _titleMaxLength
+                                            ? Colors.red
+                                            : Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'タグ',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _tagController,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                              inputFormatters: [
+                                LengthLimitingTextInputFormatter(_titleMaxLength),
+                              ],
+                              decoration: InputDecoration(
+                                hintText: 'タグを入力（例: #music）',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 16,
+                                ),
+                                filled: true,
+                                fillColor: const Color(0xFF2A2A2A),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${_tagController.text.length}/$_titleMaxLength',
+                                  style: TextStyle(
+                                    color:
+                                        _tagController.text.length > _titleMaxLength
+                                            ? Colors.red
+                                            : Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // 背景メディアプレビューエリア（固定サイズ）
+                      SizedBox(
+                        height: keyboardHeight > 0 
+                            ? availableHeight * 0.5  // キーボード表示時は高さを調整
+                            : constraints.maxHeight * 0.5,  // 通常時は固定サイズ
+                        child: _selectedMedia == null && _selectedAudio == null
+                            ? _buildMediaSelectionPrompt()
+                            : _selectedMedia != null
+                                ? _buildMediaPreviewWithOverlays()
+                                : _buildAudioPreview(),
+                      ),
+
+                      // 選択済み音声ファイル表示（背景メディアがある場合は下に表示）
+                      if (_selectedAudio != null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                              left: 16.0, right: 16.0, bottom: 8.0),
+                          child: _buildSelectedAudioPreview(),
+                        ),
+
+                      // メディア選択ボタン
+                      if (_selectedMedia == null && _selectedAudio == null)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildOptionButton(
+                                  icon: Icons.image_outlined,
+                                  label: '写真',
+                            onTap: () =>
+                                  _pickMedia(ImageSource.gallery, isVideo: false),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOptionButton(
+                                  icon: Icons.videocam_outlined,
+                                  label: '動画',
+                                  onTap: () =>
+                                      _pickMedia(ImageSource.gallery, isVideo: true),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOptionButton(
+                                  icon: Icons.audiotrack_outlined,
+                                  label: '音声',
+                                  onTap: _pickAudioFile,
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'タグ',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
                         ),
+                      if (_selectedMedia != null)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildOptionButton(
+                                  icon: Icons.edit_outlined,
+                                  label: '背景を変更',
+                                  onTap: () => _showMediaSelectionDialog(),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOptionButton(
+                                  icon: Icons.audiotrack_outlined,
+                                  label: '音声に変更',
+                                  onTap: _pickAudioFile,
+                                ),
+                              ],
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _tagController,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                        inputFormatters: [
-                          LengthLimitingTextInputFormatter(_titleMaxLength),
-                        ],
-                        decoration: InputDecoration(
-                          hintText: 'タグを入力（例: #music）',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF2A2A2A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${_tagController.text.length}/$_titleMaxLength',
-                            style: TextStyle(
-                              color:
-                                  _tagController.text.length > _titleMaxLength
-                                      ? Colors.red
-                                      : Colors.grey,
-                              fontSize: 12,
+                    ),
+                  ),
+                      if (_selectedAudio != null)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildOptionButton(
+                                  icon: Icons.image_outlined,
+                                  label: '写真を追加',
+                                  onTap: () =>
+                                      _pickMedia(ImageSource.gallery, isVideo: false),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOptionButton(
+                                  icon: Icons.videocam_outlined,
+                                  label: '動画を追加',
+                                  onTap: () =>
+                                      _pickMedia(ImageSource.gallery, isVideo: true),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOptionButton(
+                                  icon: Icons.edit_outlined,
+                                  label: '音声に変更',
+                                  onTap: _pickAudioFile,
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
                     ],
                   ),
                 ),
-
-                // 背景メディアプレビューエリア
-                Expanded(
-                  child: _selectedMedia == null && _selectedAudio == null
-                      ? _buildMediaSelectionPrompt()
-                      : _selectedMedia != null
-                          ? _buildMediaPreviewWithOverlays()
-                          : _buildAudioPreview(),
-                ),
-
-                // 選択済み音声ファイル表示（背景メディアがある場合は下に表示）
-                if (_selectedAudio != null)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        left: 16.0, right: 16.0, bottom: 8.0),
-                    child: _buildSelectedAudioPreview(),
-                  ),
-
-                // メディア選択ボタン
-                if (_selectedMedia == null && _selectedAudio == null)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildOptionButton(
-                            icon: Icons.image_outlined,
-                            label: '写真',
-                            onTap: () =>
-                                _pickMedia(ImageSource.gallery, isVideo: false),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildOptionButton(
-                            icon: Icons.videocam_outlined,
-                            label: '動画',
-                            onTap: () =>
-                                _pickMedia(ImageSource.gallery, isVideo: true),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildOptionButton(
-                            icon: Icons.audiotrack_outlined,
-                            label: '音声',
-                            onTap: _pickAudioFile,
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (_selectedMedia != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildOptionButton(
-                            icon: Icons.edit_outlined,
-                            label: '背景を変更',
-                            onTap: () => _showMediaSelectionDialog(),
-                          ),
-                          // 画像の場合のみテキスト追加ボタンを表示
-                          if (!_isSelectedMediaVideo()) ...[
-                            const SizedBox(width: 12),
-                            _buildOptionButton(
-                              icon: Icons.text_fields,
-                              label: 'テキストを追加',
-                              onTap: () => _addTextOverlay(Offset(
-                                MediaQuery.of(context).size.width / 2 - 75,
-                                MediaQuery.of(context).size.height / 3,
-                              )),
-                            ),
-                          ],
-                          const SizedBox(width: 12),
-                          _buildOptionButton(
-                            icon: Icons.audiotrack_outlined,
-                            label: '音声に変更',
-                            onTap: _pickAudioFile,
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (_selectedAudio != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildOptionButton(
-                            icon: Icons.image_outlined,
-                            label: '写真を追加',
-                            onTap: () =>
-                                _pickMedia(ImageSource.gallery, isVideo: false),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildOptionButton(
-                            icon: Icons.videocam_outlined,
-                            label: '動画を追加',
-                            onTap: () =>
-                                _pickMedia(ImageSource.gallery, isVideo: true),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildOptionButton(
-                            icon: Icons.edit_outlined,
-                            label: '音声に変更',
-                            onTap: _pickAudioFile,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+              ),
+                ); // SingleChildScrollView の終わり
+              },
             ),
           ),
           // 投稿中の画面ブロックとローディング表示
@@ -1355,293 +1303,59 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        return GestureDetector(
-          // 画像の場合のみタップでテキストオーバーレイを追加
-          onTapUp: isVideo
-              ? null
-              : (details) {
-                  // テキストオーバーレイをタップしていない場合は追加
-                  final tappedOverlay = _textOverlays.where((overlay) {
-                    final overlayRect = Rect.fromLTWH(
-                      overlay.position.dx,
-                      overlay.position.dy,
-                      300,
-                      100,
-                    );
-                    return overlayRect.contains(details.localPosition);
-                  }).firstOrNull;
-
-                  if (tappedOverlay == null) {
-                    // 背景をタップした位置にテキストオーバーレイを追加
-                    _addTextOverlay(details.localPosition);
-                  }
-                },
-          child: RepaintBoundary(
-            key: _compositeKey,
-            child: Stack(
-              children: [
-                // 背景メディア
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: isVideo
-                      ? _buildVideoPreview()
-                      : kIsWeb
-                          ? FutureBuilder<Uint8List>(
-                              future: _selectedMedia!.readAsBytes(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
+        // 画像のサイズを固定（キーボード表示時も圧縮されない）
+        final imageHeight = constraints.maxHeight;
+        final imageWidth = constraints.maxWidth;
+        
+        return SizedBox(
+              width: imageWidth,
+              height: imageHeight,
+              child: Stack(
+                children: [
+                  // 背景メディア（固定サイズ）
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: isVideo
+                        ? _buildVideoPreview()
+                        : kIsWeb
+                            ? FutureBuilder<Uint8List>(
+                                future: _selectedMedia!.readAsBytes(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  }
+                                  if (snapshot.hasError || !snapshot.hasData) {
+                                    return const Center(
+                                      child: Icon(Icons.error, color: Colors.red),
+                                    );
+                                  }
+                                  return SizedBox(
+                                    width: imageWidth,
+                                    height: imageHeight,
+                                    child: Image.memory(
+                                      snapshot.data!,
+                                      fit: BoxFit.contain,
+                                    ),
                                   );
-                                }
-                                if (snapshot.hasError || !snapshot.hasData) {
-                                  return const Center(
-                                    child: Icon(Icons.error, color: Colors.red),
-                                  );
-                                }
-                                return Image.memory(
-                                  snapshot.data!,
-                                  width: double.infinity,
-                                  height: double.infinity,
+                                },
+                              )
+                            : SizedBox(
+                                width: imageWidth,
+                                height: imageHeight,
+                                child: Image.file(
+                                  File(_selectedMedia!.path),
                                   fit: BoxFit.contain,
-                                );
-                              },
-                            )
-                          : Image.file(
-                              File(_selectedMedia!.path),
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.contain,
-                            ),
-                ),
-                // テキストオーバーレイ（画像の場合のみ表示）
-                if (!isVideo)
-                  ..._textOverlays
-                      .map((overlay) => _buildTextOverlayWidget(overlay)),
-                // ヒント（タップでテキスト追加 - 画像の場合のみ）
-                if (!isVideo && _textOverlays.isEmpty)
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        '画面をタップしてテキストを追加',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
+                                ),
+                              ),
                   ),
-              ],
-            ),
-          ),
+                ],
+              ),
         );
       },
     );
-  }
-
-  // 合成画像をPNGでエクスポート
-  Future<Uint8List?> _exportCompositeImage() async {
-    try {
-      final boundary = _compositeKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final byteData = await image.toByteData(format: ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // テキストオーバーレイウィジェット
-  Widget _buildTextOverlayWidget(TextOverlay overlay) {
-    return Positioned(
-      left: (() {
-        final maxLeft = (MediaQuery.of(context).size.width - overlay.width);
-        final safeMaxLeft = maxLeft.isFinite && maxLeft > 0 ? maxLeft : 0.0;
-        return overlay.position.dx.clamp(0.0, safeMaxLeft);
-      })(),
-      top: (() {
-        final maxTop = (MediaQuery.of(context).size.height - 200);
-        final safeMaxTop = maxTop.isFinite && maxTop > 0 ? maxTop : 0.0;
-        return overlay.position.dy.clamp(0.0, safeMaxTop);
-      })(),
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedOverlayId = overlay.id;
-            overlay.isFocused = true;
-          });
-          overlay.focusNode.requestFocus();
-        },
-        onPanUpdate: (details) {
-          setState(() {
-            final maxLeft = (MediaQuery.of(context).size.width - overlay.width);
-            final safeMaxLeft = maxLeft.isFinite && maxLeft > 0 ? maxLeft : 0.0;
-            final nextLeft = (overlay.position.dx + details.delta.dx)
-                .clamp(0.0, safeMaxLeft);
-
-            final maxTop = (MediaQuery.of(context).size.height - 200);
-            final safeMaxTop = maxTop.isFinite && maxTop > 0 ? maxTop : 0.0;
-            final nextTop =
-                (overlay.position.dy + details.delta.dy).clamp(0.0, safeMaxTop);
-
-            overlay.position = Offset(nextLeft, nextTop);
-          });
-        },
-        child: Container(
-          width: overlay.width,
-          constraints: const BoxConstraints(
-            minWidth: 120,
-            maxWidth: 360,
-          ),
-          decoration: BoxDecoration(
-            color: overlay.isFocused
-                ? Colors.white.withValues(alpha: 0.95)
-                : Colors.black.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(8),
-            border: overlay.isFocused
-                ? Border.all(color: SpotLightColors.primaryOrange, width: 2)
-                : null,
-          ),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: TextField(
-                  controller: overlay.controller,
-                  focusNode: overlay.focusNode,
-                  style: TextStyle(
-                    color: overlay.isFocused ? Colors.black : Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'テキストを入力',
-                    hintStyle: TextStyle(
-                      color: overlay.isFocused
-                          ? Colors.grey[600]
-                          : Colors.grey[400],
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  maxLines: null,
-                  onChanged: (text) {
-                    overlay.text = text;
-                  },
-                ),
-              ),
-              // 削除ボタン
-              if (overlay.isFocused)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        overlay.dispose();
-                        _textOverlays.remove(overlay);
-                        if (_selectedOverlayId == overlay.id) {
-                          _selectedOverlayId = null;
-                        }
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              // リサイズハンドル（右下）
-              if (overlay.isFocused)
-                Positioned(
-                  right: 2,
-                  bottom: 2,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onPanUpdate: (details) {
-                      setState(() {
-                        final newWidth = (overlay.width + details.delta.dx)
-                            .clamp(120.0, 360.0);
-                        overlay.width = newWidth;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.white70, width: 1),
-                      ),
-                      child: const Icon(
-                        Icons.open_in_full,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // テキストオーバーレイを追加
-  void _addTextOverlay(Offset position) {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final controller = TextEditingController();
-    final focusNode = FocusNode();
-
-    focusNode.addListener(() {
-      setState(() {
-        final overlay = _textOverlays.firstWhere((o) => o.id == id);
-        overlay.isFocused = focusNode.hasFocus;
-        if (focusNode.hasFocus) {
-          _selectedOverlayId = id;
-        } else if (_selectedOverlayId == id) {
-          _selectedOverlayId = null;
-        }
-      });
-    });
-
-    final overlay = TextOverlay(
-      text: '',
-      position: position,
-      controller: controller,
-      focusNode: focusNode,
-      id: id,
-    );
-
-    setState(() {
-      _textOverlays.add(overlay);
-      _selectedOverlayId = id;
-      overlay.isFocused = true;
-    });
-
-    // フォーカスをリクエスト
-    Future.delayed(const Duration(milliseconds: 100), () {
-      focusNode.requestFocus();
-    });
   }
 
   // メディア選択ダイアログ
@@ -1720,14 +1434,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         setState(() {
           _selectedMedia = pickedFile;
-          // 動画を選択した場合は既存のテキストオーバーレイをクリア
-          if (isVideo) {
-            for (var overlay in _textOverlays) {
-              overlay.dispose();
-            }
-            _textOverlays.clear();
-            _selectedOverlayId = null;
-          }
         });
 
         // 動画の場合はプレイヤーを初期化
@@ -1909,13 +1615,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
       // メディアをクリア
       _cleanupVideoPlayer();
-      for (var overlay in _textOverlays) {
-        overlay.dispose();
-      }
       setState(() {
         _selectedMedia = null;
-        _textOverlays.clear();
-        _selectedOverlayId = null;
       });
     }
 
