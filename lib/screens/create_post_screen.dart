@@ -1598,11 +1598,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   // 音声ファイル選択メソッド
   Future<void> _pickAudioFile() async {
-    // プラットフォームチェック - Android端末とWeb版のみ対応
-    if (!kIsWeb && !Platform.isAndroid) {
-      _showAudioFeatureDialog();
-      return;
-    }
+    // iOS、Android、Webすべてのプラットフォームで音声選択をサポート
 
     // 既にメディアが選択されている場合は警告
     if (_selectedMedia != null) {
@@ -1625,10 +1621,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         debugPrint('🎵 音声ファイル選択を開始...');
       }
 
-      // FileType.audioを使用（より確実に音声ファイルを選択できる）
+      // iOSではFileType.customを使用してファイルアプリを起動
+      // AndroidとWebではFileType.audioを使用
       // Web版ではwithData: trueが必要（ファイルパスが取得できないため）
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
+        type: Platform.isIOS ? FileType.custom : FileType.audio,
+        allowedExtensions: Platform.isIOS
+            ? ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus']
+            : null,
         allowMultiple: false,
         dialogTitle: '音声ファイルを選択',
         withData: kIsWeb, // Web版ではtrue、モバイル版ではfalse（メモリ効率のため）
