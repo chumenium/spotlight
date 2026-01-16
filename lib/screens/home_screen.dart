@@ -1158,6 +1158,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _currentPlayingAudio = null;
   }
 
+  /// スクロール開始時の処理（動画・音声の停止・初期化）
+  void _handleScrollStart() {
+    if (_isDisposed) return;
+
+    // 現在再生中の動画・音声を停止
+    _stopAllVideos();
+    _stopAllAudios();
+
+    if (kDebugMode) {
+      debugPrint('🛑 スクロール開始: すべての動画・音声を停止しました');
+    }
+  }
+
   void _startVideoPlayback(int index) {
     // 他の動画と音声をすべて停止してから再生
     _stopAllVideos();
@@ -1829,24 +1842,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           '📄 PageView: itemCount=$itemCount, posts=${_posts.length}, hasMoreContent=$hasMoreContent, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent, _isLoadingMore=$_isLoadingMore');
     }
 
-    return PageView.builder(
-      controller: _pageController,
-      scrollDirection: Axis.vertical,
-      itemCount: itemCount,
-      onPageChanged: _onPageChanged,
-      itemBuilder: (context, index) {
-        // 範囲外のインデックスの場合はプレースホルダーを表示
-        if (index < 0 || index >= _posts.length) {
-          // 最後のページ（読み込み中または続きがある場合）を表示
-          if (index == _posts.length && hasMoreContent) {
-            return _buildLoadingPlaceholder();
-          }
-          return _buildOutOfRangePlaceholder();
-        }
-
-        final post = _posts[index];
-        return _buildPostItem(post, index);
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        // スクロール開始時に動画・音声を停止・初期化
+        _handleScrollStart();
+        return false; // 通知を下に伝播させる
       },
+      child: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: itemCount,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          // 範囲外のインデックスの場合はプレースホルダーを表示
+          if (index < 0 || index >= _posts.length) {
+            // 最後のページ（読み込み中または続きがある場合）を表示
+            if (index == _posts.length && hasMoreContent) {
+              return _buildLoadingPlaceholder();
+            }
+            return _buildOutOfRangePlaceholder();
+          }
+
+          final post = _posts[index];
+          return _buildPostItem(post, index);
+        },
+      ),
     );
   }
 
