@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/post.dart';
 import '../models/badge.dart';
 import '../services/jwt_service.dart';
+import '../services/user_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
@@ -44,6 +45,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String? _errorMessage;
   // 投稿リスト
   List<Post> _userPosts = [];
+  String? _myUid; // 自分のfirebase_uid
+  bool _isBlocking = false; // ブロック/解除のロード中フラグ
+  bool _isBlocked = false; // 対象ユーザーをブロック済みか
+  bool _isLoadingBlockStatus = false; // ブロック状態の取得中
+  String? _blockedTargetUid; // ブロック一覧から取得した正確なtarget_uid
 
   @override
   void initState() {
@@ -60,8 +66,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       debugPrint('  userIconPath: ${widget.userIconPath}');
     }
 
+    _loadMyUid();
     _fetchUserProfile();
     // 新しいAPIではプロフィール情報と投稿一覧を同時に取得するため、_fetchUserPostsは不要
+  }
+
+  Future<void> _loadMyUid() async {
+    final info = await JwtService.getUserInfo();
+    if (info != null && mounted) {
+      setState(() {
+        _myUid = info['firebase_uid']?.toString() ?? info['uid']?.toString();
+      });
+    }
+    // 自分のUIDがわかった段階でブロック状態を取得
+    await _fetchBlockStatus();
   }
 
   /// ユーザーのプロフィール情報と投稿一覧を取得（新しいAPIを使用）
@@ -424,6 +442,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               color: Theme.of(context).textTheme.bodyMedium?.color,
             ),
           ),
+          const SizedBox(height: 12),
+          if (_myUid != null && _myUid != widget.userId)
+            _buildBlockButtons(),
         ],
       ),
     );
@@ -791,6 +812,115 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// ブロック/解除処理
+  Future<void> _handleBlock(bool isBlock) async {
+    setState(() {
+      _isBlocking = true;
+    });
+
+    // ブロック解除時はブロック一覧から得たuidを優先、なければ元のid
+    final targetUid = !isBlock && _blockedTargetUid != null
+        ? _blockedTargetUid!
+        : widget.userId;
+    final success = isBlock
+        ? await UserService.blockUser(targetUid)
+        : await UserService.unblockUser(targetUid);
+
+    if (mounted) {
+      setState(() {
+        _isBlocking = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? (isBlock ? 'ブロックしました' : 'ブロックを解除しました')
+              : (isBlock ? 'ブロックに失敗しました' : 'ブロック解除に失敗しました')),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+
+      if (success) {
+        setState(() {
+          _isBlocked = isBlock;
+          if (!isBlock) {
+            _blockedTargetUid = null;
+          }
+        });
+      }
+    }
+  }
+
+  /// ブロック状態の取得
+  Future<void> _fetchBlockStatus() async {
+    if (_myUid == null || _myUid == widget.userId) return;
+
+    setState(() {
+      _isLoadingBlockStatus = true;
+    });
+
+    final blocked = await UserService.getBlockedUsers();
+    if (mounted) {
+      setState(() {
+        _isLoadingBlockStatus = false;
+        if (blocked != null) {
+          _isBlocked = blocked.any((item) {
+            final id = item['userID']?.toString();
+            final name = item['username']?.toString();
+            final targetId = widget.userId.toString();
+            final targetName = widget.username?.toString();
+            final matched =
+                id == targetId || (targetName != null && name == targetName);
+            if (matched && id != null) {
+              _blockedTargetUid = id; // 正確なuidを保持して解除に使う
+            }
+            return matched;
+          });
+        }
+      });
+    }
+  }
+
+  /// ブロック/解除ボタンを構築（どちらか一方のみ表示）
+  Widget _buildBlockButtons() {
+    if (_isLoadingBlockStatus) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 8.0),
+          child: SizedBox(
+            height: 24,
+            width: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: SpotLightColors.primaryOrange,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_isBlocked) {
+      return OutlinedButton.icon(
+        onPressed: _isBlocking ? null : () => _handleBlock(false),
+        icon: const Icon(Icons.refresh),
+        label: Text(_isBlocking ? '処理中...' : 'ブロック解除'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Colors.white38),
+        ),
+      );
+    }
+
+    return ElevatedButton.icon(
+      onPressed: _isBlocking ? null : () => _handleBlock(true),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.red,
+      ),
+      icon: const Icon(Icons.block),
+      label: Text(_isBlocking ? '処理中...' : 'ブロック'),
     );
   }
 }

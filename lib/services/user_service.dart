@@ -410,4 +410,149 @@ class UserService {
       debugPrint('🗑️ すべてのユーザー情報キャッシュをクリア');
     }
   }
+
+  /// ユーザーをブロック
+  ///
+  /// targetUid: ブロック対象のfirebase_uid
+  static Future<bool> blockUser(String targetUid) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ ブロックAPI: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/users/block';
+      if (kDebugMode) {
+        debugPrint('🚫 ブロックAPI: $url');
+        debugPrint('🚫 target_uid: $targetUid');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          // 数値文字列の場合はintで送る（API側がint想定のケースに対応）
+          'target_uid': int.tryParse(targetUid) ?? targetUid,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('🚫 ブロックAPI statusCode=${response.statusCode}');
+        debugPrint('🚫 ブロックAPI body=${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['status'] == 'success';
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ ブロックAPI例外: $e');
+      }
+    }
+
+    return false;
+  }
+
+  /// ユーザーのブロック解除
+  ///
+  /// targetUid: 解除対象のfirebase_uid
+  static Future<bool> unblockUser(String targetUid) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ ブロック解除API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/users/unblock';
+      if (kDebugMode) {
+        debugPrint('🚫 ブロック解除API: $url');
+        debugPrint('🚫 target_uid: $targetUid');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'target_uid': int.tryParse(targetUid) ?? targetUid,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('🚫 ブロック解除API statusCode=${response.statusCode}');
+        debugPrint('🚫 ブロック解除API body=${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['status'] == 'success';
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ ブロック解除API例外: $e');
+      }
+    }
+
+    return false;
+  }
+
+  /// ブロックしているユーザー一覧を取得
+  ///
+  /// 戻り値: [{"userID": "...", "username": "..."}] のリスト（失敗時はnull）
+  static Future<List<Map<String, dynamic>>?> getBlockedUsers() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ ブロック一覧API: JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/users/blockedusers';
+      if (kDebugMode) {
+        debugPrint('🚫 ブロック一覧API: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('🚫 ブロック一覧API statusCode=${response.statusCode}');
+        debugPrint('🚫 ブロック一覧API body=${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == 'success' && data['data'] is List) {
+          return (data['data'] as List)
+              .map((e) => e as Map<String, dynamic>)
+              .toList();
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ ブロック一覧API例外: $e');
+      }
+    }
+
+    return null;
+  }
 }

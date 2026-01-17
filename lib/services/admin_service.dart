@@ -746,5 +746,85 @@ class AdminService {
 
     return null;
   }
+
+  /// 全コンテンツ情報を取得（/api/admin/content2 を使用）
+  ///
+  /// パラメータ:
+  /// - offset: 取得開始位置（デフォルト: 0、300件ずつ取得）
+  ///
+  /// 戻り値:
+  /// - List<Map<String, dynamic>>?: コンテンツデータのリスト、失敗時はnull
+  static Future<List<Map<String, dynamic>>?> getAllContentsV2({
+    int offset = 0,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API(content2): JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/admin/content2';
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API(content2): コンテンツ取得URL: $url');
+        debugPrint('📋 管理者API(content2): offset: $offset');
+      }
+
+      // API仕様: POSTでoffsetを送信する
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'offset': offset}),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📋 管理者API(content2): statusCode=${response.statusCode}');
+        debugPrint('📋 管理者API(content2): body=${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (responseData['status'] == 'success') {
+          final contents = responseData['contents'];
+          if (contents is List) {
+            if (kDebugMode && contents.isNotEmpty) {
+              final first = contents.first as Map<String, dynamic>;
+              debugPrint('📋 content2 fields: ${first.keys.toList()}');
+            }
+            return contents
+                .map((content) => content as Map<String, dynamic>)
+                .toList();
+          }
+          // contentsがnullまたはリストでない場合は空リスト
+          return [];
+        }
+
+        if (kDebugMode) {
+          debugPrint(
+              '❌ 管理者API(content2): status=${responseData['status']}, message=${responseData['message']}');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '❌ 管理者API(content2): エラー statusCode=${response.statusCode}');
+          debugPrint('  body: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API(content2): 例外: $e');
+      }
+    }
+
+    return null;
+  }
 }
 

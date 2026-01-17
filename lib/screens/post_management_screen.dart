@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
-import '../services/post_service.dart';
 import '../services/admin_service.dart';
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
@@ -23,8 +22,8 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
   String? _errorMessage;
   String _searchQuery = '';
   String _selectedType = 'all'; // all, video, image, audio, text
-  int _currentStartId = 1;
-  static const int _loadLimit = 50; // 一度に読み込む件数
+  int _currentOffset = 0; // /api/admin/content2 用のoffset
+  static const int _pageSize = 300; // バックエンドのLIMITに合わせる
 
   @override
   void initState() {
@@ -42,16 +41,23 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
-        _currentStartId = 1;
+        _currentOffset = 0;
       });
     }
 
     try {
-      // 投稿一覧を取得
-      final posts = await PostService.fetchPosts(
-        limit: _loadLimit,
-        startId: loadMore ? _currentStartId : 1,
+      // 投稿一覧を取得（/api/admin/content2）
+      final contents = await AdminService.getAllContentsV2(
+        offset: loadMore ? _currentOffset : 0,
       );
+
+      if (contents == null) {
+        throw Exception('コンテンツの取得に失敗しました');
+      }
+
+      final posts = contents
+          .map((content) => Post.fromJson(content))
+          .toList();
 
       // 通報一覧を取得
       final reports = await AdminService.getReports(offset: 0);
@@ -77,9 +83,9 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
           }
           _reportCounts = counts;
           _hasReports = hasReports;
-          _currentStartId = posts.isNotEmpty 
-              ? int.tryParse(posts.last.id) ?? _currentStartId + _loadLimit
-              : _currentStartId + _loadLimit;
+          _currentOffset = loadMore
+              ? _currentOffset + posts.length
+              : posts.length;
           _isLoading = false;
           _isLoadingMore = false;
         });
@@ -90,9 +96,9 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
           } else {
             _posts = posts;
           }
-          _currentStartId = posts.isNotEmpty 
-              ? int.tryParse(posts.last.id) ?? _currentStartId + _loadLimit
-              : _currentStartId + _loadLimit;
+          _currentOffset = loadMore
+              ? _currentOffset + posts.length
+              : posts.length;
           _isLoading = false;
           _isLoadingMore = false;
         });
