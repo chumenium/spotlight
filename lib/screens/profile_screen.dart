@@ -2623,24 +2623,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // ログアウト処理を実行
         await authProvider.logout();
 
-        // 成功メッセージを表示
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('アカウントが削除されました'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+        if (!context.mounted) return;
 
-          // ログイン画面に遷移
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => const SocialLoginScreen(),
-            ),
-            (route) => false, // すべての前のルートを削除
-          );
-        }
+        // NavigationProviderをリセット
+        final navigationProvider =
+            Provider.of<NavigationProvider>(context, listen: false);
+        navigationProvider.reset();
+
+        // 成功メッセージを表示
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('アカウントが削除されました'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // 少し待ってからログイン画面に遷移（ログアウト処理の完了を確実にするため）
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (!context.mounted) return;
+
+        // ログイン画面に遷移（すべての前のルートを削除）
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const SocialLoginScreen(),
+          ),
+          (route) => false, // すべての前のルートを削除
+        );
       } else {
         if (kDebugMode) {
           debugPrint('❌ アカウント削除失敗');

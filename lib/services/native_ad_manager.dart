@@ -28,6 +28,9 @@ class NativeAdManager {
     final nativeAd = NativeAd(
       adUnitId: AdConfig.getNativeAdUnitId(),
       request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
+      ),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
           if (kDebugMode) {
