@@ -26,52 +26,60 @@
 
 ### 3. 広告ユニットの作成
 
-アプリ登録後、以下の広告ユニットを作成します：
+アプリ登録後、「**広告ユニットを追加**」から作成します。  
+画面の流れ: **① 広告フォーマットを選択する** → **② 広告ユニットを設定** → 作成完了後に広告ユニットIDが発行されます。
 
-#### バナー広告
-- 広告形式: 「バナー」
-- 広告サイズ: 「アダプティブ」
-- 広告ユニット名: 「バナー広告」
+#### ネイティブ広告（本アプリで使用・推奨）
 
-#### インタースティシャル広告
-- 広告形式: 「インタースティシャル」
-- 広告ユニット名: 「インタースティシャル広告」
+- **① 広告フォーマットを選択する** で **「ネイティブアドバンス」** を選び「選択」をクリック  
+  - 説明: 「アプリのデザインに合わせてカスタマイズできる広告フォーマットです。アプリのコンテンツに溶け込む形で表示されます。」
+- **② 広告ユニットを設定** で広告ユニット名（例: 「ネイティブ広告」）を入力して作成
+- ホームの投稿の間に表示され、スワイプでスキップ可能（Instagramリール形式に近い）
 
-#### ネイティブ広告（推奨：Instagramリール形式）
-- 広告形式: 「ネイティブ」
-- 広告ユニット名: 「ネイティブ広告」
-- **重要**: この広告形式は投稿の間に表示され、スワイプでスキップ可能です
+#### その他の広告（将来用）
 
-#### リワード広告（オプション）
-- 広告形式: 「リワード」
-- 広告ユニット名: 「リワード広告」
+| 広告形式 | ①で選ぶ名称 | 用途 |
+|----------|--------------|------|
+| バナー | バナー | 画面上部など（未使用） |
+| インタースティシャル | インタースティシャル | 全画面（未使用） |
+| リワード | リワード | 視聴で報酬（未使用） |
 
 ### 4. 広告ユニットIDの取得と設定
 
-1. AdMobダッシュボードで各広告ユニットの「広告ユニットID」をコピー
-2. `lib/services/ad_service.dart`を開く
-3. 以下の定数を本番用のIDに置き換える：
+#### 4.1. 広告ユニットIDの取得方法
+
+1. [AdMob](https://admob.google.com/)にログイン
+2. 左メニュー「**アプリ**」→ 対象アプリ（Android / iOS）をクリック
+3. 「**広告ユニット**」タブを開く
+4. 一覧から目的の広告ユニットを選択（または「**広告ユニットを追加**」で新規作成）
+5. 広告ユニットの詳細画面で「**広告ユニットID**」を表示
+   - 形式: `ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX`
+   - 右側のコピーアイコンでクリップボードにコピー
+
+**取得するIDの種類（本アプリで使用）:**
+
+| 広告形式 | 用途 | 設定する定数名（ad_config.dart） |
+|-----------|------|----------------------------------|
+| ネイティブアドバンス | ホームの投稿の間 | `productionNativeAdUnitIdAndroid` / `productionNativeAdUnitIdIOS` |
+
+※ バナー・インタースティシャル・リワードは現在未使用。将来的に使う場合のみ設定。
+
+#### 4.2. 設定ファイルへの反映
+
+**すべての広告ユニットIDは `lib/config/ad_config.dart` で一元管理します。**
+
+1. `lib/config/ad_config.dart` を開く
+2. 本番用の定数を、AdMobでコピーしたIDに置き換える：
 
 ```dart
-// Android用
-static const String _productionBannerAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
-static const String _productionInterstitialAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+// Android用（本アプリではネイティブ広告のみ使用）
+static const String productionNativeAdUnitIdAndroid = 'ca-app-pub-XXXX/YYYY';  // ← ここに貼り付け
 
-// iOS用（必要に応じて）
-static const String _productionBannerAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
-static const String _productionInterstitialAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+// iOS用
+static const String productionNativeAdUnitIdIOS = 'ca-app-pub-XXXX/YYYY';  // ← ここに貼り付け
 ```
 
-4. `lib/services/native_ad_manager.dart`を開く
-5. ネイティブ広告ユニットIDを本番用のIDに置き換える：
-
-```dart
-// Android用
-static const String _productionNativeAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
-
-// iOS用（必要に応じて）
-static const String _productionNativeAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
-```
+3. 保存すると、`AdService`・`NativeAdManager` が自動的にこのIDを参照します（コード変更不要）
 
 ### 5. Android設定
 
