@@ -17,6 +17,8 @@ class NativeAdWidget extends StatefulWidget {
 class _NativeAdWidgetState extends State<NativeAdWidget> {
   NativeAd? _nativeAd;
   bool _isAdLoaded = false;
+  bool _hasError = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -25,28 +27,48 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   /// ネイティブ広告を読み込む
-  void _loadNativeAd() {
-    _nativeAd = NativeAdManager.instance.loadNativeAd(
-      onAdLoaded: (NativeAd ad) {
-        if (mounted) {
-          setState(() {
-            _nativeAd = ad;
-            _isAdLoaded = true;
-          });
-        }
-      },
-      onAdFailedToLoad: (NativeAd ad, LoadAdError error) {
-        if (kDebugMode) {
-          debugPrint('❌ ネイティブ広告の読み込み失敗: $error');
-        }
-        ad.dispose();
-        if (mounted) {
-          setState(() {
-            _isAdLoaded = false;
-          });
-        }
-      },
-    );
+  void _loadNativeAd() async {
+    try {
+      _nativeAd = await NativeAdManager.instance.loadNativeAd(
+        onAdLoaded: (NativeAd ad) {
+          if (mounted) {
+            setState(() {
+              _nativeAd = ad;
+              _isAdLoaded = true;
+              _hasError = false;
+            });
+          }
+        },
+        onAdFailedToLoad: (NativeAd ad, LoadAdError error) {
+          if (kDebugMode) {
+            debugPrint('❌ ネイティブ広告の読み込み失敗: $error');
+            debugPrint('   エラーコード: ${error.code}');
+            debugPrint('   エラーメッセージ: ${error.message}');
+            debugPrint('   エラードメイン: ${error.domain}');
+            debugPrint('   広告ユニットID: ${ad.adUnitId}');
+          }
+          ad.dispose();
+          if (mounted) {
+            setState(() {
+              _isAdLoaded = false;
+              _hasError = true;
+              _errorMessage = '広告の読み込みに失敗しました\n(${error.code}: ${error.message})';
+            });
+          }
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ ネイティブ広告の読み込み例外: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _isAdLoaded = false;
+          _hasError = true;
+          _errorMessage = '広告の読み込みに失敗しました';
+        });
+      }
+    }
   }
 
   @override
@@ -59,6 +81,38 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom + 12;
     final screenSize = MediaQuery.of(context).size;
+    
+    if (_hasError) {
+      // エラー時の表示
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.white70,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     
     if (!_isAdLoaded || _nativeAd == null) {
       // 広告が読み込まれるまでのプレースホルダー

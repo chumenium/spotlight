@@ -1,6 +1,7 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/ad_config.dart';
+import 'ad_service.dart';
 
 /// ネイティブ広告マネージャー
 /// 
@@ -21,27 +22,30 @@ class NativeAdManager {
   /// 
   /// [onAdLoaded]: 広告が読み込まれたときに呼ばれるコールバック
   /// [onAdFailedToLoad]: 広告の読み込みに失敗したときに呼ばれるコールバック
-  NativeAd loadNativeAd({
+  Future<NativeAd> loadNativeAd({
     required void Function(NativeAd ad) onAdLoaded,
     required void Function(NativeAd ad, LoadAdError error) onAdFailedToLoad,
-  }) {
+  }) async {
+    // AdMobの初期化が完了していることを確認
+    await AdService.ensureInitialized();
+
     final nativeAd = NativeAd(
       adUnitId: AdConfig.getNativeAdUnitId(),
       request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.medium,
-      ),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
           if (kDebugMode) {
-            debugPrint('✅ ネイティブ広告の読み込み完了');
+            debugPrint('✅ ネイティブ広告の読み込み完了: ${ad.adUnitId}');
           }
           final nativeAd = ad as NativeAd;
           onAdLoaded(nativeAd);
         },
         onAdFailedToLoad: (ad, error) {
           if (kDebugMode) {
-            debugPrint('❌ ネイティブ広告の読み込み失敗: $error');
+            debugPrint('❌ ネイティブ広告の読み込み失敗: ${ad.adUnitId}');
+            debugPrint('   エラーコード: ${error.code}');
+            debugPrint('   エラーメッセージ: ${error.message}');
+            debugPrint('   エラードメイン: ${error.domain}');
           }
           ad.dispose();
           final nativeAd = ad as NativeAd;
