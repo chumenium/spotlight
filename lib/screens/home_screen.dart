@@ -18,6 +18,7 @@ import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
 import 'user_profile_screen.dart';
+import '../widgets/native_ad_widget.dart';
 
 /// ホーム画面 - 垂直フィード型ソーシャルメディアアプリのメイン画面
 ///
@@ -38,6 +39,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 投稿リスト
   List<Post> _posts = [];
+
+  // 広告設定
+  static const int _adInterval = 5; // 5投稿ごとに広告を表示
 
   // 読み込み状態
   bool _isLoading = true;
@@ -1171,6 +1175,76 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// 広告の数を計算
+  /// 
+  /// [postCount]: 投稿の数
+  /// 戻り値: 広告の数
+  int _calculateAdCount(int postCount) {
+    if (postCount < _adInterval) return 0;
+    // 最初の広告は_adInterval番目の投稿の後に表示
+    // その後は_adIntervalごとに表示
+    return (postCount - 1) ~/ _adInterval;
+  }
+
+  /// 指定されたインデックスが広告のインデックスかどうかを判定
+  /// 
+  /// [index]: PageViewのインデックス
+  /// 戻り値: 広告のインデックス（広告の場合）、null（投稿の場合）
+  int? _getAdIndex(int index) {
+    if (index < _adInterval) return null; // 最初の_adInterval個は投稿
+    
+    // 広告の位置を計算
+    // 最初の広告は_adInterval番目の投稿の後（index = _adInterval）
+    // 2番目の広告は_adInterval * 2番目の投稿の後（index = _adInterval * 2 + 1）
+    // 3番目の広告は_adInterval * 3番目の投稿の後（index = _adInterval * 3 + 2）
+    // ...
+    // n番目の広告は_adInterval * n番目の投稿の後（index = _adInterval * n + (n - 1)）
+    
+    // indexから広告の位置を逆算
+    // index = _adInterval * n + (n - 1) = _adInterval * n + n - 1 = n * (_adInterval + 1) - 1
+    // n * (_adInterval + 1) = index + 1
+    // n = (index + 1) / (_adInterval + 1)
+    
+    final adNumber = (index + 1) ~/ (_adInterval + 1);
+    final expectedAdIndex = adNumber * (_adInterval + 1) - 1;
+    
+    if (index == expectedAdIndex && adNumber > 0) {
+      return adNumber - 1; // 広告のインデックス（0から始まる）
+    }
+    
+    return null; // 投稿
+  }
+
+  /// 投稿のインデックスを計算（広告を考慮）
+  /// 
+  /// [index]: PageViewのインデックス
+  /// 戻り値: 投稿のインデックス
+  int _getPostIndex(int index) {
+    // 広告のインデックスかどうかを判定
+    final adIndex = _getAdIndex(index);
+    if (adIndex != null) {
+      // 広告の場合は-1を返す（呼び出し側で処理）
+      return -1;
+    }
+    
+    // 投稿のインデックスを計算
+    // 広告の数だけインデックスを調整
+    final adCountBeforeIndex = _calculateAdCountBeforeIndex(index);
+    return index - adCountBeforeIndex;
+  }
+
+  /// 指定されたインデックスより前にある広告の数を計算
+  /// 
+  /// [index]: PageViewのインデックス
+  /// 戻り値: 広告の数
+  int _calculateAdCountBeforeIndex(int index) {
+    if (index < _adInterval) return 0;
+    
+    // 広告の位置を計算
+    final adNumber = (index + 1) ~/ (_adInterval + 1);
+    return adNumber;
+  }
+
   void _startVideoPlayback(int index) {
     // 他の動画と音声をすべて停止してから再生
     _stopAllVideos();
@@ -1830,11 +1904,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    // itemCountの計算：投稿数 + 読み込み中のプレースホルダー
+    // itemCountの計算：投稿数 + 広告数 + 読み込み中のプレースホルダー
     // _noMoreContentがfalseの場合は、常に1つ余分に追加して読み込みを試みる
     // (_hasMorePostsがfalseでも、まだ読み込みを試みる必要がある)
     final hasMoreContent = !_noMoreContent || _isLoadingMore;
-    final itemCount = _posts.length + (hasMoreContent ? 1 : 0);
+    final adCount = _calculateAdCount(_posts.length);
+    final itemCount = _posts.length + adCount + (hasMoreContent ? 1 : 0);
 
     if (kDebugMode &&
         (_currentIndex % 5 == 0 || _currentIndex >= _posts.length - 3)) {
@@ -1854,17 +1929,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         itemCount: itemCount,
         onPageChanged: _onPageChanged,
         itemBuilder: (context, index) {
+          // 広告のインデックスかどうかを判定
+          final adIndex = _getAdIndex(index);
+          if (adIndex != null) {
+            // 広告を表示
+            return const NativeAdWidget();
+          }
+
+          // 投稿のインデックスを計算（広告を考慮）
+          final postIndex = _getPostIndex(index);
+          
           // 範囲外のインデックスの場合はプレースホルダーを表示
-          if (index < 0 || index >= _posts.length) {
+          if (postIndex < 0 || postIndex >= _posts.length) {
             // 最後のページ（読み込み中または続きがある場合）を表示
-            if (index == _posts.length && hasMoreContent) {
+            final totalItems = _posts.length + adCount;
+            if (index == totalItems && hasMoreContent) {
               return _buildLoadingPlaceholder();
             }
             return _buildOutOfRangePlaceholder();
           }
 
-          final post = _posts[index];
-          return _buildPostItem(post, index);
+          final post = _posts[postIndex];
+          return _buildPostItem(post, postIndex);
         },
       ),
     );

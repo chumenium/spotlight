@@ -69,6 +69,9 @@ dependencies:
   # 端末設定アプリへの遷移
   url_launcher: ^6.2.5
 
+  # 広告（Google AdMob）
+  google_mobile_ads: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

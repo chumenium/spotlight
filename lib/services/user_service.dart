@@ -555,4 +555,64 @@ class UserService {
 
     return null;
   }
+
+  /// アカウントを削除
+  ///
+  /// ログインユーザーのアカウントを削除します。
+  /// ユーザー情報（ユーザーネーム、アイコン）と全ての投稿コンテンツが削除されます。
+  ///
+  /// 戻り値:
+  /// - bool: 削除成功の場合true、失敗時はfalse
+  static Future<bool> deleteAccount() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ アカウント削除API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/users/deleteaccount';
+      if (kDebugMode) {
+        debugPrint('🗑️ アカウント削除API: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint('🗑️ アカウント削除API statusCode=${response.statusCode}');
+        debugPrint('🗑️ アカウント削除API body=${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final success = data['status'] == 'success';
+        
+        if (success) {
+          // アカウント削除後はキャッシュをクリア
+          clearAllUserInfoCache();
+        }
+        
+        return success;
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ アカウント削除エラー: statusCode=${response.statusCode}');
+          debugPrint('レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ アカウント削除例外: $e');
+      }
+    }
+
+    return false;
+  }
 }

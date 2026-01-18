@@ -6,6 +6,7 @@ import 'providers/navigation_provider.dart';
 import 'providers/theme_provider.dart' show ThemeProvider, AppThemeMode;
 import 'auth/auth_provider.dart';
 import 'services/firebase_service.dart';
+import 'services/ad_service.dart';
 import 'screens/splash_screen.dart';
 
 // バックグラウンドメッセージハンドラー（トップレベル関数である必要がある）
@@ -45,6 +46,14 @@ void main() async {
     debugPrint('✅ バックグラウンドメッセージハンドラー登録完了');
   } catch (e) {
     debugPrint('❌ Firebase/FCM初期化エラー: $e');
+  }
+
+  try {
+    // AdMob初期化
+    await AdService.initialize();
+    debugPrint('✅ AdMob初期化完了');
+  } catch (e) {
+    debugPrint('❌ AdMob初期化エラー: $e');
   }
   
   runApp(const SpotLightApp());

@@ -282,7 +282,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 端末の通知設定画面を開く
   static Future<void> _openNotificationSettings(BuildContext context) async {
-    const platform = MethodChannel('com.example.spotlight/settings');
+    const platform = MethodChannel('com.spotlight.mobile/settings');
     
     try {
       if (Platform.isAndroid) {

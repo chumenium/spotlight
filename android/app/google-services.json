@@ -64,6 +64,86 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:185578323389:android:cddcfc0a05939a437ee6d4",
+        "android_client_info": {
+          "package_name": "com.spotlight.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "185578323389-k2skl5vlo48t9v2edgsro2ordq1dmumh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.spotlight.app",
+            "certificate_hash": "54e1a6ad71661a09a5ddaf4f9029f76f371977f2"
+          }
+        },
+        {
+          "client_id": "185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8Bh32_UvNRGBJ4Cf_HIn1dzA9Eg8cXko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "185578323389-sm059i7nijb0pi2m778jhotongs40svi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.spotlight.kcsf"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:185578323389:android:0b35e918cda0a32a7ee6d4",
+        "android_client_info": {
+          "package_name": "com.spotlight.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8Bh32_UvNRGBJ4Cf_HIn1dzA9Eg8cXko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "185578323389-sm059i7nijb0pi2m778jhotongs40svi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.spotlight.kcsf"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

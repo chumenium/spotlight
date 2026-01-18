@@ -1,0 +1,70 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'dart:io' show Platform;
+
+/// 広告設定
+/// 
+/// すべての広告ユニットIDを一箇所で管理します。
+/// AdMob Consoleから取得した広告ユニットIDをここに設定してください。
+class AdConfig {
+  AdConfig._(); // プライベートコンストラクタ（インスタンス化不可）
+
+  // ============================================
+  // テスト用広告ユニットID（開発時に使用）
+  // ============================================
+  static const String testBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+  static const String testInterstitialAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
+  static const String testRewardedAdUnitId = 'ca-app-pub-3940256099942544/5224354917';
+  static const String testNativeAdUnitId = 'ca-app-pub-3940256099942544/2247696110';
+
+  // ============================================
+  // 本番用広告ユニットID（AdMob Consoleから取得したIDに置き換えてください）
+  // ============================================
+  
+  // Android用
+  static const String productionBannerAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionInterstitialAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionRewardedAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionNativeAdUnitIdAndroid = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+
+  // iOS用
+  static const String productionBannerAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionInterstitialAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionRewardedAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+  static const String productionNativeAdUnitIdIOS = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+
+  // ============================================
+  // 広告ユニットID取得メソッド
+  // ============================================
+
+  /// バナー広告ユニットIDを取得
+  static String getBannerAdUnitId() {
+    if (kDebugMode) {
+      return testBannerAdUnitId;
+    }
+    return Platform.isIOS ? productionBannerAdUnitIdIOS : productionBannerAdUnitIdAndroid;
+  }
+
+  /// インタースティシャル広告ユニットIDを取得
+  static String getInterstitialAdUnitId() {
+    if (kDebugMode) {
+      return testInterstitialAdUnitId;
+    }
+    return Platform.isIOS ? productionInterstitialAdUnitIdIOS : productionInterstitialAdUnitIdAndroid;
+  }
+
+  /// リワード広告ユニットIDを取得
+  static String getRewardedAdUnitId() {
+    if (kDebugMode) {
+      return testRewardedAdUnitId;
+    }
+    return Platform.isIOS ? productionRewardedAdUnitIdIOS : productionRewardedAdUnitIdAndroid;
+  }
+
+  /// ネイティブ広告ユニットIDを取得
+  static String getNativeAdUnitId() {
+    if (kDebugMode) {
+      return testNativeAdUnitId;
+    }
+    return Platform.isIOS ? productionNativeAdUnitIdIOS : productionNativeAdUnitIdAndroid;
+  }
+}
