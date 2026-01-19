@@ -470,38 +470,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     // 前の動画を停止（段階4）- 逆スクロール時も対応
-    if (previousIndex != index &&
-        previousIndex >= 0 &&
-        previousIndex < _posts.length) {
-      final prevPost = _posts[previousIndex];
-      if (prevPost.postType == PostType.video) {
-        final prevController = _videoControllers[previousIndex];
-        if (prevController != null && prevController.value.isInitialized) {
-          prevController.pause();
-          prevController.seekTo(Duration.zero);
+    if (previousIndex != index) {
+      final prevPostIndex = _getActualPostIndex(previousIndex);
+      if (prevPostIndex != null) {
+        final prevPost = _posts[prevPostIndex];
+        if (prevPost.postType == PostType.video) {
+          final prevController = _videoControllers[prevPostIndex];
+          if (prevController != null && prevController.value.isInitialized) {
+            prevController.pause();
+            prevController.seekTo(Duration.zero);
 
-          // 前の動画が現在再生中の場合は、再生状態をクリア
-          if (_currentPlayingVideo == previousIndex) {
-            _currentPlayingVideo = null;
-          }
+            // 前の動画が現在再生中の場合は、再生状態をクリア
+            if (_currentPlayingVideo == prevPostIndex) {
+              _currentPlayingVideo = null;
+            }
 
-          if (kDebugMode) {
-            debugPrint(
-                '⏸️ 前の動画を停止: postId=${prevPost.id}, index=$previousIndex');
+            if (kDebugMode) {
+              debugPrint(
+                  '⏸️ 前の動画を停止: postId=${prevPost.id}, index=$previousIndex');
+            }
           }
         }
-      }
 
-      // 前の音声も停止（段階5）
-      if (prevPost.postType == PostType.audio) {
-        final prevPlayer = _audioPlayers[previousIndex];
-        if (prevPlayer != null) {
-          prevPlayer.pause();
-          prevPlayer.seek(Duration.zero);
+        // 前の音声も停止（段階5）
+        if (prevPost.postType == PostType.audio) {
+          final prevPlayer = _audioPlayers[prevPostIndex];
+          if (prevPlayer != null) {
+            prevPlayer.pause();
+            prevPlayer.seek(Duration.zero);
 
-          // 前の音声が現在再生中の場合は、再生状態をクリア
-          if (_currentPlayingAudio == previousIndex) {
-            _currentPlayingAudio = null;
+            // 前の音声が現在再生中の場合は、再生状態をクリア
+            if (_currentPlayingAudio == prevPostIndex) {
+              _currentPlayingAudio = null;
+            }
           }
         }
       }
@@ -538,31 +539,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// メディアページ変更時の処理（段階4-5: 動画・音声の初期化・再生）
   Future<void> _handleMediaPageChange(int index) async {
-    if (_isDisposed || index < 0 || index >= _posts.length) return;
+    if (_isDisposed) return;
 
-    final post = _posts[index];
+    final postIndex = _getActualPostIndex(index);
+    if (postIndex == null) return;
+
+    final post = _posts[postIndex];
     _recordPlayHistoryIfNeeded(post);
 
     // 動画コンテンツの場合（段階4）
     if (post.postType == PostType.video) {
-      await _initializeVideoController(index, post);
+      await _initializeVideoController(postIndex, post);
 
       // 逆スクロール時も確実に動画を再生するため、状態を再確認
-      if (!_isDisposed && index == _currentIndex) {
-        final controller = _videoControllers[index];
+      final currentPostIndex = _getActualPostIndex(_currentIndex);
+      if (!_isDisposed && currentPostIndex == postIndex) {
+        final controller = _videoControllers[postIndex];
         if (controller != null &&
             controller.value.isInitialized &&
             !controller.value.isPlaying) {
-          _startVideoPlayback(index);
+          _startVideoPlayback(postIndex);
           if (kDebugMode) {
-            debugPrint('✅ 逆スクロール時の動画再生: postId=${post.id}, index=$index');
+            debugPrint('✅ 逆スクロール時の動画再生: postId=${post.id}, index=$postIndex');
           }
         }
       }
     }
     // 音声コンテンツの場合（段階5）
     else if (post.postType == PostType.audio) {
-      await _initializeAudioPlayer(index, post);
+      await _initializeAudioPlayer(postIndex, post);
     }
   }
 
@@ -673,47 +678,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // 現在表示中の投稿のメディアを自動再生
-      if (!_isDisposed && _currentIndex >= 0 && _currentIndex < _posts.length) {
-        final currentPost = _posts[_currentIndex];
+      if (!_isDisposed) {
+        final currentPostIndex = _getActualPostIndex(_currentIndex);
+        if (currentPostIndex != null) {
+          final currentPost = _posts[currentPostIndex];
 
-        // 前回再生していた動画がある場合、それが現在の投稿と同じなら再開
-        if (_lastPlayingVideoBeforeNavigation != null &&
-            _lastPlayingVideoBeforeNavigation == _currentIndex &&
-            currentPost.postType == PostType.video) {
-          final controller =
-              _videoControllers[_lastPlayingVideoBeforeNavigation];
-          if (controller != null &&
-              controller.value.isInitialized &&
-              !controller.value.isPlaying) {
-            controller.play();
-            _currentPlayingVideo = _lastPlayingVideoBeforeNavigation;
-            if (kDebugMode) {
-              debugPrint(
-                  '▶️ [画面遷移] 動画を再開: index=$_lastPlayingVideoBeforeNavigation');
+          // 前回再生していた動画がある場合、それが現在の投稿と同じなら再開
+          if (_lastPlayingVideoBeforeNavigation != null &&
+              _lastPlayingVideoBeforeNavigation == currentPostIndex &&
+              currentPost.postType == PostType.video) {
+            final controller =
+                _videoControllers[_lastPlayingVideoBeforeNavigation!];
+            if (controller != null &&
+                controller.value.isInitialized &&
+                !controller.value.isPlaying) {
+              controller.play();
+              _currentPlayingVideo = _lastPlayingVideoBeforeNavigation;
+              if (kDebugMode) {
+                debugPrint(
+                    '▶️ [画面遷移] 動画を再開: index=$_lastPlayingVideoBeforeNavigation');
+              }
             }
+          } else if (currentPost.postType == PostType.video) {
+            // 前回の動画と異なる場合は、現在の投稿の動画を再生
+            _handleMediaPageChange(_currentIndex);
           }
-        } else if (currentPost.postType == PostType.video) {
-          // 前回の動画と異なる場合は、現在の投稿の動画を再生
-          _handleMediaPageChange(_currentIndex);
-        }
 
-        // 前回再生していた音声がある場合、それが現在の投稿と同じなら再開
-        if (_lastPlayingAudioBeforeNavigation != null &&
-            _lastPlayingAudioBeforeNavigation == _currentIndex &&
-            currentPost.postType == PostType.audio) {
-          final player = _audioPlayers[_lastPlayingAudioBeforeNavigation];
-          if (player != null && !player.playing) {
-            player.play();
-            _currentPlayingAudio = _lastPlayingAudioBeforeNavigation;
-            _startSeekBarUpdateTimerAudio();
-            if (kDebugMode) {
-              debugPrint(
-                  '▶️ [画面遷移] 音声を再開: index=$_lastPlayingAudioBeforeNavigation');
+          // 前回再生していた音声がある場合、それが現在の投稿と同じなら再開
+          if (_lastPlayingAudioBeforeNavigation != null &&
+              _lastPlayingAudioBeforeNavigation == currentPostIndex &&
+              currentPost.postType == PostType.audio) {
+            final player = _audioPlayers[_lastPlayingAudioBeforeNavigation!];
+            if (player != null && !player.playing) {
+              player.play();
+              _currentPlayingAudio = _lastPlayingAudioBeforeNavigation;
+              _startSeekBarUpdateTimerAudio();
+              if (kDebugMode) {
+                debugPrint(
+                    '▶️ [画面遷移] 音声を再開: index=$_lastPlayingAudioBeforeNavigation');
+              }
             }
+          } else if (currentPost.postType == PostType.audio) {
+            // 前回の音声と異なる場合は、現在の投稿の音声を再生
+            _handleMediaPageChange(_currentIndex);
           }
-        } else if (currentPost.postType == PostType.audio) {
-          // 前回の音声と異なる場合は、現在の投稿の音声を再生
-          _handleMediaPageChange(_currentIndex);
         }
       }
 
@@ -1176,7 +1184,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// 広告の数を計算
-  /// 
+  ///
   /// [postCount]: 投稿の数
   /// 戻り値: 広告の数
   int _calculateAdCount(int postCount) {
@@ -1187,36 +1195,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// 指定されたインデックスが広告のインデックスかどうかを判定
-  /// 
+  ///
   /// [index]: PageViewのインデックス
   /// 戻り値: 広告のインデックス（広告の場合）、null（投稿の場合）
   int? _getAdIndex(int index) {
     if (index < _adInterval) return null; // 最初の_adInterval個は投稿
-    
+
     // 広告の位置を計算
     // 最初の広告は_adInterval番目の投稿の後（index = _adInterval）
     // 2番目の広告は_adInterval * 2番目の投稿の後（index = _adInterval * 2 + 1）
     // 3番目の広告は_adInterval * 3番目の投稿の後（index = _adInterval * 3 + 2）
     // ...
     // n番目の広告は_adInterval * n番目の投稿の後（index = _adInterval * n + (n - 1)）
-    
+
     // indexから広告の位置を逆算
     // index = _adInterval * n + (n - 1) = _adInterval * n + n - 1 = n * (_adInterval + 1) - 1
     // n * (_adInterval + 1) = index + 1
     // n = (index + 1) / (_adInterval + 1)
-    
+
     final adNumber = (index + 1) ~/ (_adInterval + 1);
     final expectedAdIndex = adNumber * (_adInterval + 1) - 1;
-    
+
     if (index == expectedAdIndex && adNumber > 0) {
       return adNumber - 1; // 広告のインデックス（0から始まる）
     }
-    
+
     return null; // 投稿
   }
 
   /// 投稿のインデックスを計算（広告を考慮）
-  /// 
+  ///
   /// [index]: PageViewのインデックス
   /// 戻り値: 投稿のインデックス
   int _getPostIndex(int index) {
@@ -1226,7 +1234,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 広告の場合は-1を返す（呼び出し側で処理）
       return -1;
     }
-    
+
     // 投稿のインデックスを計算
     // 広告の数だけインデックスを調整
     final adCountBeforeIndex = _calculateAdCountBeforeIndex(index);
@@ -1234,15 +1242,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// 指定されたインデックスより前にある広告の数を計算
-  /// 
+  ///
   /// [index]: PageViewのインデックス
   /// 戻り値: 広告の数
   int _calculateAdCountBeforeIndex(int index) {
     if (index < _adInterval) return 0;
-    
+
     // 広告の位置を計算
     final adNumber = (index + 1) ~/ (_adInterval + 1);
     return adNumber;
+  }
+
+  /// PageViewのインデックスに対応する投稿のインデックスを返す（広告ならnull）
+  int? _getActualPostIndex(int pageIndex) {
+    final postIndex = _getPostIndex(pageIndex);
+    if (postIndex < 0 || postIndex >= _posts.length) {
+      return null;
+    }
+    return postIndex;
   }
 
   void _startVideoPlayback(int index) {
@@ -1938,7 +1955,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           // 投稿のインデックスを計算（広告を考慮）
           final postIndex = _getPostIndex(index);
-          
+
           // 範囲外のインデックスの場合はプレースホルダーを表示
           if (postIndex < 0 || postIndex >= _posts.length) {
             // 最後のページ（読み込み中または続きがある場合）を表示
@@ -3442,8 +3459,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return comments;
       }
 
-      if (_currentIndex >= 0 && _currentIndex < _posts.length) {
-        final currentPost = _posts[_currentIndex];
+      final currentPostIndex = _getActualPostIndex(_currentIndex);
+      if (currentPostIndex != null) {
+        final currentPost = _posts[currentPostIndex];
         if (currentPost.id != post.id) {
           if (kDebugMode) {
             debugPrint('⚠️ refreshComments: データの不一致を検出');
@@ -3826,14 +3844,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       if (kDebugMode) {
                                         debugPrint(
                                             '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
-                                        if (_currentIndex >= 0 &&
-                                            _currentIndex < _posts.length) {
+                                        final currentPostIndex =
+                                            _getActualPostIndex(_currentIndex);
+                                        if (currentPostIndex != null) {
+                                          final currentPost =
+                                              _posts[currentPostIndex];
                                           debugPrint(
-                                              '💬 現在の投稿のコメント数: ${_posts[_currentIndex].comments}件');
+                                              '💬 現在の投稿のコメント数: ${currentPost.comments}件');
                                           debugPrint(
-                                              '💬 現在の投稿ID: ${_posts[_currentIndex].id}');
+                                              '💬 現在の投稿ID: ${currentPost.id}');
                                           debugPrint(
-                                              '💬 現在の投稿username: ${_posts[_currentIndex].username}');
+                                              '💬 現在の投稿username: ${currentPost.username}');
                                         }
                                         debugPrint(
                                             '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
@@ -3843,14 +3864,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       }
 
                                       if (mounted && !_isDisposed) {
-                                        if (_currentIndex >= 0 &&
-                                            _currentIndex < _posts.length) {
+                                        final currentPostIndex =
+                                            _getActualPostIndex(_currentIndex);
+                                        if (currentPostIndex != null) {
                                           final currentPost =
-                                              _posts[_currentIndex];
+                                              _posts[currentPostIndex];
                                           if (currentPost.id == post.id &&
                                               currentPost.id.isNotEmpty) {
                                             setState(() {
-                                              _posts[_currentIndex] = Post(
+                                              _posts[currentPostIndex] = Post(
                                                 id: currentPost.id,
                                                 userId: currentPost.userId,
                                                 username: currentPost.username,
@@ -3893,7 +3915,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           }
                                         } else if (kDebugMode) {
                                           debugPrint(
-                                              '⚠️ コメント追加: 無効なインデックス: _currentIndex=$_currentIndex, _posts.length=${_posts.length}');
+                                              '⚠️ コメント追加: 広告などで表示中の投稿が検出できません (ページindex=$_currentIndex, posts=${_posts.length})');
                                         }
                                       }
                                     } else {
