@@ -23,6 +23,7 @@ class NativeAdManager {
   /// [onAdLoaded]: 広告が読み込まれたときに呼ばれるコールバック
   /// [onAdFailedToLoad]: 広告の読み込みに失敗したときに呼ばれるコールバック
   Future<NativeAd> loadNativeAd({
+    required TemplateType templateType,
     required void Function(NativeAd ad) onAdLoaded,
     required void Function(NativeAd ad, LoadAdError error) onAdFailedToLoad,
   }) async {
@@ -32,6 +33,9 @@ class NativeAdManager {
     final nativeAd = NativeAd(
       adUnitId: AdConfig.getNativeAdUnitId(),
       request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: templateType,
+      ),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
           if (kDebugMode) {

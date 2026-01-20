@@ -6,6 +6,7 @@ import '../auth/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../utils/account_deletion_helper.dart';
 import 'profile_edit_screen.dart';
+import 'tutorial_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 class SettingsScreen extends StatefulWidget {
@@ -140,6 +141,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          _buildSettingsTile(
+            context: context,
+            icon: Icons.school_outlined,
+            title: 'チュートリアル',
+            subtitle: '操作方法と機能を確認する',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TutorialScreen(),
+                ),
+              );
+            },
+          ),
 
           const SizedBox(height: 24),
 
@@ -166,13 +180,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           const SizedBox(height: 24),
-
-          // 開発者向け設定セクション（デバッグモード時のみ表示）
-          if (kDebugMode) ...[
-            _buildSectionHeader(context, '開発者向け'),
-          ],
-
-          const SizedBox(height: 40),
         ],
       ),
     );

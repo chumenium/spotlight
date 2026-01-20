@@ -149,6 +149,9 @@ class AuthProvider extends ChangeNotifier {
   /// エラーメッセージ
   /// 認証エラー発生時にメッセージが格納されます
   String? _errorMessage;
+  
+  /// 直近のログインが新規ユーザーかどうか
+  bool _lastLoginWasNewUser = false;
 
   // ==========================================================================
   // Getter
@@ -165,6 +168,9 @@ class AuthProvider extends ChangeNotifier {
 
   /// エラーメッセージを取得
   String? get errorMessage => _errorMessage;
+  
+  /// 直近のログインが新規ユーザーかどうか
+  bool get lastLoginWasNewUser => _lastLoginWasNewUser;
 
   /// Google Sign-Inが利用可能か
   bool get canUseGoogle => FirebaseConfig.enableGoogleSignIn;
@@ -317,6 +323,7 @@ class AuthProvider extends ChangeNotifier {
       // ローディング開始
       _isLoading = true;
       _errorMessage = null;
+      _lastLoginWasNewUser = false;
       notifyListeners();
 
       if (kDebugMode) {
@@ -407,7 +414,9 @@ class AuthProvider extends ChangeNotifier {
       // この時点でFirebase UIDが自動生成されます（新規ユーザーの場合）
       // 既存ユーザーの場合は、既存のUIDが使用されます
       // authStateChangesリスナーが発火し、_onAuthStateChangedが呼ばれます
-      await auth.signInWithCredential(credential);
+      final userCredential = await auth.signInWithCredential(credential);
+      _lastLoginWasNewUser =
+          userCredential.additionalUserInfo?.isNewUser ?? false;
 
       if (kDebugMode && AuthConfig.enableAuthDebugLog) {
         debugPrint('🔐 [Google] Sign-In成功');

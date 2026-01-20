@@ -7,6 +7,7 @@ import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
 import '../screens/splash_screen.dart';
+import '../screens/tutorial_screen.dart';
 
 /// ソーシャルログイン専用画面
 /// Googleでのログインをサポート
@@ -176,10 +177,19 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
       final navigationProvider =
           Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
-      // MainScreenに遷移
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
+      if (authProvider.lastLoginWasNewUser) {
+        // 新規登録時のみチュートリアルに遷移
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const TutorialScreen(nextScreen: MainScreen()),
+          ),
+        );
+      } else {
+        // 既存アカウントは直接ホームへ
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      }
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
@@ -196,12 +206,21 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
       final navigationProvider =
           Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
-      // MainScreenに遷移
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
-      // 新規登録成功のメッセージを表示
-      _showSuccessSnackBar('アカウントが作成されました！');
+      if (authProvider.lastLoginWasNewUser) {
+        // 新規登録時のみチュートリアルに遷移
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const TutorialScreen(nextScreen: MainScreen()),
+          ),
+        );
+        // 新規登録成功のメッセージを表示
+        _showSuccessSnackBar('アカウントが作成されました！');
+      } else {
+        // 既存アカウントは直接ホームへ
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      }
     } else if (mounted && authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }

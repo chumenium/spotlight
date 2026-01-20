@@ -19,17 +19,36 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   bool _isAdLoaded = false;
   bool _hasError = false;
   String? _errorMessage;
+  TemplateType? _currentTemplateType;
+  bool _isLoadingAd = false;
 
   @override
   void initState() {
     super.initState();
-    _loadNativeAd();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadNativeAd(_selectTemplateType(MediaQuery.of(context).size));
+      }
+    });
   }
 
   /// ネイティブ広告を読み込む
-  void _loadNativeAd() async {
+  void _loadNativeAd(TemplateType templateType) async {
+    if (_isLoadingAd) {
+      return;
+    }
+    _isLoadingAd = true;
+    _currentTemplateType = templateType;
+    _nativeAd?.dispose();
+    if (mounted) {
+      setState(() {
+        _isAdLoaded = false;
+        _hasError = false;
+      });
+    }
     try {
       _nativeAd = await NativeAdManager.instance.loadNativeAd(
+        templateType: templateType,
         onAdLoaded: (NativeAd ad) {
           if (mounted) {
             setState(() {
@@ -68,6 +87,8 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
           _errorMessage = '広告の読み込みに失敗しました';
         });
       }
+    } finally {
+      _isLoadingAd = false;
     }
   }
 
@@ -79,8 +100,15 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom + 12;
     final screenSize = MediaQuery.of(context).size;
+    final templateType = _selectTemplateType(screenSize);
+    if (_currentTemplateType != templateType && !_isLoadingAd) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _loadNativeAd(templateType);
+        }
+      });
+    }
     
     if (_hasError) {
       // エラー時の表示
@@ -129,15 +157,42 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
     // Instagramのような全画面広告を表示
     // 投稿と同じスタイルで、下部に「広告」ラベルを表示
     return Container(
-      color: Colors.black,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F0F0F),
+        image: DecorationImage(
+          image: AssetImage('doc/pic/ad_back.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
       width: screenSize.width,
       height: screenSize.height,
       child: Stack(
         children: [
           // 広告コンテンツ（画面の中心に配置）
           Positioned.fill(
-            child: Center(
-              child: AdWidget(ad: _nativeAd!),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final adTemplateSize = _templateSizeFor(templateType);
+                final needsScaleDown = constraints.maxWidth < adTemplateSize.width ||
+                    constraints.maxHeight < adTemplateSize.height;
+                Widget adContent = SizedBox(
+                  width: adTemplateSize.width,
+                  height: adTemplateSize.height,
+                  child: AdWidget(ad: _nativeAd!),
+                );
+                if (needsScaleDown) {
+                  adContent = FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: adContent,
+                  );
+                }
+                return Center(
+                  child: ClipRect(
+                    child: adContent,
+                  ),
+                );
+              },
             ),
           ),
           
@@ -148,11 +203,11 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
                 bottom: 0,
                 child: AnimatedPadding(
                   duration: const Duration(milliseconds: 200),
-                  padding: EdgeInsets.only(
+                  padding: const EdgeInsets.only(
                     left: 16,
                     right: 16,
                     top: 12,
-                    bottom: bottomPadding,
+                    bottom: 12,
                   ),
                   child: Container(
                     decoration: BoxDecoration(
@@ -167,6 +222,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
                     ),
                         child: SafeArea(
                       top: false,
+                      bottom: true,
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final isWide = constraints.maxWidth >= 420;
@@ -231,5 +287,22 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
         ],
       ),
     );
+  }
+
+  TemplateType _selectTemplateType(Size screenSize) {
+    const mediumSize = Size(300, 250);
+    final canUseMedium = screenSize.width >= mediumSize.width &&
+        screenSize.height >= mediumSize.height;
+    return canUseMedium ? TemplateType.medium : TemplateType.small;
+  }
+
+  Size _templateSizeFor(TemplateType templateType) {
+    switch (templateType) {
+      case TemplateType.small:
+        return const Size(320, 100);
+      case TemplateType.medium:
+      default:
+        return const Size(300, 250);
+    }
   }
 }

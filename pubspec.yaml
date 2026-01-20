@@ -85,6 +85,7 @@ flutter:
   assets:
     - assets/images/
     - assets/splash/
+    - doc/pic/ad_back.jpg
 
 # アプリアイコンの設定
 # アイコン画像を assets/icon/icon.png に配置してください（1024x1024px推奨）

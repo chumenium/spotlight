@@ -582,7 +582,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // 統計・ヘルプセクション
                 _buildStatsAndHelpSection(context),
 
-                const SizedBox(height: 40), // プライバシーポリシーから隙間を開ける
+                const SizedBox(height: 24), // ログアウト前の隙間
 
                 // ログアウトボタン
                 _buildLogoutButton(context),
@@ -2102,6 +2102,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
 
+          // ブロックしたユーザー一覧
+          _buildMenuTile(
+            icon: Icons.block,
+            title: 'ブロックしたユーザー',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const BlockedUsersScreen(),
+                ),
+              );
+            },
+          ),
+          _buildMenuDivider(context),
+          const SizedBox(height: 24),
+
           // 設定
           _buildMenuTile(
             icon: Icons.settings_outlined,
@@ -2124,21 +2140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
           _buildMenuDivider(context),
-
-          // ブロックしたユーザー一覧
-          _buildMenuTile(
-            icon: Icons.block,
-            title: 'ブロックしたユーザー',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const BlockedUsersScreen(),
-                ),
-              );
-            },
-          ),
-          _buildMenuDivider(context),
+          const SizedBox(height: 24),
 
           // ヘルプ・フィードバック
           _buildMenuTile(
@@ -2180,6 +2182,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
           _buildMenuDivider(context),
+          const SizedBox(height: 24),
           _buildMenuTile(
             icon: Icons.description_outlined,
             title: '利用規約',
@@ -2205,6 +2208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             },
           ),
+          _buildMenuDivider(context),
         ],
       ),
     );

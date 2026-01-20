@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'dart:async';
+import 'dart:math' as math;
 import '../models/post.dart';
 import '../models/comment.dart';
 import '../services/post_service.dart';
@@ -30,7 +31,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   // PageViewコントローラー
   late PageController _pageController;
 
@@ -98,6 +100,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _pendingTargetPostId;
   bool _isFetchingTargetPost = false;
   bool _isCommentSheetVisible = false;
+  late final AnimationController _spotlightAnimationController;
+  late final Animation<double> _spotlightAnimation;
 
   // プレースホルダー表示状態
   bool _isShowingLoadingPlaceholder = false;
@@ -128,6 +132,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // PageControllerの初期化
     _pageController = PageController(
       initialPage: 0,
+    );
+
+    _spotlightAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _spotlightAnimation = CurvedAnimation(
+      parent: _spotlightAnimationController,
+      curve: Curves.easeOutCubic,
     );
 
     // ライフサイクル監視を追加
@@ -168,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _seekDebounceTimer?.cancel();
     _seekBarUpdateTimerAudio?.cancel();
     _loadMoreRetryTimer?.cancel();
+    _spotlightAnimationController.dispose();
 
     // PageControllerを破棄
     _pageController.dispose();
@@ -1884,7 +1898,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _buildBody(),
+      body: Stack(
+        children: [
+          _buildBody(),
+          _buildSpotlightAnimationOverlay(),
+        ],
+      ),
     );
   }
 
@@ -3122,6 +3141,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
           });
 
+          if (!isCurrentlySpotlighted) {
+            _playSpotlightAnimation();
+          }
+
           if (kDebugMode) {
             debugPrint(
                 '✅ スポットライト${!isCurrentlySpotlighted ? "ON" : "OFF"}: postId=${post.id}');
@@ -3152,6 +3175,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isSpotlighting = false;
       });
     }
+  }
+
+  void _playSpotlightAnimation() {
+    if (!mounted) return;
+    _spotlightAnimationController.stop();
+    _spotlightAnimationController.forward(from: 0);
+  }
+
+  Widget _buildSpotlightAnimationOverlay() {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _spotlightAnimation,
+        builder: (context, child) {
+          if (_spotlightAnimationController.isDismissed) {
+            return const SizedBox.shrink();
+          }
+          final t = _spotlightAnimation.value;
+          final opacity = (1 - t).clamp(0.0, 1.0);
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final maxSize =
+                  math.max(constraints.maxWidth, constraints.maxHeight) * 1.6;
+              return Center(
+                child: Opacity(
+                  opacity: opacity * 0.6,
+                  child: Transform.scale(
+                    scale: 0.2 + t * 1.4,
+                    child: Container(
+                      width: maxSize,
+                      height: maxSize,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFFF6B35),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 
   /// プレイリストボタンの処理（段階9）
@@ -4043,6 +4109,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 }
+
 
 /// コメント一覧ヘルパー
 Widget _buildCommentItem(
