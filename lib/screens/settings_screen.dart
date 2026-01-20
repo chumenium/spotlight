@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
+import '../auth/auth_provider.dart';
 import '../providers/theme_provider.dart';
+import '../utils/account_deletion_helper.dart';
 import 'profile_edit_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
@@ -14,7 +16,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -53,7 +54,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await _openNotificationSettings(context);
             },
           ),
-          
 
           const SizedBox(height: 24),
 
@@ -74,14 +74,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (result == true && context.mounted) {
                 Navigator.of(context).pop(true);
               }
-            },
-          ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.lock_outline,
-            title: 'パスワード変更',
-            onTap: () {
-              // TODO: パスワード変更画面への遷移
             },
           ),
 
@@ -148,47 +140,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.language_outlined,
-            title: '言語',
-            subtitle: '日本語',
-            onTap: () {
-              // TODO: 言語選択画面への遷移
-            },
-          ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.storage_outlined,
-            title: 'キャッシュをクリア',
-            subtitle: 'アプリのキャッシュを削除',
-            onTap: () {
-              // TODO: キャッシュクリアの実装
-            },
-          ),
 
           const SizedBox(height: 24),
 
           // データ設定セクション
           _buildSectionHeader(context, 'データ'),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.download_outlined,
-            title: 'データのエクスポート',
-            subtitle: 'アカウントデータをダウンロード',
-            onTap: () {
-              // TODO: データエクスポートの実装
-            },
-          ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.delete_outline,
-            title: 'アカウント削除',
-            subtitle: 'アカウントとすべてのデータを削除',
-            titleColor: Colors.red,
-            iconColor: Colors.red,
-            onTap: () {
-              // TODO: アカウント削除の実装
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, _) {
+              final isGuest = authProvider.currentUser?.id == 'guest';
+              if (isGuest) {
+                return const SizedBox.shrink();
+              }
+              return _buildSettingsTile(
+                context: context,
+                icon: Icons.delete_outline,
+                title: 'アカウント削除',
+                subtitle: 'アカウントとすべてのデータを削除',
+                titleColor: Colors.red,
+                iconColor: Colors.red,
+                onTap: () async {
+                  await showDeleteAccountConfirmation(context);
+                },
+              );
             },
           ),
 
@@ -238,8 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isDark 
-            ? const Color(0xFF1E1E1E) 
+        color: isDark
+            ? const Color(0xFF1E1E1E)
             : const Color(0xFFFFF5E6), // ライトテーマ用の温かみのあるカード背景
         borderRadius: BorderRadius.circular(12),
       ),
@@ -283,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 端末の通知設定画面を開く
   static Future<void> _openNotificationSettings(BuildContext context) async {
     const platform = MethodChannel('com.spotlight.mobile/settings');
-    
+
     try {
       if (Platform.isAndroid) {
         // Android: アプリの通知設定画面を開く
@@ -294,7 +267,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } on PlatformException catch (e) {
       if (context.mounted) {
-        final errorMessage = e.code == 'MissingPluginException' 
+        final errorMessage = e.code == 'MissingPluginException'
             ? 'アプリを完全に再起動してください（ホットリロードでは反映されません）'
             : '設定画面を開けませんでした: ${e.message ?? e.toString()}';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -318,4 +291,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 }
-
