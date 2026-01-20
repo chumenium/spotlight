@@ -39,5 +39,9 @@ class AppConfig {
   
   // デバッグログの表示制御
   static bool get showDebugLog => isDevelopment;
+
+  // TestFlightなど審査前の環境でテスト広告を強制する
+  // 本番審査後はfalseに変更すること
+  static const bool forceTestAds = true;
 }
 

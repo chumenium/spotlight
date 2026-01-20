@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
 import '../models/comment.dart';
 import '../services/post_service.dart';
@@ -20,6 +21,7 @@ import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
 import 'user_profile_screen.dart';
 import '../widgets/native_ad_widget.dart';
+import '../services/share_link_service.dart';
 
 /// ホーム画面 - 垂直フィード型ソーシャルメディアアプリのメイン画面
 ///
@@ -1255,6 +1257,12 @@ class _HomeScreenState extends State<HomeScreen>
     return index - adCountBeforeIndex;
   }
 
+  int _getPageIndexForPostIndex(int postIndex) {
+    if (postIndex <= 0) return 0;
+    final adCountBeforePost = postIndex ~/ _adInterval;
+    return postIndex + adCountBeforePost;
+  }
+
   /// 指定されたインデックスより前にある広告の数を計算
   ///
   /// [index]: PageViewのインデックス
@@ -1274,6 +1282,32 @@ class _HomeScreenState extends State<HomeScreen>
       return null;
     }
     return postIndex;
+  }
+
+  void _showLoadedContentIfOnPlaceholder(int previousPostCount) {
+    if (_isDisposed || !_pageController.hasClients) return;
+    final previousAdCount = _calculateAdCount(previousPostCount);
+    final loadingPlaceholderPageIndex =
+        previousPostCount + previousAdCount;
+    final currentPageValue = _pageController.page;
+    final currentPageIndex = currentPageValue?.round() ?? _currentIndex;
+
+    if (currentPageIndex != loadingPlaceholderPageIndex) {
+      return;
+    }
+
+    final targetPageIndex = _getPageIndexForPostIndex(previousPostCount);
+    if (targetPageIndex == currentPageIndex) {
+      return;
+    }
+
+    _pageController.jumpToPage(targetPageIndex);
+    if (mounted) {
+      setState(() {
+        _currentIndex = targetPageIndex;
+      });
+    }
+    _handleMediaPageChange(targetPageIndex);
   }
 
   void _startVideoPlayback(int index) {
@@ -1563,6 +1597,9 @@ class _HomeScreenState extends State<HomeScreen>
                   _hasMorePosts = randomUniquePosts.length >= 3;
                 });
                 _schedulePendingTargetCheck();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _showLoadedContentIfOnPlaceholder(previousPostCount);
+                });
 
                 if (kDebugMode) {
                   debugPrint(
@@ -1571,79 +1608,7 @@ class _HomeScreenState extends State<HomeScreen>
                       '📄 読み込み前の投稿数: $previousPostCount, 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex, 読み込み中プレースホルダー表示中: $wasViewingLoadingPlaceholder');
                 }
 
-                // 読み込み中のプレースホルダーを表示していた場合、新しいコンテンツに自動遷移
-                if (wasViewingLoadingPlaceholder &&
-                    randomUniquePosts.isNotEmpty &&
-                    !_isDisposed) {
-                  // 次のフレームで新しいコンテンツに遷移（UI更新後に実行）
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_isDisposed && _posts.length > previousPostCount) {
-                      // 新しく追加された最初のコンテンツのインデックス
-                      final newContentIndex = previousPostCount;
-
-                      if (_pageController.hasClients &&
-                          newContentIndex < _posts.length) {
-                        if (kDebugMode) {
-                          debugPrint(
-                              '🎬 ランダム投稿自動遷移開始: index=$newContentIndex (${_posts[newContentIndex].title})');
-                        }
-
-                        // スムーズに新しいコンテンツに遷移
-                        try {
-                          _pageController
-                              .animateToPage(
-                            newContentIndex,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          )
-                              .then((_) {
-                            // 遷移完了後に、動画や音声を自動再生
-                            if (!_isDisposed) {
-                              // _onPageChangedが呼ばれるはずだが、念のため手動で更新
-                              if (_currentIndex != newContentIndex) {
-                                setState(() {
-                                  _currentIndex = newContentIndex;
-                                });
-                              }
-                              _handleMediaPageChange(newContentIndex);
-                            }
-
-                            if (kDebugMode) {
-                              debugPrint(
-                                  '✅ ランダム投稿読み込み完了: 新しいコンテンツに自動遷移しました (index: $newContentIndex → ${_posts[newContentIndex].title})');
-                            }
-                          }).catchError((e) {
-                            if (kDebugMode) {
-                              debugPrint(
-                                  '❌ ランダム投稿animateToPageエラー: $e, jumpToPageで再試行します');
-                            }
-                            // animateToPageが失敗した場合、jumpToPageで確実に遷移
-                            if (_pageController.hasClients && !_isDisposed) {
-                              _pageController.jumpToPage(newContentIndex);
-                              setState(() {
-                                _currentIndex = newContentIndex;
-                              });
-                              _handleMediaPageChange(newContentIndex);
-                            }
-                          });
-                        } catch (e) {
-                          if (kDebugMode) {
-                            debugPrint(
-                                '❌ ランダム投稿自動遷移エラー: $e, jumpToPageで再試行します');
-                          }
-                          // エラー時はjumpToPageで確実に遷移
-                          if (_pageController.hasClients && !_isDisposed) {
-                            _pageController.jumpToPage(newContentIndex);
-                            setState(() {
-                              _currentIndex = newContentIndex;
-                            });
-                            _handleMediaPageChange(newContentIndex);
-                          }
-                        }
-                      }
-                    }
-                  });
-                }
+                // ランダム投稿取得後の自動遷移は行わない（勝手なスクロール防止）
 
                 return;
               }
@@ -1670,17 +1635,12 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 読み込み開始時に読み込み中プレースホルダーが表示されていたかどうかを確認
           // プレースホルダーのインデックスは previousPostCount (_posts.length)
-          // 読み込み開始時に読み込み中プレースホルダーが表示されていた場合、必ず自動遷移する
-          // （逆スクロールした後でも、読み込み開始時に表示されていた場合は自動遷移）
+          final previousAdCount = _calculateAdCount(previousPostCount);
+          final loadingPlaceholderPageIndex =
+              previousPostCount + previousAdCount;
           final wasViewingLoadingPlaceholderAtStart =
               _loadingStartIndex != null &&
-                  _loadingStartIndex == previousPostCount;
-
-          // 読み込み開始時に最後の投稿付近にいた場合も自動遷移する（より確実に）
-          // 最後の投稿のインデックスは previousPostCount - 1
-          final wasNearLastPostAtStart = _loadingStartIndex != null &&
-              _loadingStartIndex! >= previousPostCount - 1 &&
-              _loadingStartIndex! <= previousPostCount;
+                  _loadingStartIndex == loadingPlaceholderPageIndex;
 
           // PageControllerの現在のページを確認（実際の表示位置を取得）
           double? currentPageValue;
@@ -1691,17 +1651,11 @@ class _HomeScreenState extends State<HomeScreen>
 
           // 現在のページも読み込み中プレースホルダーかどうかを確認
           final isCurrentlyViewingLoadingPlaceholder =
-              currentPageIndex == previousPostCount ||
-                  _currentIndex == previousPostCount;
+              currentPageIndex == loadingPlaceholderPageIndex ||
+                  _currentIndex == loadingPlaceholderPageIndex;
 
-          // 読み込み開始時に読み込み中プレースホルダーが表示されていた場合、または
-          // 読み込み開始時に最後の投稿付近にいた場合、または
-          // 現在読み込み中プレースホルダーを表示している場合、自動遷移する
-          // 読み込み成功時は、読み込み開始時に読み込み中プレースホルダーが表示されていた場合は必ず自動遷移
           final shouldAutoNavigate = wasViewingLoadingPlaceholderAtStart ||
-              wasNearLastPostAtStart ||
-              isCurrentlyViewingLoadingPlaceholder ||
-              _wasShowingLoadingPlaceholderAtLoadStart;
+              isCurrentlyViewingLoadingPlaceholder;
 
           // 新しい投稿を追加
           setState(() {
@@ -1724,123 +1678,15 @@ class _HomeScreenState extends State<HomeScreen>
                 '📄 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex');
             debugPrint(
                 '📄 読み込み開始時に読み込み中プレースホルダー表示: $wasViewingLoadingPlaceholderAtStart');
-            debugPrint('📄 読み込み開始時に最後の投稿付近: $wasNearLastPostAtStart');
             debugPrint(
                 '📄 現在読み込み中プレースホルダー表示: $isCurrentlyViewingLoadingPlaceholder');
-            debugPrint('📄 自動遷移判定: shouldAutoNavigate=$shouldAutoNavigate');
+            debugPrint('📄 自動表示判定: shouldAutoNavigate=$shouldAutoNavigate');
           }
 
-          // 読み込み成功時は、読み込み開始時に読み込み中プレースホルダーが表示されていた場合は必ず自動遷移
-          // または、現在読み込み中プレースホルダーを表示している場合も自動遷移
-          // 逆スクロールした後でも、読み込み開始時に表示されていた場合は自動遷移
-          // 特に、現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移する
-          if (uniquePosts.isNotEmpty && !_isDisposed) {
-            // 現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移
-            // または、読み込み開始時に読み込み中プレースホルダーが表示されていた場合も自動遷移
-            final shouldAutoNavigateNow =
-                isCurrentlyViewingLoadingPlaceholder ||
-                    wasViewingLoadingPlaceholderAtStart ||
-                    wasNearLastPostAtStart ||
-                    _wasShowingLoadingPlaceholderAtLoadStart;
-
-            if (kDebugMode) {
-              debugPrint(
-                  '🎯 自動遷移判定: uniquePosts=${uniquePosts.length}件, shouldAutoNavigate=$shouldAutoNavigate, shouldAutoNavigateNow=$shouldAutoNavigateNow');
-              debugPrint(
-                  '🎯 自動遷移実行: 読み込み成功時に新しいコンテンツを表示します (uniquePosts=${uniquePosts.length}件)');
-            }
-
-            // 現在読み込み中プレースホルダーを表示している場合は、必ず自動遷移
-            if (shouldAutoNavigateNow) {
-              // 次のフレームで新しいコンテンツに遷移（UI更新後に実行）
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!_isDisposed && _posts.length > previousPostCount) {
-                  // 新しく追加された最初のコンテンツのインデックス
-                  final newContentIndex = previousPostCount;
-
-                  if (_pageController.hasClients &&
-                      newContentIndex < _posts.length) {
-                    // shouldAutoNavigateがtrueの場合（読み込み開始時に読み込み中プレースホルダーが表示されていた場合、または現在表示している場合）、自動遷移
-                    if (kDebugMode) {
-                      debugPrint(
-                          '🎬 自動遷移開始: index=$newContentIndex (${_posts[newContentIndex].title}), shouldAutoNavigate=$shouldAutoNavigate');
-                    }
-
-                    // スムーズに新しいコンテンツに遷移
-                    try {
-                      _pageController
-                          .animateToPage(
-                        newContentIndex,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      )
-                          .then((_) {
-                        // 遷移完了後に、動画や音声を自動再生
-                        if (!_isDisposed) {
-                          // _onPageChangedが呼ばれるはずだが、念のため手動で更新
-                          if (_currentIndex != newContentIndex) {
-                            setState(() {
-                              _currentIndex = newContentIndex;
-                            });
-                          }
-                          _handleMediaPageChange(newContentIndex);
-                        }
-
-                        if (kDebugMode) {
-                          debugPrint(
-                              '✅ 読み込み完了: 新しいコンテンツに自動遷移しました (index: $newContentIndex → ${_posts[newContentIndex].title})');
-                        }
-                      }).catchError((e) {
-                        if (kDebugMode) {
-                          debugPrint(
-                              '❌ animateToPageエラー: $e, jumpToPageで再試行します');
-                        }
-                        // animateToPageが失敗した場合、jumpToPageで確実に遷移
-                        if (_pageController.hasClients && !_isDisposed) {
-                          _pageController.jumpToPage(newContentIndex);
-                          setState(() {
-                            _currentIndex = newContentIndex;
-                          });
-                          _handleMediaPageChange(newContentIndex);
-                        }
-                      });
-                    } catch (e) {
-                      if (kDebugMode) {
-                        debugPrint('❌ 自動遷移エラー: $e, jumpToPageで再試行します');
-                      }
-                      // エラー時はjumpToPageで確実に遷移
-                      if (_pageController.hasClients && !_isDisposed) {
-                        _pageController.jumpToPage(newContentIndex);
-                        setState(() {
-                          _currentIndex = newContentIndex;
-                        });
-                        _handleMediaPageChange(newContentIndex);
-                      }
-                    }
-                  } else {
-                    if (kDebugMode) {
-                      debugPrint(
-                          '⚠️ 自動遷移スキップ: hasClients=${_pageController.hasClients}, newContentIndex=$newContentIndex, posts.length=${_posts.length}');
-                    }
-                  }
-                } else {
-                  if (kDebugMode) {
-                    debugPrint(
-                        '⚠️ 自動遷移スキップ: _isDisposed=$_isDisposed, posts.length=${_posts.length}, previousPostCount=$previousPostCount');
-                  }
-                }
-              });
-            } else {
-              if (kDebugMode) {
-                debugPrint(
-                    '⚠️ 自動遷移スキップ: 読み込み中プレースホルダーを表示していません (shouldAutoNavigateNow=$shouldAutoNavigateNow)');
-              }
-            }
-          } else {
-            if (kDebugMode) {
-              debugPrint(
-                  '⚠️ 自動遷移スキップ: uniquePosts.isEmpty=${uniquePosts.isEmpty}, _isDisposed=$_isDisposed');
-            }
+          if (uniquePosts.isNotEmpty && !_isDisposed && shouldAutoNavigate) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showLoadedContentIfOnPlaceholder(previousPostCount);
+            });
           }
         }
       }
@@ -3445,17 +3291,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// アプリ内ディープリンクおよび表示用のWeb URLを生成
   String _buildDeepLink(Post post) {
-    return 'spotlight://content/${post.id}';
-  }
-
-  String _buildWebLink(Post post) {
-    final deeplink = Uri.encodeComponent(_buildDeepLink(post));
-    return '${AppConfig.backendUrl}/content/${post.id}?deeplink=$deeplink';
+    return ShareLinkService.buildPostDeepLink(post.id);
   }
 
   /// リンクをクリップボードにコピー（段階9）
   void _copyLinkToClipboard(Post post) {
-    final shareUrl = _buildWebLink(post);
+    final shareUrl = ShareLinkService.buildPostDeepLink(post.id);
 
     Clipboard.setData(ClipboardData(text: shareUrl));
 
@@ -3470,17 +3311,26 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// システム共有機能を使用（段階9）
   void _shareWithSystem(Post post) {
-    final webLink = _buildWebLink(post);
-    final shareText = '${post.title}\n$webLink\n(app: ${_buildDeepLink(post)})';
+    final shareText =
+        ShareLinkService.buildPostShareText(post.title, post.id);
+    Share.share(
+      shareText,
+      subject: post.title,
+      sharePositionOrigin: _getSharePositionOrigin(),
+    );
+  }
 
-    Clipboard.setData(ClipboardData(text: shareText));
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('共有用リンクをコピーしました（spotlightアプリで開けます）'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 2),
-      ),
+  Rect _getSharePositionOrigin() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final origin = box.localToGlobal(Offset.zero);
+      return origin & box.size;
+    }
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: 1,
+      height: 1,
     );
   }
 

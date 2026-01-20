@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
@@ -8,6 +10,7 @@ import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
+import '../services/share_link_service.dart';
 
 /// プレイリスト詳細画面
 /// API仕様書（API_ENDPOINTS.md 135-156行目）に基づいて実装
@@ -485,7 +488,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               title: '共有',
               onTap: () {
                 Navigator.pop(context);
-                // 共有機能（将来実装）
+                final shareText =
+                    ShareLinkService.buildPostShareText(post.title, post.id);
+                Share.share(
+                  shareText,
+                  subject: post.title,
+                  sharePositionOrigin: _getSharePositionOrigin(),
+                );
               },
             ),
           ],
@@ -560,6 +569,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Rect _getSharePositionOrigin() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final origin = box.localToGlobal(Offset.zero);
+      return origin & box.size;
+    }
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: 1,
+      height: 1,
     );
   }
 

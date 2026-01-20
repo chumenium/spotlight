@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'dart:io' show Platform;
+import 'app_config.dart';
 
 /// 広告設定
 /// 
@@ -44,7 +45,7 @@ class AdConfig {
 
   /// バナー広告ユニットIDを取得
   static String getBannerAdUnitId() {
-    if (kDebugMode) {
+    if (kDebugMode || AppConfig.forceTestAds) {
       return testBannerAdUnitId;
     }
     return Platform.isIOS ? productionBannerAdUnitIdIOS : productionBannerAdUnitIdAndroid;
@@ -52,7 +53,7 @@ class AdConfig {
 
   /// インタースティシャル広告ユニットIDを取得
   static String getInterstitialAdUnitId() {
-    if (kDebugMode) {
+    if (kDebugMode || AppConfig.forceTestAds) {
       return testInterstitialAdUnitId;
     }
     return Platform.isIOS ? productionInterstitialAdUnitIdIOS : productionInterstitialAdUnitIdAndroid;
@@ -60,7 +61,7 @@ class AdConfig {
 
   /// リワード広告ユニットIDを取得
   static String getRewardedAdUnitId() {
-    if (kDebugMode) {
+    if (kDebugMode || AppConfig.forceTestAds) {
       return testRewardedAdUnitId;
     }
     return Platform.isIOS ? productionRewardedAdUnitIdIOS : productionRewardedAdUnitIdAndroid;
@@ -68,7 +69,7 @@ class AdConfig {
 
   /// ネイティブ広告ユニットIDを取得
   static String getNativeAdUnitId() {
-    if (kDebugMode) {
+    if (kDebugMode || AppConfig.forceTestAds) {
       return testNativeAdUnitId;
     }
     return Platform.isIOS ? productionNativeAdUnitIdIOS : productionNativeAdUnitIdAndroid;

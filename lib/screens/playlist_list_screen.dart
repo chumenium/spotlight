@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/playlist_service.dart';
+import '../services/share_link_service.dart';
 import '../config/app_config.dart';
 import '../widgets/robust_network_image.dart';
 import 'playlist_detail_screen.dart';
@@ -366,7 +369,13 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
               title: '共有',
               onTap: () {
                 Navigator.pop(context);
-                // 再生リストを共有
+                final shareText =
+                    ShareLinkService.buildPlaylistShareText(playlist);
+                Share.share(
+                  shareText,
+                  subject: playlist.title,
+                  sharePositionOrigin: _getSharePositionOrigin(),
+                );
               },
             ),
             _buildMenuOption(
@@ -456,6 +465,20 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Rect _getSharePositionOrigin() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final origin = box.localToGlobal(Offset.zero);
+      return origin & box.size;
+    }
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: 1,
+      height: 1,
     );
   }
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/painting.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:app_links/app_links.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/bottom_navigation_bar.dart';
 import 'home_screen.dart';
@@ -10,6 +12,7 @@ import 'search_screen.dart';
 import 'create_post_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
+import 'playlist_detail_screen.dart';
 import '../auth/social_login_screen.dart';
 import '../services/fcm_service.dart';
 import '../services/jwt_service.dart';
@@ -287,11 +290,15 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  AppLinks? _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
     // プッシュ通知のハンドラーを設定
     _setupNotificationHandlers();
+    _setupDeepLinkHandlers();
   }
 
   /// プッシュ通知のハンドラーを設定
@@ -318,6 +325,79 @@ class _MainScreenState extends State<MainScreen> {
         });
       }
     });
+  }
+
+  void _setupDeepLinkHandlers() {
+    _appLinks = AppLinks();
+    _appLinks!.getInitialLink().then((uri) {
+      if (uri != null) {
+        _handleIncomingUri(uri);
+      }
+    });
+    _linkSubscription = _appLinks!.uriLinkStream.listen(
+      (uri) {
+        _handleIncomingUri(uri);
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint('⚠️ ディープリンク受信エラー: $error');
+        }
+      },
+    );
+  }
+
+  void _handleIncomingUri(Uri uri) {
+    if (!mounted) return;
+
+    if (uri.scheme != 'spotlight') {
+      return;
+    }
+
+    final navigationProvider =
+        Provider.of<NavigationProvider>(context, listen: false);
+
+    if (uri.host == 'content') {
+      final contentId =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+      if (contentId == null || contentId.isEmpty) {
+        return;
+      }
+      navigationProvider.navigateToHome(postId: contentId);
+      if (kDebugMode) {
+        debugPrint('🔗 ディープリンク: contentId=$contentId');
+      }
+      return;
+    }
+
+    if (uri.host == 'playlist') {
+      final playlistIdStr =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+      final playlistId = int.tryParse(playlistIdStr ?? '');
+      if (playlistId == null || playlistId <= 0) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PlaylistDetailScreen(
+              playlistId: playlistId,
+              playlistTitle: 'プレイリスト',
+            ),
+          ),
+        );
+      });
+      if (kDebugMode) {
+        debugPrint('🔗 ディープリンク: playlistId=$playlistId');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    _linkSubscription = null;
+    super.dispose();
   }
 
   /// 通知タップ時の処理

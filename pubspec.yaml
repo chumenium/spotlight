@@ -71,6 +71,12 @@ dependencies:
 
   # 広告（Google AdMob）
   google_mobile_ads: ^5.1.0
+  
+  # ディープリンク
+  app_links: ^6.2.0
+  
+  # 共有（iOS/Androidネイティブ）
+  share_plus: ^10.0.2
 
 dev_dependencies:
   flutter_test:
