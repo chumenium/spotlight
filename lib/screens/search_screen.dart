@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../models/search_history.dart';
@@ -244,6 +245,8 @@ class _SearchScreenState extends State<SearchScreen> {
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
+                maxLength: 100,
+                maxLengthEnforcement: MaxLengthEnforcement.enforced,
                 style: TextStyle(
                   color: Theme.of(context).textTheme.bodyLarge?.color ?? const Color(0xFF2C2C2C),
                 ),

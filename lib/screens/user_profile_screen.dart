@@ -443,7 +443,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          if (_myUid != null && _myUid != widget.userId)
+          if (_myUid != null &&
+              widget.userId.isNotEmpty &&
+              _myUid != widget.userId)
             _buildBlockButtons(),
         ],
       ),
@@ -856,7 +858,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   /// ブロック状態の取得
   Future<void> _fetchBlockStatus() async {
-    if (_myUid == null || _myUid == widget.userId) return;
+    if (_myUid == null || widget.userId.isEmpty || _myUid == widget.userId) {
+      return;
+    }
 
     setState(() {
       _isLoadingBlockStatus = true;

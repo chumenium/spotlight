@@ -19,6 +19,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   List<Playlist> _playlists = [];
   bool _isLoading = true;
   String? _errorMessage;
+  final Map<int, String?> _playlistFirstContentThumbnails = {};
 
   @override
   void initState() {
@@ -57,6 +58,46 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<String?> _getFirstContentThumbnail(int playlistId) async {
+    if (_playlistFirstContentThumbnails.containsKey(playlistId)) {
+      return _playlistFirstContentThumbnails[playlistId];
+    }
+
+    try {
+      final contentsJson = await PlaylistService.getPlaylistDetail(playlistId);
+      if (contentsJson.isEmpty) {
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      final firstContent = contentsJson[0];
+      final thumbnailpath = firstContent['thumbnailpath']?.toString();
+      if (thumbnailpath == null || thumbnailpath.isEmpty) {
+        _playlistFirstContentThumbnails[playlistId] = null;
+        return null;
+      }
+
+      String thumbnailUrl;
+      if (thumbnailpath.startsWith('http://') ||
+          thumbnailpath.startsWith('https://')) {
+        thumbnailUrl = thumbnailpath;
+      } else {
+        final normalizedPath =
+            thumbnailpath.startsWith('/') ? thumbnailpath : '/$thumbnailpath';
+        thumbnailUrl = '${AppConfig.backendUrl}$normalizedPath';
+      }
+
+      _playlistFirstContentThumbnails[playlistId] = thumbnailUrl;
+      return thumbnailUrl;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ 再生リストの最初のコンテンツ取得エラー: $e');
+      }
+      _playlistFirstContentThumbnails[playlistId] = null;
+      return null;
     }
   }
 
@@ -189,23 +230,30 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                     width: 160,
                                     height: 90,
                                     color: Colors.grey[800],
-                                    child: playlist.thumbnailpath != null &&
-                                            playlist.thumbnailpath!.isNotEmpty
-                                        ? RobustNetworkImage(
-                                            imageUrl:
-                                                '${AppConfig.backendUrl}${playlist.thumbnailpath}',
-                                            fit: BoxFit.cover,
-                                            maxWidth: 320,
-                                            maxHeight: 180,
-                                            placeholder: const Center(
-                                              child: CircularProgressIndicator(
-                                                color: Color(0xFFFF6B35),
-                                                strokeWidth: 2,
-                                              ),
-                                            ),
-                                          )
-                                        : Stack(
+                                    child: FutureBuilder<String?>(
+                                      future: _getFirstContentThumbnail(
+                                          playlist.playlistid),
+                                      builder: (context, snapshot) {
+                                        final thumbnailUrl = snapshot.data;
+                                        if (thumbnailUrl != null &&
+                                            thumbnailUrl.isNotEmpty) {
+                                          return Stack(
                                             children: [
+                                              Positioned.fill(
+                                                child: RobustNetworkImage(
+                                                  imageUrl: thumbnailUrl,
+                                                  fit: BoxFit.cover,
+                                                  maxWidth: 320,
+                                                  maxHeight: 180,
+                                                  placeholder: const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      color: Color(0xFFFF6B35),
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                               const Center(
                                                 child: Icon(
                                                   Icons.playlist_play,
@@ -214,7 +262,17 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 ),
                                               ),
                                             ],
+                                          );
+                                        }
+                                        return const Center(
+                                          child: Icon(
+                                            Icons.playlist_play,
+                                            color: Colors.white,
+                                            size: 32,
                                           ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),

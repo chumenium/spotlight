@@ -20,13 +20,11 @@ class ShareLinkService {
 
   static String buildPostShareText(String title, String postId) {
     final deepLink = buildPostDeepLink(postId);
-    final webLink = buildPostWebLink(postId);
-    return '$title\n$deepLink\n$webLink';
+    return '$deepLink\n$title';
   }
 
   static String buildPlaylistShareText(Playlist playlist) {
     final deepLink = buildPlaylistDeepLink(playlist.playlistid);
-    final webLink = buildPlaylistWebLink(playlist.playlistid);
-    return '${playlist.title}\n$deepLink\n$webLink';
+    return '$deepLink\n${playlist.title}';
   }
 }

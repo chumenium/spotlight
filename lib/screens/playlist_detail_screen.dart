@@ -163,7 +163,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
     final enriched = <Post>[];
     for (var i = 0; i < posts.length; i++) {
-      enriched.add(details[i] ?? posts[i]);
+      final original = posts[i];
+      final detail = details[i];
+      if (detail == null) {
+        enriched.add(original);
+        continue;
+      }
+      enriched.add(_mergePostKeepingThumbnail(original, detail));
     }
 
     if (kDebugMode) {
@@ -174,6 +180,40 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
 
     return enriched;
+  }
+
+  Post _mergePostKeepingThumbnail(Post original, Post detail) {
+    final thumbnailUrl =
+        detail.thumbnailUrl != null && detail.thumbnailUrl!.isNotEmpty
+            ? detail.thumbnailUrl
+            : original.thumbnailUrl;
+    final mediaUrl = detail.mediaUrl != null && detail.mediaUrl!.isNotEmpty
+        ? detail.mediaUrl
+        : original.mediaUrl;
+
+    return Post(
+      id: detail.id,
+      userId: detail.userId,
+      username: detail.username,
+      userIconPath: detail.userIconPath,
+      userIconUrl: detail.userIconUrl ?? original.userIconUrl,
+      title: detail.title,
+      content: detail.content ?? original.content,
+      contentPath:
+          detail.contentPath.isNotEmpty ? detail.contentPath : original.contentPath,
+      type: detail.type,
+      mediaUrl: mediaUrl,
+      thumbnailUrl: thumbnailUrl,
+      likes: detail.likes,
+      playNum: detail.playNum,
+      link: detail.link ?? original.link,
+      comments: detail.comments,
+      shares: detail.shares,
+      isSpotlighted: detail.isSpotlighted,
+      isText: detail.isText,
+      nextContentId: detail.nextContentId ?? original.nextContentId,
+      createdAt: detail.createdAt,
+    );
   }
 
   /// 日付を相対時間に変換
@@ -481,7 +521,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               onTap: () {
                 Navigator.pop(context);
                 _showRemoveFromPlaylistDialog(context, post, index);
-              },
+              },        
             ),
             _buildMenuOption(
               icon: Icons.share,

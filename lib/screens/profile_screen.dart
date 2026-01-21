@@ -922,13 +922,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const SpotlightListScreen(),
                         ),
                       );
+                      if (mounted) {
+                        await _refreshProfileData();
+                      }
                     },
                     child: const Text(
                       '全て表示',
@@ -1351,13 +1354,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const HistoryListScreen(),
                         ),
                       );
+                      if (mounted) {
+                        await _refreshProfileData();
+                      }
                     },
                     child: const Text(
                       '全て表示',
@@ -1574,7 +1580,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           debugPrint(
               '📱 プロフィール: 再生リストをタップ: ID=${playlist.playlistid}, タイトル=${playlist.title}');
         }
-        final result = await Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => PlaylistDetailScreen(
@@ -1583,12 +1589,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         );
-        // 戻ってきた時にプレイリスト一覧を再取得（更新があった可能性があるため）
-        if (result == true || mounted) {
+        // 戻ってきた時は必ず画面を更新
+        if (mounted) {
           if (kDebugMode) {
-            debugPrint('📋 [プロフィール] プレイリスト詳細画面から戻ってきました。再取得します。');
+            debugPrint('📋 [プロフィール] プレイリスト詳細画面から戻ってきたため更新します。');
           }
-          _fetchPlaylists();
+          await _refreshProfileData();
         }
       },
       child: Container(
@@ -1690,13 +1696,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const PlaylistListScreen(),
                         ),
                       );
+                      if (mounted) {
+                        await _refreshProfileData();
+                      }
                     },
                     child: const Text(
                       '全て表示',

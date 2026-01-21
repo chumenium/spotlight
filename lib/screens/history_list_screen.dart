@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
+import '../services/playlist_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
@@ -423,6 +424,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
               title: '再生リストに追加',
               onTap: () {
                 Navigator.pop(context);
+                _handlePlaylistAdd(post);
               },
             ),
             _buildMenuOption(
@@ -458,6 +460,291 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
       ),
       onTap: onTap,
       contentPadding: EdgeInsets.zero,
+    );
+  }
+
+  Future<void> _handlePlaylistAdd(Post post) async {
+    if (kDebugMode) {
+      debugPrint('📂 [再生履歴] 再生リスト追加: postId=${post.id}');
+    }
+
+    try {
+      final playlists = await PlaylistService.getPlaylists();
+      if (!mounted) return;
+      _showPlaylistDialog(post, playlists);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [再生履歴] プレイリスト取得エラー: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('プレイリストの取得に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showPlaylistDialog(Post post, List<dynamic> playlists) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _PlaylistDialog(
+        post: post,
+        playlists: playlists,
+        onCreateNew: () {
+          Navigator.of(context).pop();
+          _showCreatePlaylistDialog(post);
+        },
+      ),
+    );
+  }
+
+  void _showCreatePlaylistDialog(Post post) {
+    final titleController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '新しいプレイリストを作成',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: titleController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'プレイリスト名を入力',
+            hintStyle: TextStyle(color: Colors.grey[400]),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey[700]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey[700]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+            ),
+            filled: true,
+            fillColor: Colors.grey[900],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) return;
+
+              Navigator.of(context).pop();
+
+              try {
+                var playlistId = await PlaylistService.createPlaylist(title);
+                if ((playlistId == null || playlistId <= 0) && mounted) {
+                  final refreshed = await PlaylistService.getPlaylists();
+                  final matched = refreshed.firstWhere(
+                    (item) => item.title.trim() == title && item.playlistid > 0,
+                    orElse: () =>
+                        Playlist(playlistid: 0, title: '', thumbnailpath: null),
+                  );
+                  playlistId =
+                      matched.playlistid > 0 ? matched.playlistid : null;
+                }
+
+                if (playlistId != null && mounted) {
+                  final success = await PlaylistService.addContentToPlaylist(
+                    playlistId,
+                    post.id,
+                  );
+
+                  if (mounted) {
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('プレイリストに追加しました'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('プレイリストへの追加に失敗しました'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('エラーが発生しました: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text(
+              '作成',
+              style: TextStyle(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaylistDialog extends StatelessWidget {
+  final Post post;
+  final List<dynamic> playlists;
+  final VoidCallback onCreateNew;
+
+  const _PlaylistDialog({
+    required this.post,
+    required this.playlists,
+    required this.onCreateNew,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'プレイリストに追加',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (playlists.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.playlist_add,
+                      size: 48,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'プレイリストがありません',
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: playlists.length,
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  return ListTile(
+                    leading: Icon(
+                      Icons.playlist_play,
+                      color: SpotLightColors.getSpotlightColor(0),
+                    ),
+                    title: Text(
+                      playlist.title,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      try {
+                        final success =
+                            await PlaylistService.addContentToPlaylist(
+                          playlist.playlistid,
+                          post.id,
+                        );
+
+                        if (context.mounted) {
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('プレイリストに追加しました'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('プレイリストへの追加に失敗しました'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('エラーが発生しました: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onCreateNew,
+              icon: const Icon(Icons.add),
+              label: const Text('新しいプレイリストを作成'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SpotLightColors.getSpotlightColor(0),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

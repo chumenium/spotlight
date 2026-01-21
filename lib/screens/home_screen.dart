@@ -485,6 +485,9 @@ class _HomeScreenState extends State<HomeScreen>
       _currentIndex = index;
     });
 
+    // 投稿切り替え時は必ずメディアを停止・初期化
+    _stopAndResetAllMedia();
+
     // 前の動画を停止（段階4）- 逆スクロール時も対応
     if (previousIndex != index) {
       final prevPostIndex = _getActualPostIndex(previousIndex);
@@ -662,29 +665,8 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
       }
 
-      // 現在再生中の動画を記録して停止
-      if (_currentPlayingVideo != null) {
-        final controller = _videoControllers[_currentPlayingVideo];
-        if (controller != null &&
-            controller.value.isInitialized &&
-            controller.value.isPlaying) {
-          _lastPlayingVideoBeforeNavigation = _currentPlayingVideo;
-        }
-      }
-
-      // 現在再生中の音声を記録して停止
-      if (_currentPlayingAudio != null) {
-        final player = _audioPlayers[_currentPlayingAudio];
-        if (player != null && player.playing) {
-          _lastPlayingAudioBeforeNavigation = _currentPlayingAudio;
-        }
-      }
-
-      // すべての動画を確実に停止（裏で再生されている可能性があるため）
-      _stopAllVideos();
-
-      // すべての音声を確実に停止（裏で再生されている可能性があるため）
-      _stopAllAudios();
+      _captureCurrentMediaForResume();
+      _stopAndResetAllMedia();
     }
     // 別画面からホーム画面に戻った場合
     else if (_lastNavigationIndex != 0 && currentNavIndex == 0) {
@@ -748,6 +730,31 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 前回のナビゲーションインデックスを更新
     _lastNavigationIndex = currentNavIndex;
+  }
+
+  /// 現在再生中のメディアを復帰用に記録
+  void _captureCurrentMediaForResume() {
+    if (_currentPlayingVideo != null) {
+      final controller = _videoControllers[_currentPlayingVideo];
+      if (controller != null &&
+          controller.value.isInitialized &&
+          controller.value.isPlaying) {
+        _lastPlayingVideoBeforeNavigation = _currentPlayingVideo;
+      }
+    }
+
+    if (_currentPlayingAudio != null) {
+      final player = _audioPlayers[_currentPlayingAudio];
+      if (player != null && player.playing) {
+        _lastPlayingAudioBeforeNavigation = _currentPlayingAudio;
+      }
+    }
+  }
+
+  /// すべてのメディアを停止し、再生状態を初期化
+  void _stopAndResetAllMedia() {
+    _stopAllVideos();
+    _stopAllAudios();
   }
 
   void _schedulePendingTargetCheck() {
@@ -912,9 +919,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _tryJumpToPendingTarget() {
     if (_pendingTargetPostId == null || _posts.isEmpty || _isDisposed) return;
-    final targetIndex =
+    final targetPostIndex =
         _posts.indexWhere((post) => post.id == _pendingTargetPostId);
-    if (targetIndex < 0 || targetIndex >= _posts.length) return;
+    if (targetPostIndex < 0 || targetPostIndex >= _posts.length) return;
+    final targetPageIndex = _getPageIndexForPostIndex(targetPostIndex);
 
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
@@ -923,22 +931,22 @@ class _HomeScreenState extends State<HomeScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isDisposed || !mounted) return;
-      if (targetIndex >= _posts.length) return;
+      if (targetPostIndex >= _posts.length) return;
       if (!_pageController.hasClients) {
         _schedulePendingTargetCheck();
         return;
       }
-      _pageController.jumpToPage(targetIndex);
+      _pageController.jumpToPage(targetPageIndex);
       if (mounted) {
         setState(() {
-          _currentIndex = targetIndex;
+          _currentIndex = targetPageIndex;
         });
       }
-      _handleMediaPageChange(targetIndex);
+      _handleMediaPageChange(targetPageIndex);
 
       // コメント画面を開く必要がある場合
-      if (shouldOpenComments && targetIndex < _posts.length) {
-        final post = _posts[targetIndex];
+      if (shouldOpenComments && targetPostIndex < _posts.length) {
+        final post = _posts[targetPostIndex];
         // 少し待ってからコメント画面を開く（投稿が表示されるのを待つ）
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted && !_isDisposed) {
@@ -950,7 +958,8 @@ class _HomeScreenState extends State<HomeScreen>
       navigationProvider.clearTargetPostId();
       _pendingTargetPostId = null;
       if (kDebugMode) {
-        debugPrint('📱 ナビゲーション: targetPostIdを表示しました (index=$targetIndex)');
+        debugPrint(
+            '📱 ナビゲーション: targetPostIdを表示しました (postIndex=$targetPostIndex, pageIndex=$targetPageIndex)');
         if (shouldOpenComments) {
           debugPrint('💬 コメント画面を開きます: commentID=$targetCommentId');
         }
@@ -1159,12 +1168,10 @@ class _HomeScreenState extends State<HomeScreen>
     for (final entry in _videoControllers.entries) {
       final controller = entry.value;
       if (controller != null && controller.value.isInitialized) {
-        if (controller.value.isPlaying) {
-          controller.pause();
-          controller.seekTo(Duration.zero);
-          if (kDebugMode) {
-            debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
-          }
+        controller.pause();
+        controller.seekTo(Duration.zero);
+        if (kDebugMode) {
+          debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
         }
       }
     }
@@ -1175,7 +1182,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _stopAllAudios() {
     for (final entry in _audioPlayers.entries) {
       final player = entry.value;
-      if (player != null && player.playing) {
+      if (player != null) {
         player.pause();
         player.seek(Duration.zero);
         if (kDebugMode) {
@@ -2705,11 +2712,13 @@ class _HomeScreenState extends State<HomeScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     GestureDetector(
-                      onTap: () {
+                      onTap: () async {
                         if (kDebugMode) {
                           debugPrint('👤 ユーザープロフィール画面に遷移: ${post.username}');
                         }
-                        Navigator.push(
+                        _captureCurrentMediaForResume();
+                        _stopAndResetAllMedia();
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => UserProfileScreen(
@@ -2720,6 +2729,14 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                           ),
                         );
+                        if (!mounted) return;
+                        final navigationProvider = Provider.of<NavigationProvider>(
+                          context,
+                          listen: false,
+                        );
+                        if (navigationProvider.currentIndex == 0) {
+                          await _handleMediaPageChange(_currentIndex);
+                        }
                       },
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -3097,6 +3114,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// プレイリスト選択ダイアログを表示（段階9）
   void _showPlaylistDialog(Post post, List<dynamic> playlists) {
+    _stopAndResetAllMedia();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -3118,6 +3136,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _showCreatePlaylistDialog(Post post) {
     final titleController = TextEditingController();
 
+    _stopAndResetAllMedia();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -3229,6 +3248,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // 共有オプションを表示
+    _stopAndResetAllMedia();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -3430,6 +3450,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     try {
+      _stopAndResetAllMedia();
       await showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
@@ -3524,6 +3545,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         itemBuilder: (context, index) {
                                           final comment = comments[index];
                                           return _buildCommentItem(
+                                            context,
                                             comment,
                                             replyingToCommentId:
                                                 replyingToCommentId,
@@ -3924,6 +3946,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
+    _stopAndResetAllMedia();
     showDialog(
       context: context,
       builder: (context) => _ReportDialog(post: post),
@@ -3950,6 +3973,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
+    _stopAndResetAllMedia();
     showDialog(
       context: context,
       builder: (context) => _CommentReportDialog(
@@ -3963,6 +3987,7 @@ class _HomeScreenState extends State<HomeScreen>
 
 /// コメント一覧ヘルパー
 Widget _buildCommentItem(
+  BuildContext context,
   Comment comment, {
   required int? replyingToCommentId,
   required void Function(int) onReplyPressed,
@@ -3976,19 +4001,57 @@ Widget _buildCommentItem(
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: SpotLightColors.getSpotlightColor(0),
-              child: ClipOval(
-                child: comment.userIconUrl != null &&
-                        comment.userIconUrl!.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: comment.userIconUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: SpotLightColors.getSpotlightColor(0),
-                        ),
-                        errorWidget: (context, url, error) => Container(
+            GestureDetector(
+              onTap: () {
+            if (!context.mounted) return;
+            final userId = comment.userId;
+            final username = comment.username.trim();
+            if ((userId == null || userId.isEmpty) && username.isEmpty) {
+              final messenger = ScaffoldMessenger.maybeOf(context);
+              if (messenger != null) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('ユーザー情報が取得できませんでした'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => UserProfileScreen(
+                  userId: userId ?? '',
+                  username: username.isNotEmpty ? username : null,
+                      userIconUrl: comment.userIconUrl,
+                      userIconPath: comment.iconimgpath,
+                    ),
+                  ),
+                );
+              },
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: SpotLightColors.getSpotlightColor(0),
+                child: ClipOval(
+                  child: comment.userIconUrl != null &&
+                          comment.userIconUrl!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: comment.userIconUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: SpotLightColors.getSpotlightColor(0),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: SpotLightColors.getSpotlightColor(0),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        )
+                      : Container(
                           color: SpotLightColors.getSpotlightColor(0),
                           child: const Icon(
                             Icons.person,
@@ -3996,15 +4059,7 @@ Widget _buildCommentItem(
                             size: 20,
                           ),
                         ),
-                      )
-                    : Container(
-                        color: SpotLightColors.getSpotlightColor(0),
-                        child: const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -4103,6 +4158,7 @@ Widget _buildCommentItem(
             child: Column(
               children: comment.replies.map((reply) {
                 return _buildReplyItem(
+                  context,
                   reply,
                   onReportPressed: onReportPressed,
                 );
@@ -4116,6 +4172,7 @@ Widget _buildCommentItem(
 }
 
 Widget _buildReplyItem(
+  BuildContext context,
   Comment reply, {
   required void Function(Comment) onReportPressed,
 }) {
@@ -4124,18 +4181,56 @@ Widget _buildReplyItem(
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: SpotLightColors.getSpotlightColor(0),
-          child: ClipOval(
-            child: reply.userIconUrl != null && reply.userIconUrl!.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: reply.userIconUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: SpotLightColors.getSpotlightColor(0),
-                    ),
-                    errorWidget: (context, url, error) => Container(
+        GestureDetector(
+          onTap: () {
+            if (!context.mounted) return;
+            final userId = reply.userId;
+            final username = reply.username.trim();
+            if ((userId == null || userId.isEmpty) && username.isEmpty) {
+              final messenger = ScaffoldMessenger.maybeOf(context);
+              if (messenger != null) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('ユーザー情報が取得できませんでした'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              return;
+            }
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UserProfileScreen(
+                  userId: userId ?? '',
+                  username: username.isNotEmpty ? username : null,
+                  userIconUrl: reply.userIconUrl,
+                  userIconPath: reply.iconimgpath,
+                ),
+              ),
+            );
+          },
+          child: CircleAvatar(
+            radius: 16,
+            backgroundColor: SpotLightColors.getSpotlightColor(0),
+            child: ClipOval(
+              child: reply.userIconUrl != null && reply.userIconUrl!.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: reply.userIconUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        color: SpotLightColors.getSpotlightColor(0),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: SpotLightColors.getSpotlightColor(0),
+                        child: const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    )
+                  : Container(
                       color: SpotLightColors.getSpotlightColor(0),
                       child: const Icon(
                         Icons.person,
@@ -4143,15 +4238,7 @@ Widget _buildReplyItem(
                         size: 16,
                       ),
                     ),
-                  )
-                : Container(
-                    color: SpotLightColors.getSpotlightColor(0),
-                    child: const Icon(
-                      Icons.person,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -4791,20 +4878,20 @@ class _ScrollingTitle extends StatefulWidget {
 class _ScrollingTitleState extends State<_ScrollingTitle>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<Offset> _animation;
+  late Animation<double> _animation;
   bool _needsScroll = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 8),
       vsync: this,
     );
 
-    _animation = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(1.0, 0),
+    _animation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.linear,
@@ -4837,35 +4924,19 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
   void _checkIfNeedsScroll() {
     final renderObject = context.findRenderObject();
     if (renderObject is RenderBox) {
-      // 20文字以上の場合のみスクロール可能
-      if (widget.text.length < 20) {
+      if (widget.text.length < 18) {
         return;
       }
-
-      final availableWidth = renderObject.size.width;
-
-      // テキストの実際の幅を測定（制限なし）
-      final textPainter = TextPainter(
-        text: TextSpan(text: widget.text, style: widget.style),
-        maxLines: 1,
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      final textWidth = textPainter.width;
-
-      // テキストの幅が利用可能な幅を超えている場合のみスクロール
-      if (textWidth > availableWidth) {
-        if (mounted) {
-          setState(() {
-            _needsScroll = true;
-          });
-          // 最初の位置で少し待機してからスクロール開始
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted && _needsScroll) {
-              _controller.forward();
-            }
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _needsScroll = true;
+        });
+        // 最初の位置で少し待機してからスクロール開始
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && _needsScroll) {
+            _controller.forward();
+          }
+        });
       }
     }
   }
@@ -4891,19 +4962,21 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         final textPainter = TextPainter(
           text: TextSpan(text: widget.text, style: widget.style),
           maxLines: 1,
-          textDirection: TextDirection.ltr,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
         );
         textPainter.layout();
         final textWidth = textPainter.width;
 
-        // スクロールする距離を計算
-        final scrollDistance = textWidth - availableWidth;
+        // タイトル長さが長い場合は必ずスクロールさせるため幅に依存しない
+        const endPadding = 24.0;
+        final scrollDistance = textWidth + endPadding;
 
         return AnimatedBuilder(
           animation: _animation,
           builder: (context, child) {
-            // アニメーション値（0.0から1.0）を使ってスクロール距離を計算
-            final offsetX = -scrollDistance * _animation.value.dx;
+            // 左付けの初期位置から左方向にスクロール
+            final offsetX = -scrollDistance * _animation.value;
             return ClipRect(
               child: SizedBox(
                 width: availableWidth,
