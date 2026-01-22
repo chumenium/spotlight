@@ -235,11 +235,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
-        foregroundColor: Colors.white,
         title: Text(widget.playlistTitle),
         elevation: 0,
         actions: [
@@ -269,8 +271,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       const SizedBox(height: 16),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: primaryTextColor,
                           fontSize: 16,
                         ),
                       ),
@@ -331,6 +333,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   Widget _buildContentItem(BuildContext context, Post post, int index) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor =
+        isDark ? Colors.grey[400]! : const Color(0xFF5A5A5A);
+    final placeholderIconColor =
+        isDark ? Colors.white : const Color(0xFF5A5A5A);
+    final thumbnailBackgroundColor = isDark
+        ? Colors.grey[800]!
+        : SpotLightColors.peach.withOpacity(0.2);
     return GestureDetector(
       onTap: () {
         try {
@@ -367,7 +379,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               child: Container(
                 width: 160,
                 height: 90,
-                color: Colors.grey[800],
+                color: thumbnailBackgroundColor,
                 child: _hasValidThumbnail(post.thumbnailUrl)
                     ? RobustNetworkImage(
                         imageUrl: post.thumbnailUrl ?? '',
@@ -392,7 +404,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                       : post.postType == PostType.audio
                                           ? Icons.audiotrack_outlined
                                           : Icons.text_fields_outlined,
-                              color: Colors.white,
+                              color: placeholderIconColor,
                               size: 32,
                             ),
                           ),
@@ -435,8 +447,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 children: [
                   Text(
                     _getSafeTitle(post.title),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: primaryTextColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -447,7 +459,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   Text(
                     post.username.isNotEmpty ? post.username : 'ユーザー名なし',
                     style: TextStyle(
-                      color: Colors.grey[400],
+                      color: secondaryTextColor,
                       fontSize: 14,
                     ),
                   ),
@@ -457,7 +469,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       Text(
                         '${post.playNum}回視聴',
                         style: TextStyle(
-                          color: Colors.grey[400],
+                          color: secondaryTextColor,
                           fontSize: 12,
                         ),
                       ),
@@ -465,7 +477,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       Text(
                         _formatRelativeTime(post.createdAt.toLocal()),
                         style: TextStyle(
-                          color: Colors.grey[400],
+                          color: secondaryTextColor,
                           fontSize: 12,
                         ),
                       ),
@@ -506,10 +518,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void _showMenuBottomSheet(BuildContext context, Post post, int index) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -548,22 +556,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          'プレイリストから削除',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'このコンテンツをプレイリストから削除しますか？',
-          style: TextStyle(color: Colors.grey),
-        ),
+        title: const Text('プレイリストから削除'),
+        content: const Text('このコンテンツをプレイリストから削除しますか？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -632,17 +630,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(
-        icon,
-        color: Colors.white,
-        size: 24,
-      ),
+      leading: Icon(icon, size: 24),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
+        style: const TextStyle(fontSize: 16),
       ),
       onTap: onTap,
       contentPadding: EdgeInsets.zero,

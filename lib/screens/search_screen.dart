@@ -247,6 +247,14 @@ class _SearchScreenState extends State<SearchScreen> {
                 focusNode: _searchFocusNode,
                 maxLength: 100,
                 maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                textAlignVertical: TextAlignVertical.center,
+                buildCounter: (
+                  BuildContext context, {
+                  required int currentLength,
+                  required bool isFocused,
+                  int? maxLength,
+                }) =>
+                    null,
                 style: TextStyle(
                   color: Theme.of(context).textTheme.bodyLarge?.color ?? const Color(0xFF2C2C2C),
                 ),
@@ -257,15 +265,24 @@ class _SearchScreenState extends State<SearchScreen> {
                         ? Colors.grey[400] 
                         : Colors.grey[600],
                   ),
+                  isDense: true,
                   border: InputBorder.none,
                   prefixIcon: const Icon(
                     Icons.search,
                     color: Colors.grey,
                     size: 20,
                   ),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  suffixIconConstraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+                    horizontal: 12,
+                    vertical: 8,
                   ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
@@ -354,19 +371,24 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildSearchResults() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor =
+        isDark ? Colors.white70 : const Color(0xFF5A5A5A);
     if (_isSearching) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(
+            const CircularProgressIndicator(
               color: Color(0xFFFF6B35),
             ),
             SizedBox(height: 16),
             Text(
               '検索中...',
               style: TextStyle(
-                color: Colors.white,
+                color: primaryTextColor,
                 fontSize: 16,
               ),
             ),
@@ -382,14 +404,14 @@ class _SearchScreenState extends State<SearchScreen> {
           children: [
             Icon(
               Icons.search_off,
-              color: Colors.white70,
+              color: secondaryTextColor,
               size: 64,
             ),
             const SizedBox(height: 16),
             Text(
               '「$_searchQuery」の検索結果はありません',
               style: TextStyle(
-                color: Colors.white70,
+                color: secondaryTextColor,
                 fontSize: 16,
               ),
               textAlign: TextAlign.center,
@@ -418,6 +440,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// TikTok風のタイル表示
   Widget _buildSearchResultTile(Post post) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final overlayTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final overlaySecondaryTextColor =
+        isDark ? Colors.white70 : const Color(0xFF5A5A5A);
+    final overlayEndColor = isDark
+        ? Colors.black.withOpacity(0.8)
+        : SpotLightColors.peach.withOpacity(0.9);
     final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
 
     return GestureDetector(
@@ -430,7 +460,9 @@ class _SearchScreenState extends State<SearchScreen> {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey[900],
+          color: isDark
+              ? Colors.grey[900]
+              : SpotLightColors.peach.withOpacity(0.2),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Stack(
@@ -485,7 +517,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.8),
+                      overlayEndColor,
                     ],
                   ),
                 ),
@@ -497,8 +529,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     // タイトル
                     Text(
                       post.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: overlayTextColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -517,8 +549,8 @@ class _SearchScreenState extends State<SearchScreen> {
                         const SizedBox(width: 2),
                         Text(
                           '${post.likes}',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: overlayTextColor,
                             fontSize: 10,
                           ),
                         ),
@@ -526,13 +558,13 @@ class _SearchScreenState extends State<SearchScreen> {
                         Icon(
                           Icons.play_circle_outline,
                           size: 12,
-                          color: Colors.white70,
+                          color: overlaySecondaryTextColor,
                         ),
                         const SizedBox(width: 2),
                         Text(
                           '${post.playNum}',
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: overlaySecondaryTextColor,
                             fontSize: 10,
                           ),
                         ),

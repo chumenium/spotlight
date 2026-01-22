@@ -82,11 +82,13 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
-        foregroundColor: Colors.white,
         title: const Text('自分の投稿'),
         elevation: 0,
         actions: [
@@ -116,8 +118,8 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                       const SizedBox(height: 16),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: primaryTextColor,
                           fontSize: 16,
                         ),
                       ),
@@ -177,7 +179,18 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   }
 
   Widget _buildPostItem(BuildContext context, Post post, int index) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor =
+        isDark ? Colors.grey[400]! : const Color(0xFF5A5A5A);
+    final placeholderIconColor =
+        isDark ? Colors.white : const Color(0xFF5A5A5A);
+    final thumbnailBackgroundColor = isDark
+        ? Colors.grey[800]!
+        : SpotLightColors.peach.withOpacity(0.2);
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
         try {
@@ -213,7 +226,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               child: Container(
                 width: 160,
                 height: 90,
-                color: Colors.grey[800],
+                color: thumbnailBackgroundColor,
                 child: post.thumbnailUrl != null
                     ? RobustNetworkImage(
                         imageUrl: post.thumbnailUrl!,
@@ -236,7 +249,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                                       : post.postType == PostType.audio
                                           ? Icons.audiotrack_outlined
                                           : Icons.text_fields_outlined,
-                              color: Colors.white,
+                              color: placeholderIconColor,
                               size: 32,
                             ),
                           ),
@@ -280,8 +293,8 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                 children: [
                   Text(
                     post.title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: primaryTextColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -311,7 +324,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                       Text(
                         '${post.playNum}回再生',
                         style: TextStyle(
-                          color: Colors.grey[400],
+                          color: secondaryTextColor,
                           fontSize: 12,
                         ),
                       ),
@@ -321,7 +334,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   Text(
                     _formatRelativeTime(post.createdAt.toLocal()),
                     style: TextStyle(
-                      color: Colors.grey[400],
+                      color: secondaryTextColor,
                       fontSize: 12,
                     ),
                   ),
@@ -390,22 +403,12 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          '投稿を削除',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'この投稿を削除しますか？この操作は取り消せません。',
-          style: TextStyle(color: Colors.grey),
-        ),
+        title: const Text('投稿を削除'),
+        content: const Text('この投稿を削除しますか？この操作は取り消せません。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -477,23 +480,17 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '共有',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             const SizedBox(height: 16),
             _buildShareOption(
@@ -525,10 +522,9 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white),
+      leading: Icon(icon),
       title: Text(
         title,
-        style: const TextStyle(color: Colors.white),
       ),
       onTap: onTap,
     );
@@ -598,10 +594,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   void _showPlaylistDialog(Post post, List<dynamic> playlists) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (context) => _PlaylistDialog(
         post: post,
         playlists: playlists,
@@ -615,44 +607,47 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
   void _showCreatePlaylistDialog(Post post) {
     final titleController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          '新しいプレイリストを作成',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('新しいプレイリストを作成'),
         content: TextField(
           controller: titleController,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
           decoration: InputDecoration(
             hintText: 'プレイリスト名を入力',
-            hintStyle: TextStyle(color: Colors.grey[400]),
+            hintStyle: TextStyle(
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey[700]!),
+              borderSide: BorderSide(
+                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey[700]!),
+              borderSide: BorderSide(
+                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
             filled: true,
-            fillColor: Colors.grey[900],
+            fillColor:
+                isDark ? Colors.grey[900] : SpotLightColors.peach.withOpacity(0.2),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -723,22 +718,12 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          'スポットライトを解除',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'この投稿のスポットライトを解除しますか？',
-          style: TextStyle(color: Colors.grey),
-        ),
+        title: const Text('スポットライトを解除'),
+        content: const Text('この投稿のスポットライトを解除しますか？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -775,22 +760,12 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          'スポットライトを付ける',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'この投稿にスポットライトを付けますか？',
-          style: TextStyle(color: Colors.grey),
-        ),
+        title: const Text('スポットライトを付ける'),
+        content: const Text('この投稿にスポットライトを付けますか？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -831,15 +806,11 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     return ListTile(
       leading: Icon(
         icon,
-        color: Colors.white,
         size: 24,
       ),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
+        style: const TextStyle(fontSize: 16),
       ),
       onTap: onTap,
       contentPadding: EdgeInsets.zero,
@@ -860,6 +831,11 @@ class _PlaylistDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor =
+        isDark ? Colors.grey[400]! : const Color(0xFF5A5A5A);
     return Container(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -868,17 +844,17 @@ class _PlaylistDialog extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'プレイリストに追加',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: primaryTextColor,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
+                icon: Icon(Icons.close, color: primaryTextColor),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ],
@@ -899,7 +875,7 @@ class _PlaylistDialog extends StatelessWidget {
                     Text(
                       'プレイリストがありません',
                       style: TextStyle(
-                        color: Colors.grey[400],
+                        color: secondaryTextColor,
                         fontSize: 16,
                       ),
                     ),
@@ -921,7 +897,7 @@ class _PlaylistDialog extends StatelessWidget {
                     ),
                     title: Text(
                       playlist.title,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: primaryTextColor),
                     ),
                     onTap: () async {
                       Navigator.of(context).pop();

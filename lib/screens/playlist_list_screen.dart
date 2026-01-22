@@ -6,6 +6,7 @@ import '../services/playlist_service.dart';
 import '../services/share_link_service.dart';
 import '../config/app_config.dart';
 import '../widgets/robust_network_image.dart';
+import '../utils/spotlight_colors.dart';
 import 'playlist_detail_screen.dart';
 
 class PlaylistListScreen extends StatefulWidget {
@@ -104,11 +105,20 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor =
+        isDark ? Colors.grey[400]! : const Color(0xFF5A5A5A);
+    final thumbnailBackgroundColor = isDark
+        ? Colors.grey[800]!
+        : SpotLightColors.peach.withOpacity(0.2);
+    final placeholderIconColor =
+        isDark ? Colors.white : const Color(0xFF5A5A5A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
-        foregroundColor: Colors.white,
         title: const Text('再生リスト'),
         elevation: 0,
         actions: [
@@ -145,8 +155,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                       const SizedBox(height: 16),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: primaryTextColor,
                           fontSize: 16,
                         ),
                       ),
@@ -229,7 +239,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                   child: Container(
                                     width: 160,
                                     height: 90,
-                                    color: Colors.grey[800],
+                                    color: thumbnailBackgroundColor,
                                     child: FutureBuilder<String?>(
                                       future: _getFirstContentThumbnail(
                                           playlist.playlistid),
@@ -254,20 +264,20 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                   ),
                                                 ),
                                               ),
-                                              const Center(
+                                              Center(
                                                 child: Icon(
                                                   Icons.playlist_play,
-                                                  color: Colors.white,
+                                                  color: placeholderIconColor,
                                                   size: 32,
                                                 ),
                                               ),
                                             ],
                                           );
                                         }
-                                        return const Center(
+                                        return Center(
                                           child: Icon(
                                             Icons.playlist_play,
-                                            color: Colors.white,
+                                            color: placeholderIconColor,
                                             size: 32,
                                           ),
                                         );
@@ -284,8 +294,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                     children: [
                                       Text(
                                         playlist.title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: primaryTextColor,
                                           fontSize: 16,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -298,7 +308,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                             ? playlist.username!
                                             : 'ユーザー名なし',
                                         style: TextStyle(
-                                          color: Colors.grey[400],
+                                          color: secondaryTextColor,
                                           fontSize: 12,
                                         ),
                                         maxLines: 1,
@@ -330,27 +340,29 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   /// プレイリスト作成ダイアログ
   void _showCreatePlaylistDialog(BuildContext context) {
     final titleController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            '新しい再生リストを作成',
-            style: TextStyle(color: Colors.white),
-          ),
+          title: const Text('新しい再生リストを作成'),
           content: TextField(
             controller: titleController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
             decoration: InputDecoration(
               hintText: '再生リスト名を入力',
-              hintStyle: TextStyle(color: Colors.grey[400]),
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
               filled: true,
-              fillColor: Colors.grey[800],
+              fillColor:
+                  isDark ? Colors.grey[800] : SpotLightColors.peach.withOpacity(0.2),
             ),
           ),
           actions: [
@@ -397,10 +409,6 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       BuildContext context, Playlist playlist, int index) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -463,22 +471,12 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          '再生リストを削除',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'この再生リストを削除しますか？この操作は取り消せません。',
-          style: TextStyle(color: Colors.grey),
-        ),
+        title: const Text('再生リストを削除'),
+        content: const Text('この再生リストを削除しますか？この操作は取り消せません。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'キャンセル',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('キャンセル'),
           ),
           TextButton(
             onPressed: () async {
@@ -546,17 +544,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(
-        icon,
-        color: Colors.white,
-        size: 24,
-      ),
+      leading: Icon(icon, size: 24),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
+        style: const TextStyle(fontSize: 16),
       ),
       onTap: onTap,
       contentPadding: EdgeInsets.zero,

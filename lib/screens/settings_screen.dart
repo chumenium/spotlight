@@ -5,6 +5,8 @@ import 'dart:io' show Platform;
 import '../auth/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../utils/account_deletion_helper.dart';
+import '../services/post_service.dart';
+import '../services/search_service.dart';
 import 'profile_edit_screen.dart';
 import 'tutorial_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -76,6 +78,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(context).pop(true);
               }
             },
+          ),
+          _buildSettingsTile(
+            context: context,
+            icon: Icons.delete_forever_outlined,
+            title: '自分の投稿をすべて削除',
+            subtitle: '投稿コンテンツをすべて削除します',
+            onTap: () => _confirmDeleteAllPosts(context),
+          ),
+          _buildSettingsTile(
+            context: context,
+            icon: Icons.manage_search_outlined,
+            title: '検索履歴をすべて削除',
+            subtitle: '検索履歴をすべて削除します',
+            onTap: () => _confirmDeleteAllSearchHistory(context),
           ),
 
           const SizedBox(height: 24),
@@ -265,12 +281,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     const platform = MethodChannel('com.spotlight.mobile/settings');
 
     try {
-      if (Platform.isAndroid) {
-        // Android: アプリの通知設定画面を開く
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Android/iOS: アプリの通知設定画面を開く
         await platform.invokeMethod('openNotificationSettings');
-      } else if (Platform.isIOS) {
-        // iOS: アプリの設定画面を開く
-        await platform.invokeMethod('openAppSettings');
       }
     } on PlatformException catch (e) {
       if (context.mounted) {
@@ -295,6 +308,212 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _confirmDeleteAllPosts(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '全ての投稿を削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          '投稿コンテンツをすべて削除します。\nこの操作は取り消せません。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    _showProcessingDialog(context, '削除中...');
+
+    bool hasFailure = false;
+    int deletedCount = 0;
+    try {
+      final posts = await PostService.getUserContents();
+      if (posts.isEmpty) {
+        _closeProcessingDialog(context);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('削除対象の投稿がありません'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      for (final post in posts) {
+        final success = await PostService.deletePost(post.id.toString());
+        if (success) {
+          deletedCount++;
+        } else {
+          hasFailure = true;
+        }
+      }
+    } catch (e) {
+      hasFailure = true;
+      if (kDebugMode) {
+        debugPrint('❌ 投稿全削除エラー: $e');
+      }
+    } finally {
+      _closeProcessingDialog(context);
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hasFailure
+              ? '一部の投稿削除に失敗しました（削除済み: $deletedCount件）'
+              : '投稿を削除しました（$deletedCount件）',
+        ),
+        backgroundColor: hasFailure ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteAllSearchHistory(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '検索履歴を全て削除',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          '検索履歴をすべて削除します。\nこの操作は取り消せません。',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'キャンセル',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              '削除',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    _showProcessingDialog(context, '削除中...');
+
+    bool hasFailure = false;
+    int deletedCount = 0;
+    try {
+      final histories = await SearchService.fetchSearchHistory();
+      if (histories.isEmpty) {
+        _closeProcessingDialog(context);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('削除対象の検索履歴がありません'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      for (final history in histories) {
+        final success = await SearchService.deleteSearchHistory(history.id);
+        if (success) {
+          deletedCount++;
+        } else {
+          hasFailure = true;
+        }
+      }
+    } catch (e) {
+      hasFailure = true;
+      if (kDebugMode) {
+        debugPrint('❌ 検索履歴全削除エラー: $e');
+      }
+    } finally {
+      _closeProcessingDialog(context);
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hasFailure
+              ? '一部の検索履歴削除に失敗しました（削除済み: $deletedCount件）'
+              : '検索履歴を削除しました（$deletedCount件）',
+        ),
+        backgroundColor: hasFailure ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showProcessingDialog(BuildContext context, String message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFFFF6B35),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _closeProcessingDialog(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 }

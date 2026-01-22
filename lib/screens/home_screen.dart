@@ -1806,18 +1806,23 @@ class _HomeScreenState extends State<HomeScreen>
           '📄 PageView: itemCount=$itemCount, posts=${_posts.length}, hasMoreContent=$hasMoreContent, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent, _isLoadingMore=$_isLoadingMore');
     }
 
-    return NotificationListener<ScrollStartNotification>(
+    return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        // スクロール開始時に動画・音声を停止・初期化
+        // 画面スクロール等の動きを検知したら必ず停止・初期化
         _handleScrollStart();
         return false; // 通知を下に伝播させる
       },
-      child: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        itemCount: itemCount,
-        onPageChanged: _onPageChanged,
-        itemBuilder: (context, index) {
+      child: Listener(
+        onPointerDown: (_) {
+          // 画面操作を検知したら必ず停止・初期化
+          _stopAndResetAllMedia();
+        },
+        child: PageView.builder(
+          controller: _pageController,
+          scrollDirection: Axis.vertical,
+          itemCount: itemCount,
+          onPageChanged: _onPageChanged,
+          itemBuilder: (context, index) {
           // 広告のインデックスかどうかを判定
           final adIndex = _getAdIndex(index);
           if (adIndex != null) {
@@ -1840,7 +1845,8 @@ class _HomeScreenState extends State<HomeScreen>
 
           final post = _posts[postIndex];
           return _buildPostItem(post, postIndex);
-        },
+          },
+        ),
       ),
     );
   }
@@ -2184,6 +2190,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_initializedAudios.contains(postIndex)) {
       final player = _audioPlayers[postIndex];
       if (player != null) {
+        await player.setLoopMode(LoopMode.one);
         // 現在表示中の音声を再生
         if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
           // 他の動画と音声をすべて停止してから再生
@@ -2222,6 +2229,7 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       final player = AudioPlayer();
       await player.setUrl(mediaUrl);
+      await player.setLoopMode(LoopMode.one);
 
       if (_isDisposed || !mounted) {
         player.dispose();

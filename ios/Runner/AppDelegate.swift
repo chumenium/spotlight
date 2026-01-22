@@ -44,16 +44,20 @@ import UserNotifications
       }
       
       let settingsChannel = FlutterMethodChannel(
-        name: "com.example.spotlight/settings",
+        name: "com.spotlight.mobile/settings",
         binaryMessenger: controller.binaryMessenger
       )
       
       settingsChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
-        guard call.method == "openAppSettings" else {
+        switch call.method {
+        case "openNotificationSettings":
+          self?.openNotificationSettings()
+        case "openAppSettings":
+          self?.openAppSettings()
+        default:
           result(FlutterMethodNotImplemented)
           return
         }
-        self?.openAppSettings()
         result(nil)
       }
     }
@@ -67,6 +71,18 @@ import UserNotifications
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
       }
     }
+  }
+
+  private func openNotificationSettings() {
+    if #available(iOS 16.0, *) {
+      if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+        if UIApplication.shared.canOpenURL(url) {
+          UIApplication.shared.open(url, options: [:], completionHandler: nil)
+          return
+        }
+      }
+    }
+    openAppSettings()
   }
 
   // MARK: - APNs Token

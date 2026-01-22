@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/spotlight_colors.dart';
 
 enum AppThemeMode {
   light,
@@ -9,7 +10,7 @@ enum AppThemeMode {
 }
 
 class ThemeProvider with ChangeNotifier {
-  AppThemeMode _themeMode = AppThemeMode.system;
+  AppThemeMode _themeMode = AppThemeMode.dark;
   static const String _themeModeKey = 'theme_mode';
 
   AppThemeMode get themeMode => _themeMode;
@@ -25,8 +26,12 @@ class ThemeProvider with ChangeNotifier {
       if (savedMode != null) {
         _themeMode = AppThemeMode.values.firstWhere(
           (mode) => mode.toString() == savedMode,
-          orElse: () => AppThemeMode.system,
+          orElse: () => AppThemeMode.dark,
         );
+        notifyListeners();
+      } else {
+        _themeMode = AppThemeMode.dark;
+        await prefs.setString(_themeModeKey, AppThemeMode.dark.toString());
         notifyListeners();
       }
     } catch (e) {
@@ -51,13 +56,13 @@ class ThemeProvider with ChangeNotifier {
     return ThemeData(
       brightness: Brightness.light,
       primarySwatch: Colors.orange,
-      primaryColor: const Color(0xFFFF6B35),
+      primaryColor: SpotLightColors.primaryOrange,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFFFF6B35),
+        seedColor: SpotLightColors.primaryOrange,
         brightness: Brightness.light,
-        primary: const Color(0xFFFF6B35),
+        primary: SpotLightColors.primaryOrange,
         onPrimary: Colors.white,
-        secondary: const Color(0xFFFF8A65),
+        secondary: SpotLightColors.lightOrange,
         onSecondary: Colors.white,
         surface: Colors.white, // より明るい白に変更
         onSurface: const Color(0xFF1A1A1A), // より濃い色でコントラスト向上
@@ -95,6 +100,12 @@ class ThemeProvider with ChangeNotifier {
           fontWeight: FontWeight.w600,
         ),
       ),
+      iconTheme: const IconThemeData(
+        color: Color(0xFF1A1A1A),
+      ),
+      primaryIconTheme: const IconThemeData(
+        color: Color(0xFF1A1A1A),
+      ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(color: Color(0xFF1A1A1A)), // より濃い色
         displayMedium: TextStyle(color: Color(0xFF1A1A1A)),
@@ -124,7 +135,7 @@ class ThemeProvider with ChangeNotifier {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: const Color(0xFFFF6B35).withOpacity(0.4), // より明確なボーダー
+            color: SpotLightColors.primaryOrange.withOpacity(0.4), // より明確なボーダー
           ),
         ),
         enabledBorder: OutlineInputBorder(
@@ -136,14 +147,14 @@ class ThemeProvider with ChangeNotifier {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(
-            color: Color(0xFFFF6B35),
+            color: SpotLightColors.primaryOrange,
             width: 2,
           ),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFF6B35),
+          backgroundColor: SpotLightColors.primaryOrange,
           foregroundColor: Colors.white,
           elevation: 2,
           shape: RoundedRectangleBorder(
@@ -151,8 +162,25 @@ class ThemeProvider with ChangeNotifier {
           ),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: SpotLightColors.primaryOrange,
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: SpotLightColors.primaryOrange,
+          side: const BorderSide(color: SpotLightColors.primaryOrange),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: Color(0xFFFF6B35),
+        backgroundColor: SpotLightColors.primaryOrange,
         foregroundColor: Colors.white,
         elevation: 4,
       ),
@@ -164,6 +192,28 @@ class ThemeProvider with ChangeNotifier {
         selectedColor: const Color(0xFFFF6B35),
         checkmarkColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: Colors.white,
+        titleTextStyle: TextStyle(
+          color: Color(0xFF1A1A1A),
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+        contentTextStyle: TextStyle(
+          color: Color(0xFF5A5A5A),
+          fontSize: 14,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: SpotLightColors.peach.withOpacity(0.15),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        textColor: Color(0xFF1A1A1A),
+        iconColor: Color(0xFF1A1A1A),
       ),
     );
   }

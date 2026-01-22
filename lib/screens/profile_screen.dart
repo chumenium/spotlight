@@ -17,6 +17,7 @@ import 'terms_of_service_screen.dart';
 import 'admin_screen.dart';
 import 'settings_screen.dart';
 import 'blocked_users_screen.dart';
+import 'profile_edit_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
@@ -793,6 +794,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         // 最大のバッジを表示
                         _buildMaxBadgeIcon(),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ProfileEditScreen(),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          await _refreshProfileData();
+                        }
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.color ??
+                                Colors.grey[400],
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'プロフィール編集',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.color ??
+                                  Colors.grey[400],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

@@ -183,6 +183,7 @@ String? _buildFullUrl(String? baseUrl, dynamic path) {
 /// 投稿モデル
 class Post {
   final String id;
+  final int? playId;
   final String userId;
   final String username;
   final String userIconPath;
@@ -205,6 +206,7 @@ class Post {
 
   Post({
     required this.id,
+    this.playId,
     required this.userId,
     required this.username,
     required this.userIconPath,
@@ -230,6 +232,10 @@ class Post {
     final spotlightnum = json['spotlightnum'] as int? ?? 0;
     final playnum = json['playnum'] as int? ?? 0;
     final spotlightflag = json['spotlightflag'] as bool? ?? false;
+    final playIdValue = json['playID'] ?? json['playId'] ?? json['playid'];
+    final playId = playIdValue != null
+        ? int.tryParse(playIdValue.toString())
+        : null;
 
     // textflagはboolまたはintで来る可能性があるため柔軟に処理
     final textflagValue = json['textflag'];
@@ -480,6 +486,7 @@ class Post {
 
     return Post(
       id: contentIdStr,
+      playId: playId,
       userId: userId,
       username: usernameStr,
       userIconPath: iconPath,

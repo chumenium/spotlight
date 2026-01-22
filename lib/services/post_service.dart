@@ -830,6 +830,12 @@ class PostService {
               // バックエンドから返されたデータにcontentIDを追加
               final mergedData = Map<String, dynamic>.from(historyData);
               mergedData['contentID'] = contentId;
+              final playIdValue = mergedData['playID'] ??
+                  mergedData['playId'] ??
+                  mergedData['playid'];
+              if (playIdValue != null) {
+                mergedData['playID'] = playIdValue;
+              }
 
               // Postオブジェクトに変換
               try {
@@ -1020,10 +1026,8 @@ class PostService {
   /// 視聴履歴を削除
   ///
   /// データベースから指定された視聴履歴を削除
-  /// - contentID: 削除する視聴履歴のコンテンツID
-  /// 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていない可能性があります。
-  /// バックエンド側でcontentIDからplayIDを取得する実装が必要な場合があります。
-  static Future<bool> deletePlayHistory(String contentId) async {
+  /// - playID: 削除する視聴履歴のID
+  static Future<bool> deletePlayHistory({required int? playId}) async {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
@@ -1035,45 +1039,24 @@ class PostService {
 
       // API仕様書（API_ENDPOINTS.md 430-439行目）に基づく
       // POST /api/delete/playhistory
-      // 注意: API仕様ではplayIDが必要ですが、現在のAPIレスポンスにplayIDが含まれていないため、
-      // contentIDで削除できると仮定しています。バックエンド側で対応が必要な場合があります。
       final url = '${AppConfig.apiBaseUrl}/delete/playhistory';
-      final contentIdInt = int.tryParse(contentId);
 
-      if (contentIdInt == null || contentIdInt == 0) {
+      if (playId == null || playId == 0) {
         if (kDebugMode) {
-          debugPrint('❌ [視聴履歴削除] contentIDの解析に失敗しました');
-          debugPrint('   - contentId (元の値): $contentId');
+          debugPrint('❌ [視聴履歴削除] playIDが取得できません');
         }
         return false;
       }
 
-      // バックエンドの実装（routes/delete.py 28行目）を確認:
-      // playid = data.get("playID")
-      // バックエンドは "playID" を期待している
-      // しかし、getPlayHistory()のレスポンスにplayIDが含まれていないため、
-      // バックエンド側でcontentIDとuserIDから最新のplayIDを取得して削除する必要があります
-      // 現時点では、バックエンドがcontentIDを受け取ってplayIDを取得する実装になっていないため、
-      // この機能は動作しません
-      //
-      // 代替案: contentIDを送信して、バックエンド側で対応してもらう必要がありますが、
-      // バックエンドは編集しないため、この機能は動作しません
-      //
-      // 注意: バックエンドを編集できないため、視聴履歴削除機能は現時点では動作しません
-      // バックエンド側でcontentIDからplayIDを取得する実装が必要です
       final requestBody = {
-        'playID': null, // playIDが取得できないため、nullを送信（バックエンド側でエラーになる）
-        'contentID': contentIdInt, // バックエンド側でcontentIDからplayIDを取得して削除する必要がある
+        'playID': playId,
       };
 
       if (kDebugMode) {
         debugPrint('📝 [視聴履歴削除] ========== API呼び出し ==========');
         debugPrint('📝 [視聴履歴削除] URL: $url');
         debugPrint('📝 [視聴履歴削除] リクエストボディ: ${jsonEncode(requestBody)}');
-        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: getPlayHistory()のレスポンスにplayIDが含まれていません');
-        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンドはplayIDを期待していますが、contentIDを送信します');
-        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンド側でcontentIDからplayIDを取得する実装が必要です');
-        debugPrint('📝 [視聴履歴削除] ⚠️ 警告: バックエンドを編集できないため、この機能は動作しません');
+        debugPrint('📝 [視聴履歴削除] playID: $playId');
       }
 
       // タイムアウトを設定（30秒）
