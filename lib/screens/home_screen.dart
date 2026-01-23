@@ -22,6 +22,7 @@ import '../providers/navigation_provider.dart';
 import 'user_profile_screen.dart';
 import '../widgets/native_ad_widget.dart';
 import '../services/share_link_service.dart';
+import '../utils/route_observer.dart';
 
 /// ホーム画面 - 垂直フィード型ソーシャルメディアアプリのメイン画面
 ///
@@ -34,7 +35,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin, RouteAware {
   // PageViewコントローラー
   late PageController _pageController;
 
@@ -74,6 +75,9 @@ class _HomeScreenState extends State<HomeScreen>
   final Set<int> _initializedAudios = {};
   int? _currentPlayingAudio;
 
+  // アプリがフォアグラウンドにいるかどうか
+  bool _isAppInForeground = true;
+
   // 画面遷移時のメディア再生状態管理
   int? _lastNavigationIndex;
   int? _lastPlayingVideoBeforeNavigation;
@@ -91,6 +95,8 @@ class _HomeScreenState extends State<HomeScreen>
   Timer? _seekDebounceTimer;
   Timer? _seekBarUpdateTimerAudio;
   Timer? _loadMoreRetryTimer;
+  Timer? _tapSuppressionTimer;
+  bool _isRouteObserverSubscribed = false;
 
   // リアルタイム更新関連（段階12）
   Timer? _backgroundUpdateTimer;
@@ -108,6 +114,11 @@ class _HomeScreenState extends State<HomeScreen>
   // プレースホルダー表示状態
   bool _isShowingLoadingPlaceholder = false;
   bool _wasShowingLoadingPlaceholderAtLoadStart = false;
+
+  // ボタン操作時の動画タップ抑制
+  bool _suppressVideoTap = false;
+
+  int? _scrollStartIndex;
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
@@ -167,6 +178,11 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _isDisposed = true;
 
+    if (_isRouteObserverSubscribed) {
+      routeObserver.unsubscribe(this);
+      _isRouteObserverSubscribed = false;
+    }
+
     // NavigationProviderのリスナーを解除
     if (_navigationListener != null) {
       final navigationProvider =
@@ -183,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen>
     _seekDebounceTimer?.cancel();
     _seekBarUpdateTimerAudio?.cancel();
     _loadMoreRetryTimer?.cancel();
+    _tapSuppressionTimer?.cancel();
     _spotlightAnimationController.dispose();
 
     // PageControllerを破棄
@@ -223,64 +240,48 @@ class _HomeScreenState extends State<HomeScreen>
         if (kDebugMode) {
           debugPrint('📱 [ライフサイクル] アプリがバックグラウンドに移動');
         }
-        _pauseAllMedia();
+        _isAppInForeground = false;
+        _stopAndResetAllMedia();
+        _lastPlayingVideoBeforeNavigation = null;
+        _lastPlayingAudioBeforeNavigation = null;
         break;
       case AppLifecycleState.resumed:
         // アプリがフォアグラウンドに戻った時は動画を再開（段階4）
         if (kDebugMode) {
           debugPrint('📱 [ライフサイクル] アプリがフォアグラウンドに戻った');
         }
+        _isAppInForeground = true;
         _resumeCurrentMedia();
         break;
       case AppLifecycleState.hidden:
+        _isAppInForeground = false;
         break;
-    }
-  }
-
-  /// すべてのメディアを一時停止（段階4-5）
-  void _pauseAllMedia() {
-    // 動画を一時停止
-    if (_currentPlayingVideo != null) {
-      final controller = _videoControllers[_currentPlayingVideo];
-      if (controller != null && controller.value.isInitialized) {
-        controller.pause();
-      }
-    }
-    // 音声を一時停止（段階5）
-    if (_currentPlayingAudio != null) {
-      final player = _audioPlayers[_currentPlayingAudio];
-      if (player != null) {
-        player.pause();
-      }
     }
   }
 
   /// 現在のメディアを再開（段階4-5）
   void _resumeCurrentMedia() {
-    // ナビゲーション状態を確認（段階12で詳細実装）
+    if (!_isHomeScreenActive()) return;
+    _handleMediaPageChange(_currentIndex);
+  }
+
+  bool _isHomeScreenActive() {
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
-    final currentNavIndex = navigationProvider.currentIndex;
+    return navigationProvider.currentIndex == 0;
+  }
 
-    // ホーム画面が表示されている場合のみ再開
-    if (currentNavIndex == 0) {
-      // 動画を再開（段階4）
-      if (_currentPlayingVideo != null) {
-        final controller = _videoControllers[_currentPlayingVideo];
-        if (controller != null &&
-            controller.value.isInitialized &&
-            !controller.value.isPlaying) {
-          controller.play();
-        }
-      }
-      // 音声を再開（段階5）
-      if (_currentPlayingAudio != null) {
-        final player = _audioPlayers[_currentPlayingAudio];
-        if (player != null && player.playing == false) {
-          player.play();
-        }
-      }
+  bool _canAutoPlayPost(int postIndex) {
+    if (_isDisposed || !mounted) return false;
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    if (lifecycleState != null) {
+      if (lifecycleState != AppLifecycleState.resumed) return false;
+    } else if (!_isAppInForeground) {
+      return false;
     }
+    if (!_isHomeScreenActive()) return false;
+    final currentPostIndex = _getActualPostIndex(_currentIndex);
+    return currentPostIndex == postIndex;
   }
 
   /// 初期データ読み込み（段階3: PostServiceから投稿を取得、重複除外対応）
@@ -488,44 +489,9 @@ class _HomeScreenState extends State<HomeScreen>
     // 投稿切り替え時は必ずメディアを停止・初期化
     _stopAndResetAllMedia();
 
-    // 前の動画を停止（段階4）- 逆スクロール時も対応
-    if (previousIndex != index) {
-      final prevPostIndex = _getActualPostIndex(previousIndex);
-      if (prevPostIndex != null) {
-        final prevPost = _posts[prevPostIndex];
-        if (prevPost.postType == PostType.video) {
-          final prevController = _videoControllers[prevPostIndex];
-          if (prevController != null && prevController.value.isInitialized) {
-            prevController.pause();
-            prevController.seekTo(Duration.zero);
-
-            // 前の動画が現在再生中の場合は、再生状態をクリア
-            if (_currentPlayingVideo == prevPostIndex) {
-              _currentPlayingVideo = null;
-            }
-
-            if (kDebugMode) {
-              debugPrint(
-                  '⏸️ 前の動画を停止: postId=${prevPost.id}, index=$previousIndex');
-            }
-          }
-        }
-
-        // 前の音声も停止（段階5）
-        if (prevPost.postType == PostType.audio) {
-          final prevPlayer = _audioPlayers[prevPostIndex];
-          if (prevPlayer != null) {
-            prevPlayer.pause();
-            prevPlayer.seek(Duration.zero);
-
-            // 前の音声が現在再生中の場合は、再生状態をクリア
-            if (_currentPlayingAudio == prevPostIndex) {
-              _currentPlayingAudio = null;
-            }
-          }
-        }
-      }
-    }
+    // ページ遷移時は一度すべて停止して、重複再生を防ぐ
+    _stopAllVideos();
+    _stopAllAudios();
 
     // 現在の投稿の動画を再生（段階4）
     _handleMediaPageChange(index);
@@ -562,6 +528,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     final postIndex = _getActualPostIndex(index);
     if (postIndex == null) return;
+    if (!_canAutoPlayPost(postIndex)) return;
 
     final post = _posts[postIndex];
     _recordPlayHistoryIfNeeded(post);
@@ -607,6 +574,13 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!_isRouteObserverSubscribed) {
+      final route = ModalRoute.of(context);
+      if (route is PageRoute) {
+        routeObserver.subscribe(this, route);
+        _isRouteObserverSubscribed = true;
+      }
+    }
     final navigationProvider = Provider.of<NavigationProvider>(context);
     final targetPostId = navigationProvider.targetPostId;
     final targetPost = navigationProvider.targetPost;
@@ -665,8 +639,9 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
       }
 
-      _captureCurrentMediaForResume();
       _stopAndResetAllMedia();
+      _lastPlayingVideoBeforeNavigation = null;
+      _lastPlayingAudioBeforeNavigation = null;
     }
     // 別画面からホーム画面に戻った場合
     else if (_lastNavigationIndex != 0 && currentNavIndex == 0) {
@@ -675,52 +650,9 @@ class _HomeScreenState extends State<HomeScreen>
             '📱 [画面遷移] 別画面からホーム画面に戻る: previousIndex=$_lastNavigationIndex');
       }
 
-      // 現在表示中の投稿のメディアを自動再生
+      // 戻ったら現在の投稿を最初から自動再生
       if (!_isDisposed) {
-        final currentPostIndex = _getActualPostIndex(_currentIndex);
-        if (currentPostIndex != null) {
-          final currentPost = _posts[currentPostIndex];
-
-          // 前回再生していた動画がある場合、それが現在の投稿と同じなら再開
-          if (_lastPlayingVideoBeforeNavigation != null &&
-              _lastPlayingVideoBeforeNavigation == currentPostIndex &&
-              currentPost.postType == PostType.video) {
-            final controller =
-                _videoControllers[_lastPlayingVideoBeforeNavigation!];
-            if (controller != null &&
-                controller.value.isInitialized &&
-                !controller.value.isPlaying) {
-              controller.play();
-              _currentPlayingVideo = _lastPlayingVideoBeforeNavigation;
-              if (kDebugMode) {
-                debugPrint(
-                    '▶️ [画面遷移] 動画を再開: index=$_lastPlayingVideoBeforeNavigation');
-              }
-            }
-          } else if (currentPost.postType == PostType.video) {
-            // 前回の動画と異なる場合は、現在の投稿の動画を再生
-            _handleMediaPageChange(_currentIndex);
-          }
-
-          // 前回再生していた音声がある場合、それが現在の投稿と同じなら再開
-          if (_lastPlayingAudioBeforeNavigation != null &&
-              _lastPlayingAudioBeforeNavigation == currentPostIndex &&
-              currentPost.postType == PostType.audio) {
-            final player = _audioPlayers[_lastPlayingAudioBeforeNavigation!];
-            if (player != null && !player.playing) {
-              player.play();
-              _currentPlayingAudio = _lastPlayingAudioBeforeNavigation;
-              _startSeekBarUpdateTimerAudio();
-              if (kDebugMode) {
-                debugPrint(
-                    '▶️ [画面遷移] 音声を再開: index=$_lastPlayingAudioBeforeNavigation');
-              }
-            }
-          } else if (currentPost.postType == PostType.audio) {
-            // 前回の音声と異なる場合は、現在の投稿の音声を再生
-            _handleMediaPageChange(_currentIndex);
-          }
-        }
+        _handleMediaPageChange(_currentIndex);
       }
 
       // 再開後はクリア（次回の遷移時に備える）
@@ -730,6 +662,24 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 前回のナビゲーションインデックスを更新
     _lastNavigationIndex = currentNavIndex;
+  }
+
+  @override
+  void didPushNext() {
+    if (_isDisposed) return;
+    _stopAndResetAllMedia();
+    _lastPlayingVideoBeforeNavigation = null;
+    _lastPlayingAudioBeforeNavigation = null;
+  }
+
+  @override
+  void didPopNext() {
+    if (_isDisposed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isDisposed || !mounted) return;
+      if (!_isHomeScreenActive()) return;
+      _handleMediaPageChange(_currentIndex);
+    });
   }
 
   /// 現在再生中のメディアを復帰用に記録
@@ -1037,7 +987,7 @@ class _HomeScreenState extends State<HomeScreen>
       final controller = _videoControllers[postIndex];
       if (controller != null && controller.value.isInitialized) {
         // 現在表示中の動画を確実に再生（逆スクロール時も対応）
-        if (_currentIndex == postIndex) {
+        if (_canAutoPlayPost(postIndex)) {
           if (!controller.value.isPlaying) {
             _startVideoPlayback(postIndex);
             if (kDebugMode) {
@@ -1106,7 +1056,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       // 現在表示中の動画を再生
-      if (_currentIndex == postIndex) {
+      if (_canAutoPlayPost(postIndex)) {
         _startVideoPlayback(postIndex);
 
         if (kDebugMode) {
@@ -1193,16 +1143,33 @@ class _HomeScreenState extends State<HomeScreen>
     _currentPlayingAudio = null;
   }
 
+  void _suppressVideoTapOnce() {
+    _tapSuppressionTimer?.cancel();
+    _suppressVideoTap = true;
+    _tapSuppressionTimer = Timer(const Duration(milliseconds: 250), () {
+      if (_isDisposed) return;
+      _suppressVideoTap = false;
+    });
+  }
+
   /// スクロール開始時の処理（動画・音声の停止・初期化）
   void _handleScrollStart() {
     if (_isDisposed) return;
 
-    // 現在再生中の動画・音声を停止
+    _scrollStartIndex = _currentIndex;
     _stopAllVideos();
     _stopAllAudios();
-
     if (kDebugMode) {
-      debugPrint('🛑 スクロール開始: すべての動画・音声を停止しました');
+      debugPrint('🛑 スクロール開始: 再生を停止しました');
+    }
+  }
+
+  void _handleScrollEnd() {
+    if (_isDisposed) return;
+    final startIndex = _scrollStartIndex;
+    _scrollStartIndex = null;
+    if (startIndex != null && startIndex == _currentIndex) {
+      _handleMediaPageChange(_currentIndex);
     }
   }
 
@@ -1294,8 +1261,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _showLoadedContentIfOnPlaceholder(int previousPostCount) {
     if (_isDisposed || !_pageController.hasClients) return;
     final previousAdCount = _calculateAdCount(previousPostCount);
-    final loadingPlaceholderPageIndex =
-        previousPostCount + previousAdCount;
+    final loadingPlaceholderPageIndex = previousPostCount + previousAdCount;
     final currentPageValue = _pageController.page;
     final currentPageIndex = currentPageValue?.round() ?? _currentIndex;
 
@@ -1324,8 +1290,10 @@ class _HomeScreenState extends State<HomeScreen>
 
     final controller = _videoControllers[index];
     if (controller == null || !controller.value.isInitialized) return;
+    if (!_canAutoPlayPost(index)) return;
     _applyDefaultVideoSettings(controller);
 
+    controller.seekTo(Duration.zero);
     if (!controller.value.isPlaying) {
       controller.play();
     }
@@ -1808,21 +1776,19 @@ class _HomeScreenState extends State<HomeScreen>
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        // 画面スクロール等の動きを検知したら必ず停止・初期化
-        _handleScrollStart();
+        if (notification is ScrollStartNotification) {
+          _handleScrollStart();
+        } else if (notification is ScrollEndNotification) {
+          _handleScrollEnd();
+        }
         return false; // 通知を下に伝播させる
       },
-      child: Listener(
-        onPointerDown: (_) {
-          // 画面操作を検知したら必ず停止・初期化
-          _stopAndResetAllMedia();
-        },
-        child: PageView.builder(
-          controller: _pageController,
-          scrollDirection: Axis.vertical,
-          itemCount: itemCount,
-          onPageChanged: _onPageChanged,
-          itemBuilder: (context, index) {
+      child: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: itemCount,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
           // 広告のインデックスかどうかを判定
           final adIndex = _getAdIndex(index);
           if (adIndex != null) {
@@ -1845,8 +1811,7 @@ class _HomeScreenState extends State<HomeScreen>
 
           final post = _posts[postIndex];
           return _buildPostItem(post, postIndex);
-          },
-        ),
+        },
       ),
     );
   }
@@ -2015,6 +1980,9 @@ class _HomeScreenState extends State<HomeScreen>
 
         return GestureDetector(
           onTap: () {
+            if (_suppressVideoTap) {
+              return;
+            }
             // タップで再生/一時停止を切り替え
             if (isPlaying) {
               controller.pause();
@@ -2192,11 +2160,12 @@ class _HomeScreenState extends State<HomeScreen>
       if (player != null) {
         await player.setLoopMode(LoopMode.one);
         // 現在表示中の音声を再生
-        if (_currentIndex == postIndex && _currentPlayingAudio != postIndex) {
+        if (_canAutoPlayPost(postIndex) && _currentPlayingAudio != postIndex) {
           // 他の動画と音声をすべて停止してから再生
           _stopAllVideos();
           _stopAllAudios();
           _currentPlayingAudio = postIndex;
+          await player.seek(Duration.zero);
           if (!player.playing) {
             player.play();
             _startSeekBarUpdateTimerAudio();
@@ -2242,11 +2211,12 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       // 現在表示中の音声を再生
-      if (_currentIndex == postIndex) {
+      if (_canAutoPlayPost(postIndex)) {
         // 他の動画と音声をすべて停止してから再生
         _stopAllVideos();
         _stopAllAudios();
         _currentPlayingAudio = postIndex;
+        await player.seek(Duration.zero);
         player.play();
         _startSeekBarUpdateTimerAudio();
 
@@ -2738,7 +2708,8 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         );
                         if (!mounted) return;
-                        final navigationProvider = Provider.of<NavigationProvider>(
+                        final navigationProvider =
+                            Provider.of<NavigationProvider>(
                           context,
                           listen: false,
                         );
@@ -2962,6 +2933,7 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _handleSpotlightButton(Post post, int index) async {
     if (_isSpotlighting) return;
 
+    _suppressVideoTapOnce();
     await _executeSpotlight(post, index);
   }
 
@@ -3097,6 +3069,7 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint('📂 プレイリストボタン: postId=${post.id}');
     }
 
+    _suppressVideoTapOnce();
     try {
       // プレイリスト一覧を取得
       final playlists = await PlaylistService.getPlaylists();
@@ -3122,7 +3095,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// プレイリスト選択ダイアログを表示（段階9）
   void _showPlaylistDialog(Post post, List<dynamic> playlists) {
-    _stopAndResetAllMedia();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -3144,7 +3116,6 @@ class _HomeScreenState extends State<HomeScreen>
   void _showCreatePlaylistDialog(Post post) {
     final titleController = TextEditingController();
 
-    _stopAndResetAllMedia();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -3255,8 +3226,8 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint('🔗 共有ボタン: postId=${post.id}');
     }
 
+    _suppressVideoTapOnce();
     // 共有オプションを表示
-    _stopAndResetAllMedia();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -3339,8 +3310,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// システム共有機能を使用（段階9）
   void _shareWithSystem(Post post) {
-    final shareText =
-        ShareLinkService.buildPostShareText(post.title, post.id);
+    final shareText = ShareLinkService.buildPostShareText(post.title, post.id);
     Share.share(
       shareText,
       subject: post.title,
@@ -3373,6 +3343,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
       return;
     }
+    _suppressVideoTapOnce();
     _isCommentSheetVisible = true;
 
     final commentController = TextEditingController();
@@ -3458,7 +3429,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     try {
-      _stopAndResetAllMedia();
       await showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
@@ -3992,7 +3962,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-
 /// コメント一覧ヘルパー
 Widget _buildCommentItem(
   BuildContext context,
@@ -4011,27 +3980,27 @@ Widget _buildCommentItem(
           children: [
             GestureDetector(
               onTap: () {
-            if (!context.mounted) return;
-            final userId = comment.userId;
-            final username = comment.username.trim();
-            if ((userId == null || userId.isEmpty) && username.isEmpty) {
-              final messenger = ScaffoldMessenger.maybeOf(context);
-              if (messenger != null) {
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('ユーザー情報が取得できませんでした'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
+                if (!context.mounted) return;
+                final userId = comment.userId;
+                final username = comment.username.trim();
+                if ((userId == null || userId.isEmpty) && username.isEmpty) {
+                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  if (messenger != null) {
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('ユーザー情報が取得できませんでした'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
                   return;
                 }
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => UserProfileScreen(
-                  userId: userId ?? '',
-                  username: username.isNotEmpty ? username : null,
+                      userId: userId ?? '',
+                      username: username.isNotEmpty ? username : null,
                       userIconUrl: comment.userIconUrl,
                       userIconPath: comment.iconimgpath,
                     ),
