@@ -4855,8 +4855,12 @@ class _ScrollingTitle extends StatefulWidget {
 class _ScrollingTitleState extends State<_ScrollingTitle>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
   bool _needsScroll = false;
+  bool _isWaitingToStart = false;
+  int _startToken = 0;
+  double _scrollDistance = 0;
+  static const double _scrollSpeed = 30.0; // px/秒（見やすい一定速度）
+  static const double _gap = 24.0; // テキスト間の余白
 
   @override
   void initState() {
@@ -4865,31 +4869,6 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
       duration: const Duration(seconds: 8),
       vsync: this,
     );
-
-    _animation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.linear,
-    ));
-
-    // アニメーション完了後に待機時間を入れてからリセット
-    _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed && _needsScroll) {
-        // 待機時間後にリセットして再開
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && _needsScroll) {
-            _controller.reset();
-            _controller.forward();
-          }
-        });
-      }
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkIfNeedsScroll();
-    });
   }
 
   @override
@@ -4898,34 +4877,65 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
     super.dispose();
   }
 
-  void _checkIfNeedsScroll() {
-    final renderObject = context.findRenderObject();
-    if (renderObject is RenderBox) {
-      if (widget.text.length < 18) {
+  @override
+  void didUpdateWidget(covariant _ScrollingTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _stopScroll();
+    }
+  }
+
+  void _stopScroll() {
+    _startToken++;
+    _isWaitingToStart = false;
+    if (_controller.isAnimating) {
+      _controller.stop();
+    }
+    _controller.reset();
+  }
+
+  void _startScrollWithDelay() {
+    if (_isWaitingToStart || _controller.isAnimating) {
+      return;
+    }
+    _isWaitingToStart = true;
+    final token = ++_startToken;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted || token != _startToken) {
         return;
       }
-      if (mounted) {
-        setState(() {
-          _needsScroll = true;
-        });
-        // 最初の位置で少し待機してからスクロール開始
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && _needsScroll) {
-            _controller.forward();
-          }
-        });
+      if (_needsScroll) {
+        _controller.repeat();
       }
+      _isWaitingToStart = false;
+    });
+  }
+
+  void _updateScrollDuration(double textWidth) {
+    _scrollDistance = textWidth + _gap;
+    final durationMs = (_scrollDistance / _scrollSpeed * 1000).round();
+    final newDuration = Duration(milliseconds: math.max(durationMs, 1000));
+    if (_controller.duration != newDuration) {
+      _controller.duration = newDuration;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_needsScroll) {
+    final shouldScroll = widget.text.length > 18;
+    if (_needsScroll != shouldScroll) {
+      _needsScroll = shouldScroll;
+      if (!_needsScroll) {
+        _stopScroll();
+      }
+    }
+
+    if (!shouldScroll) {
       return Text(
         widget.text,
         style: widget.style,
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        overflow: TextOverflow.visible,
       );
     }
 
@@ -4945,15 +4955,14 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
         textPainter.layout();
         final textWidth = textPainter.width;
 
-        // タイトル長さが長い場合は必ずスクロールさせるため幅に依存しない
-        const endPadding = 24.0;
-        final scrollDistance = textWidth + endPadding;
+        _updateScrollDuration(textWidth);
+        _startScrollWithDelay();
 
         return AnimatedBuilder(
-          animation: _animation,
+          animation: _controller,
           builder: (context, child) {
             // 左付けの初期位置から左方向にスクロール
-            final offsetX = -scrollDistance * _animation.value;
+            final offsetX = -_scrollDistance * _controller.value;
             return ClipRect(
               child: SizedBox(
                 width: availableWidth,
@@ -4961,6 +4970,15 @@ class _ScrollingTitleState extends State<_ScrollingTitle>
                   children: [
                     Transform.translate(
                       offset: Offset(offsetX, 0),
+                      child: Text(
+                        widget.text,
+                        style: widget.style,
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: Offset(offsetX + _scrollDistance, 0),
                       child: Text(
                         widget.text,
                         style: widget.style,
