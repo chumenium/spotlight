@@ -35,6 +35,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
   late Animation<double> _pulseAnimation;
   late Animation<double> _sparkleAnimation;
   late Animation<double> _shineAnimation;
+  ScaffoldMessengerState? _scaffoldMessenger;
 
   @override
   void initState() {
@@ -133,6 +134,12 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  @override
   void dispose() {
     _logoController.dispose();
     _fadeController.dispose();
@@ -200,7 +207,11 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
 
     final success = await authProvider.loginWithApple();
 
-    if (success && mounted) {
+    if (!mounted) {
+      return;
+    }
+
+    if (success) {
       final navigationProvider =
           Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
@@ -215,7 +226,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       }
-    } else if (mounted && authProvider.errorMessage != null) {
+    } else if (authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
   }
@@ -256,7 +267,11 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
 
     final success = await authProvider.loginWithApple();
 
-    if (success && mounted) {
+    if (!mounted) {
+      return;
+    }
+
+    if (success) {
       final navigationProvider =
           Provider.of<NavigationProvider>(context, listen: false);
       navigationProvider.reset();
@@ -272,13 +287,21 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       }
-    } else if (mounted && authProvider.errorMessage != null) {
+    } else if (authProvider.errorMessage != null) {
       _showErrorSnackBar(authProvider.errorMessage!);
     }
   }
 
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    if (!mounted ||
+        _scaffoldMessenger == null ||
+        !_scaffoldMessenger!.mounted ||
+        (lifecycleState != null &&
+            lifecycleState != AppLifecycleState.resumed)) {
+      return;
+    }
+    _scaffoldMessenger!.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
@@ -291,7 +314,15 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
   }
 
   void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    if (!mounted ||
+        _scaffoldMessenger == null ||
+        !_scaffoldMessenger!.mounted ||
+        (lifecycleState != null &&
+            lifecycleState != AppLifecycleState.resumed)) {
+      return;
+    }
+    _scaffoldMessenger!.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.green,

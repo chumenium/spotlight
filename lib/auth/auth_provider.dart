@@ -591,6 +591,7 @@ class AuthProvider extends ChangeNotifier {
       final oauthCredential = firebase_auth.OAuthProvider('apple.com').credential(
         idToken: identityToken,
         rawNonce: rawNonce,
+        accessToken: credential.authorizationCode,
       );
 
       final userCredential = await auth.signInWithCredential(oauthCredential);

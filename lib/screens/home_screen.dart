@@ -83,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen>
   int? _lastPlayingVideoBeforeNavigation;
   int? _lastPlayingAudioBeforeNavigation;
   VoidCallback? _navigationListener;
+  NavigationProvider? _navigationProvider;
 
   // シークバー関連（段階11）
   bool _isSeeking = false;
@@ -160,15 +161,15 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addObserver(this);
 
     // NavigationProviderの変更を監視（ナビゲーション変更時にメディア再生を制御）
-    final navigationProvider =
+    _navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
-    _lastNavigationIndex = navigationProvider.currentIndex;
+    _lastNavigationIndex = _navigationProvider!.currentIndex;
     _navigationListener = () {
       if (_isDisposed) return;
-      final currentNavIndex = navigationProvider.currentIndex;
+      final currentNavIndex = _navigationProvider!.currentIndex;
       _handleNavigationMediaControl(currentNavIndex);
     };
-    navigationProvider.addListener(_navigationListener!);
+    _navigationProvider!.addListener(_navigationListener!);
 
     // 初期データ読み込み（段階2で実装）
     _loadInitialPosts();
@@ -184,10 +185,8 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // NavigationProviderのリスナーを解除
-    if (_navigationListener != null) {
-      final navigationProvider =
-          Provider.of<NavigationProvider>(context, listen: false);
-      navigationProvider.removeListener(_navigationListener!);
+    if (_navigationListener != null && _navigationProvider != null) {
+      _navigationProvider!.removeListener(_navigationListener!);
       _navigationListener = null;
     }
 
@@ -266,9 +265,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   bool _isHomeScreenActive() {
-    final navigationProvider =
-        Provider.of<NavigationProvider>(context, listen: false);
-    return navigationProvider.currentIndex == 0;
+    if (_navigationProvider == null) return false;
+    return _navigationProvider!.currentIndex == 0;
   }
 
   bool _canAutoPlayPost(int postIndex) {
@@ -563,10 +561,8 @@ class _HomeScreenState extends State<HomeScreen>
     _lastRecordedPostId = post.id;
 
     PostService.recordPlayHistory(post.id).then((success) {
-      if (success && !_isDisposed) {
-        final navigationProvider =
-            Provider.of<NavigationProvider>(context, listen: false);
-        navigationProvider.notifyProfileHistoryUpdated();
+      if (success && !_isDisposed && _navigationProvider != null) {
+        _navigationProvider!.notifyProfileHistoryUpdated();
       }
     });
   }
