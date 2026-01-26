@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:math';
 import '../config/firebase_config.dart';
 import '../config/app_config.dart';
 import 'auth_config.dart';
@@ -174,6 +178,12 @@ class AuthProvider extends ChangeNotifier {
 
   /// Google Sign-Inが利用可能か
   bool get canUseGoogle => FirebaseConfig.enableGoogleSignIn;
+
+  /// Apple Sign-Inが利用可能か
+  bool get canUseApple =>
+      FirebaseConfig.enableAppleSignIn &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   // ==========================================================================
   // 初期化
@@ -514,6 +524,158 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  // ==========================================================================
+  // Apple Sign-In
+  // ==========================================================================
+
+  /// Apple Sign-Inでログイン
+  ///
+  /// Apple認証フローを使用してログインします（iOSのみ）
+  ///
+  /// 処理の流れ:
+  /// 1. Apple Sign-Inダイアログを表示
+  /// 2. ユーザーがApple IDで認証
+  /// 3. Apple認証情報（identityToken）を取得
+  /// 4. Firebase Authenticationに認証情報を送信
+  ///
+  /// 戻り値:
+  /// - true: ログイン成功
+  /// - false: ログイン失敗またはキャンセル
+  Future<bool> loginWithApple() async {
+    if (!canUseApple) {
+      _errorMessage = 'Appleログインは現在利用できません';
+      return false;
+    }
+
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      _lastLoginWasNewUser = false;
+      notifyListeners();
+
+      if (kDebugMode) {
+        debugPrint('🍎 [Apple] Sign-In開始');
+      }
+
+      final rawNonce = _generateNonce();
+      final hashedNonce = _sha256(rawNonce);
+
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: _appleScopesFromConfig(),
+        nonce: hashedNonce,
+      );
+
+      final auth = _firebaseAuth;
+      if (auth == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [Apple] FirebaseAuthが初期化されていません');
+        }
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final identityToken = credential.identityToken;
+      if (identityToken == null || identityToken.isEmpty) {
+        _isLoading = false;
+        _errorMessage = 'Appleログインに失敗しました';
+        if (kDebugMode) {
+          debugPrint('🍎 [Apple] identityTokenが取得できません');
+        }
+        notifyListeners();
+        return false;
+      }
+
+      final oauthCredential = firebase_auth.OAuthProvider('apple.com').credential(
+        idToken: identityToken,
+        rawNonce: rawNonce,
+      );
+
+      final userCredential = await auth.signInWithCredential(oauthCredential);
+      _lastLoginWasNewUser =
+          userCredential.additionalUserInfo?.isNewUser ?? false;
+
+      final nameParts = <String>[];
+      if (credential.givenName != null &&
+          credential.givenName!.trim().isNotEmpty) {
+        nameParts.add(credential.givenName!.trim());
+      }
+      if (credential.familyName != null &&
+          credential.familyName!.trim().isNotEmpty) {
+        nameParts.add(credential.familyName!.trim());
+      }
+      final displayName = nameParts.join(' ').trim();
+      if (displayName.isNotEmpty) {
+        await userCredential.user?.updateDisplayName(displayName);
+      }
+
+      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
+        debugPrint('🍎 [Apple] Sign-In成功');
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      _isLoading = false;
+      if (e.code == AuthorizationErrorCode.canceled) {
+        _errorMessage = 'ログインがキャンセルされました';
+      } else {
+        _errorMessage = 'Appleログインに失敗しました';
+      }
+      if (kDebugMode) {
+        debugPrint('🍎 [Apple] 認証エラー: ${e.code} - ${e.message}');
+      }
+      notifyListeners();
+      return false;
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      _isLoading = false;
+      _errorMessage = AuthService.getAuthErrorMessage(e);
+      if (kDebugMode) {
+        debugPrint('🍎 [Apple] Firebaseエラー: ${e.code} - ${e.message}');
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Appleログインに失敗しました';
+      if (kDebugMode) {
+        debugPrint('🍎 [Apple] 予期しないエラー: $e');
+      }
+      notifyListeners();
+      return false;
+    }
+  }
+
+  List<AppleIDAuthorizationScopes> _appleScopesFromConfig() {
+    final scopes = <AppleIDAuthorizationScopes>[];
+    for (final scope in AuthConfig.appleScopes) {
+      switch (scope) {
+        case 'email':
+          scopes.add(AppleIDAuthorizationScopes.email);
+          break;
+        case 'fullName':
+          scopes.add(AppleIDAuthorizationScopes.fullName);
+          break;
+      }
+    }
+    return scopes.isEmpty ? [AppleIDAuthorizationScopes.email] : scopes;
+  }
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(length, (_) => charset[random.nextInt(charset.length)])
+        .join();
+  }
+
+  String _sha256(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
   // ==========================================================================

@@ -104,7 +104,7 @@ class TermsOfServiceScreen extends StatelessWidget {
             _buildSection(
               title: '第3条（アカウント）',
               content: '''
-1. ユーザーは、本アプリの利用にあたり、Googleなどのソーシャルアカウントを使用してログインする必要があります。
+1. ユーザーは、本アプリの利用にあたり、GoogleまたはAppleなどのソーシャルアカウントを使用してログインする必要があります。
 
 2. ユーザーは、アカウント情報の正確性を保証する責任を負います。
 

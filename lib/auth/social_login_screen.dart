@@ -10,7 +10,7 @@ import '../screens/splash_screen.dart';
 import '../screens/tutorial_screen.dart';
 
 /// ソーシャルログイン専用画面
-/// Googleでのログインをサポート
+/// Google/Appleでのログインをサポート
 /// すべてFirebase Authentication経由で処理されます
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
@@ -195,6 +195,31 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
     }
   }
 
+  Future<void> _handleAppleLogin() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    final success = await authProvider.loginWithApple();
+
+    if (success && mounted) {
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
+      if (authProvider.lastLoginWasNewUser) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const TutorialScreen(nextScreen: MainScreen()),
+          ),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      }
+    } else if (mounted && authProvider.errorMessage != null) {
+      _showErrorSnackBar(authProvider.errorMessage!);
+    }
+  }
+
   Future<void> _handleGoogleSignUp() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -217,6 +242,32 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
         _showSuccessSnackBar('アカウントが作成されました！');
       } else {
         // 既存アカウントは直接ホームへ
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      }
+    } else if (mounted && authProvider.errorMessage != null) {
+      _showErrorSnackBar(authProvider.errorMessage!);
+    }
+  }
+
+  Future<void> _handleAppleSignUp() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    final success = await authProvider.loginWithApple();
+
+    if (success && mounted) {
+      final navigationProvider =
+          Provider.of<NavigationProvider>(context, listen: false);
+      navigationProvider.reset();
+      if (authProvider.lastLoginWasNewUser) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const TutorialScreen(nextScreen: MainScreen()),
+          ),
+        );
+        _showSuccessSnackBar('アカウントが作成されました！');
+      } else {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
@@ -492,6 +543,22 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
                                 backgroundColor: Colors.white,
                                 textColor: Colors.black87,
                               ),
+                            if (authProvider.canUseApple) ...[
+                              const SizedBox(height: 12),
+                              _SocialLoginButton(
+                                onPressed: authProvider.isLoading
+                                    ? null
+                                    : _handleAppleLogin,
+                                icon: const Icon(
+                                  Icons.apple,
+                                  size: 26,
+                                  color: Colors.white,
+                                ),
+                                label: 'Appleでログイン',
+                                backgroundColor: Colors.black,
+                                textColor: Colors.white,
+                              ),
+                            ],
                           ],
                         ),
                         
@@ -572,6 +639,22 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
                                 textColor: Colors.white,
                                 isGradient: true,
                               ),
+                            if (authProvider.canUseApple) ...[
+                              const SizedBox(height: 12),
+                              _SocialLoginButton(
+                                onPressed: authProvider.isLoading
+                                    ? null
+                                    : _handleAppleSignUp,
+                                icon: const Icon(
+                                  Icons.apple,
+                                  size: 26,
+                                  color: Colors.white,
+                                ),
+                                label: 'Appleでアカウント作成',
+                                backgroundColor: Colors.black,
+                                textColor: Colors.white,
+                              ),
+                            ],
                           ],
                         ),
                         
