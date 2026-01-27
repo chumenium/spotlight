@@ -274,7 +274,8 @@ class PostService {
         return false;
       }
 
-      final url = '${AppConfig.apiBaseUrl}/content/edit';
+      final primaryUrl = '${AppConfig.apiBaseUrl}/content/edit';
+      final fallbackUrl = '${AppConfig.backendUrl}/content/edit';
       final requestBody = <String, dynamic>{
         'contentID': contentIdInt,
       };
@@ -286,12 +287,12 @@ class PostService {
       }
 
       if (kDebugMode) {
-        debugPrint('📝 [投稿編集] URL: $url');
+        debugPrint('📝 [投稿編集] URL: $primaryUrl');
         debugPrint('📝 [投稿編集] body: ${jsonEncode(requestBody)}');
       }
 
       final response = await http.patch(
-        Uri.parse(url),
+        Uri.parse(primaryUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
@@ -304,7 +305,66 @@ class PostService {
         debugPrint('📝 [投稿編集] body: ${response.body}');
       }
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 404) {
+        final retryPatch = await http.patch(
+          Uri.parse(fallbackUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonEncode(requestBody),
+        );
+
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] PATCH fallback URL: $fallbackUrl');
+          debugPrint('📝 [投稿編集] PATCH fallback statusCode: ${retryPatch.statusCode}');
+          debugPrint('📝 [投稿編集] PATCH fallback body: ${retryPatch.body}');
+        }
+
+        if (retryPatch.statusCode == 200) {
+          final responseData = jsonDecode(retryPatch.body);
+          return responseData['status'] == 'success';
+        }
+
+        final fallback = await http.put(
+          Uri.parse(primaryUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonEncode(requestBody),
+        );
+
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] PUT statusCode: ${fallback.statusCode}');
+          debugPrint('📝 [投稿編集] PUT body: ${fallback.body}');
+        }
+
+        if (fallback.statusCode == 200) {
+          final responseData = jsonDecode(fallback.body);
+          return responseData['status'] == 'success';
+        }
+
+        final fallbackPut = await http.put(
+          Uri.parse(fallbackUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonEncode(requestBody),
+        );
+
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] PUT fallback URL: $fallbackUrl');
+          debugPrint('📝 [投稿編集] PUT fallback statusCode: ${fallbackPut.statusCode}');
+          debugPrint('📝 [投稿編集] PUT fallback body: ${fallbackPut.body}');
+        }
+
+        if (fallbackPut.statusCode == 200) {
+          final responseData = jsonDecode(fallbackPut.body);
+          return responseData['status'] == 'success';
+        }
+      } else if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         return responseData['status'] == 'success';
       }

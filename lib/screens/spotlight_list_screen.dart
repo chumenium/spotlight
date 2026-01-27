@@ -22,6 +22,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   List<Post> _posts = [];
   bool _isLoading = true;
   String? _errorMessage;
+  bool _isLoadingDialogShown = false;
 
   @override
   void initState() {
@@ -540,14 +541,8 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
                   if (!hasTitle && !hasTag) {
                     Navigator.pop(context);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('タイトルまたはタグを入力してください'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
+                    _showSafeSnackBar('タイトルまたはタグを入力してください',
+                        backgroundColor: Colors.red);
                     return;
                   }
 
@@ -555,28 +550,13 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                       titleText == post.title &&
                       !hasTag) {
                     Navigator.pop(context);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('変更内容がありません'),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    }
+                    _showSafeSnackBar('変更内容がありません',
+                        backgroundColor: Colors.orange);
                     return;
                   }
 
                   Navigator.pop(context);
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('更新中...'),
-                        duration: Duration(seconds: 1),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
+                  _showLoadingDialog();
 
                   final success = await PostService.editContent(
                     contentId: post.id,
@@ -585,46 +565,16 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   );
 
                   if (!mounted) return;
+                  _closeLoadingDialog();
 
                   if (success) {
-                    setState(() {
-                      _posts[index] = Post(
-                        id: post.id,
-                        playId: post.playId,
-                        userId: post.userId,
-                        username: post.username,
-                        userIconPath: post.userIconPath,
-                        userIconUrl: post.userIconUrl,
-                        title: hasTitle ? titleText : post.title,
-                        content: post.content,
-                        contentPath: post.contentPath,
-                        type: post.type,
-                        mediaUrl: post.mediaUrl,
-                        thumbnailUrl: post.thumbnailUrl,
-                        likes: post.likes,
-                        playNum: post.playNum,
-                        link: post.link,
-                        comments: post.comments,
-                        shares: post.shares,
-                        isSpotlighted: post.isSpotlighted,
-                        isText: post.isText,
-                        nextContentId: post.nextContentId,
-                        createdAt: post.createdAt,
-                      );
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('投稿を更新しました'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    await _showCompletionDialog();
+                    if (mounted) {
+                      await _fetchUserContents();
+                    }
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('投稿の更新に失敗しました'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    _showSafeSnackBar('投稿の更新に失敗しました',
+                        backgroundColor: Colors.red);
                   }
                 },
                 child: const Text('保存'),
@@ -632,6 +582,56 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _showSafeSnackBar(String message,
+      {Color? backgroundColor, Duration? duration}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: duration ?? const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showLoadingDialog() {
+    if (!mounted || _isLoadingDialogShown) return;
+    _isLoadingDialogShown = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+    );
+  }
+
+  void _closeLoadingDialog() {
+    if (!mounted || !_isLoadingDialogShown) return;
+    _isLoadingDialogShown = false;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _showCompletionDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('完了'),
+        content: const Text('投稿を更新しました'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }
