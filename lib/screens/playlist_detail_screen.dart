@@ -55,6 +55,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
 
     try {
+      if (widget.playlistTitle == PlaylistService.spotlightPlaylistTitle) {
+        await PlaylistService.syncSpotlightPlaylist(widget.playlistId);
+      }
+
       // API仕様書に基づいて、getplaylistdetailを呼び出す
       // レスポンス: { "status": "success", "data": [...] }
       // 各データ項目: contentID, title, spotlightnum, posttimestamp, playnum, link, thumbnailpath

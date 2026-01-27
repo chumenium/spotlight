@@ -36,7 +36,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     });
 
     try {
-      final playlists = await PlaylistService.getPlaylists();
+      var playlists = await PlaylistService.getPlaylists();
+      playlists = await _ensureSpotlightPlaylist(playlists);
+      playlists = _sortPlaylists(playlists);
 
       if (kDebugMode) {
         debugPrint('📝 プレイリスト一覧取得完了: ${playlists.length}件');
@@ -60,6 +62,44 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         });
       }
     }
+  }
+
+  Future<List<Playlist>> _ensureSpotlightPlaylist(
+      List<Playlist> playlists) async {
+    Playlist? spotlight = _findSpotlightPlaylist(playlists);
+
+    if (spotlight == null) {
+      final createdId = await PlaylistService.createPlaylist(
+          PlaylistService.spotlightPlaylistTitle);
+      if (createdId != null) {
+        playlists = await PlaylistService.getPlaylists();
+        spotlight = _findSpotlightPlaylist(playlists);
+      }
+    }
+
+    if (spotlight != null) {
+      await PlaylistService.syncSpotlightPlaylist(spotlight.playlistid);
+    }
+
+    return playlists;
+  }
+
+  List<Playlist> _sortPlaylists(List<Playlist> playlists) {
+    final spotlight = playlists.where(_isSpotlightPlaylist).toList();
+    final others = playlists.where((p) => !_isSpotlightPlaylist(p)).toList();
+    return [...spotlight, ...others];
+  }
+
+  Playlist? _findSpotlightPlaylist(List<Playlist> playlists) {
+    try {
+      return playlists.firstWhere(_isSpotlightPlaylist);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isSpotlightPlaylist(Playlist playlist) {
+    return playlist.title == PlaylistService.spotlightPlaylistTitle;
   }
 
   Future<String?> _getFirstContentThumbnail(int playlistId) async {
@@ -407,6 +447,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   void _showPlaylistMenuBottomSheet(
       BuildContext context, Playlist playlist, int index) {
+    final isSpotlight = _isSpotlightPlaylist(playlist);
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -452,14 +493,15 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 // 再生リストを複製
               },
             ),
-            _buildMenuOption(
-              icon: Icons.delete_outline,
-              title: '削除',
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteConfirmDialog(context, playlist, index);
-              },
-            ),
+            if (!isSpotlight)
+              _buildMenuOption(
+                icon: Icons.delete_outline,
+                title: '削除',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmDialog(context, playlist, index);
+                },
+              ),
           ],
         ),
       ),

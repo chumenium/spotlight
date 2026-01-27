@@ -52,6 +52,8 @@ class Playlist {
 
 /// プレイリストAPIサービス
 class PlaylistService {
+  static const String spotlightPlaylistTitle = 'スポットライト';
+
   /// プレイリスト一覧を取得
   /// API仕様書（API_ENDPOINTS.md 126-133行目）に準拠
   /// - リクエスト: なし（リクエストボディ不要）
@@ -160,6 +162,117 @@ class PlaylistService {
     }
 
     return [];
+  }
+
+  /// スポットライト済みコンテンツ一覧を取得
+  /// POST /api/users/getspotlightcontents
+  static Future<List<Map<String, dynamic>>> getSpotlightContents() async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📋 [スポットライト一覧] JWTトークンが取得できません');
+        }
+        return [];
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/users/getspotlightcontents';
+
+      if (kDebugMode) {
+        debugPrint('📋 [スポットライト一覧] URL: $url');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success' &&
+            responseData['data'] is List) {
+          final List<dynamic> data = responseData['data'];
+          return data
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        }
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ [スポットライト一覧] status=${responseData['status']}');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [スポットライト一覧] HTTPエラー: ${response.statusCode}');
+          debugPrint('📋 [スポットライト一覧] レスポンス: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [スポットライト一覧] 例外: $e');
+      }
+    }
+
+    return [];
+  }
+
+  /// スポットライト再生リストに未登録のコンテンツを追加
+  static Future<void> syncSpotlightPlaylist(int playlistId) async {
+    try {
+      final spotlightContents = await getSpotlightContents();
+      final spotlightIds = <String>{};
+      for (final item in spotlightContents) {
+        final id = item['contentID']?.toString();
+        if (id != null && id.isNotEmpty) {
+          spotlightIds.add(id);
+        }
+      }
+
+      final playlistContents = await getPlaylistDetail(playlistId);
+      final playlistIds = <String>{};
+      for (final item in playlistContents) {
+        final id = item['contentID']?.toString();
+        if (id != null && id.isNotEmpty) {
+          playlistIds.add(id);
+        }
+      }
+
+      for (final id in playlistIds) {
+        if (!spotlightIds.contains(id)) {
+          await removeContentFromPlaylist(playlistId, id);
+        }
+      }
+
+      for (final id in spotlightIds) {
+        if (!playlistIds.contains(id)) {
+          await addContentToPlaylist(playlistId, id);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [スポットライト同期] 例外: $e');
+      }
+    }
+  }
+
+  static Future<bool> removeContentFromSpotlightPlaylist(
+      String contentId) async {
+    try {
+      final playlists = await getPlaylists();
+      final spotlight = playlists
+          .where((p) => p.title == spotlightPlaylistTitle)
+          .toList();
+      if (spotlight.isEmpty) return false;
+      return removeContentFromPlaylist(spotlight.first.playlistid, contentId);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [スポットライト削除] 例外: $e');
+      }
+    }
+    return false;
   }
 
   /// プレイリストにコンテンツを追加

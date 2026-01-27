@@ -1373,6 +1373,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _showEditPostDialog(Post post, int index) async {
+    final titleController = TextEditingController(text: post.title);
+    final tagController = TextEditingController();
+    bool clearTag = false;
+
+    await _showSafeDialog(
+      StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('投稿を編集'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'タイトル',
+                      hintText: 'タイトルを入力',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: tagController,
+                    decoration: const InputDecoration(
+                      labelText: 'タグ',
+                      hintText: '変更する場合のみ入力（例: タグ1 タグ2）',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    value: clearTag,
+                    onChanged: (value) {
+                      setState(() {
+                        clearTag = value ?? false;
+                      });
+                    },
+                    title: const Text('タグを空にする'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final titleText = titleController.text.trim();
+                  final tagText = tagController.text.trim();
+                  final hasTitle = titleText.isNotEmpty;
+                  final hasTag = clearTag || tagText.isNotEmpty;
+
+                  if (!hasTitle && !hasTag) {
+                    Navigator.pop(context);
+                    _showSafeSnackBar('タイトルまたはタグを入力してください');
+                    return;
+                  }
+
+                  if (hasTitle &&
+                      titleText == post.title &&
+                      !hasTag) {
+                    Navigator.pop(context);
+                    _showSafeSnackBar('変更内容がありません');
+                    return;
+                  }
+
+                  Navigator.pop(context);
+                  _showSafeLoadingDialog();
+
+                  final success = await PostService.editContent(
+                    contentId: post.id,
+                    title: hasTitle ? titleText : null,
+                    tag: clearTag ? '' : (tagText.isNotEmpty ? tagText : null),
+                  );
+
+                  _closeSafeLoadingDialog();
+
+                  if (success && mounted) {
+                    setState(() {
+                      _myPosts[index] = Post(
+                        id: post.id,
+                        playId: post.playId,
+                        userId: post.userId,
+                        username: post.username,
+                        userIconPath: post.userIconPath,
+                        userIconUrl: post.userIconUrl,
+                        title: hasTitle ? titleText : post.title,
+                        content: post.content,
+                        contentPath: post.contentPath,
+                        type: post.type,
+                        mediaUrl: post.mediaUrl,
+                        thumbnailUrl: post.thumbnailUrl,
+                        likes: post.likes,
+                        playNum: post.playNum,
+                        link: post.link,
+                        comments: post.comments,
+                        shares: post.shares,
+                        isSpotlighted: post.isSpotlighted,
+                        isText: post.isText,
+                        nextContentId: post.nextContentId,
+                        createdAt: post.createdAt,
+                      );
+                    });
+                    _showSafeSnackBar('投稿を更新しました',
+                        backgroundColor: Colors.green);
+                  } else {
+                    _showSafeSnackBar('投稿の更新に失敗しました');
+                  }
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildHistorySection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

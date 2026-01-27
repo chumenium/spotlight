@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/app_config.dart';
 import '../models/post.dart';
 import '../services/jwt_service.dart';
+import '../services/playlist_service.dart';
 
 /// 429 Too Many Requests エラー用の例外クラス
 class TooManyRequestsException implements Exception {
@@ -224,11 +225,95 @@ class PostService {
       //   debugPrint('📝 スポットライトOFFレスポンス: ${response.statusCode}');
       // }
 
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        await PlaylistService.removeContentFromSpotlightPlaylist(postId);
+        return true;
+      }
+      return false;
     } catch (e) {
       // if (kDebugMode) {
       //   debugPrint('📝 スポットライトOFF例外: $e');
       // }
+      return false;
+    }
+  }
+
+  /// 投稿のタイトル・タグを編集
+  ///
+  /// - contentID: 編集対象の投稿ID
+  /// - title: 新しいタイトル（省略可）
+  /// - tag: 新しいタグ（省略可、空文字で削除）
+  static Future<bool> editContent({
+    required String contentId,
+    String? title,
+    String? tag,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final contentIdInt = int.tryParse(contentId);
+      if (contentIdInt == null || contentIdInt == 0) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] contentIDが無効です: $contentId');
+        }
+        return false;
+      }
+
+      final hasTitle = title != null;
+      final hasTag = tag != null;
+      if (!hasTitle && !hasTag) {
+        if (kDebugMode) {
+          debugPrint('📝 [投稿編集] title または tag が必要です');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/edit';
+      final requestBody = <String, dynamic>{
+        'contentID': contentIdInt,
+      };
+      if (hasTitle) {
+        requestBody['title'] = title;
+      }
+      if (hasTag) {
+        requestBody['tag'] = tag;
+      }
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿編集] URL: $url');
+        debugPrint('📝 [投稿編集] body: ${jsonEncode(requestBody)}');
+      }
+
+      final response = await http.patch(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (kDebugMode) {
+        debugPrint('📝 [投稿編集] statusCode: ${response.statusCode}');
+        debugPrint('📝 [投稿編集] body: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData['status'] == 'success';
+      }
+
+      return false;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('📝 [投稿編集] 例外: $e');
+      }
       return false;
     }
   }
