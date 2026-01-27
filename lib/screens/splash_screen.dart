@@ -431,6 +431,8 @@ class _MainScreenState extends State<MainScreen> {
           ),
           bottomNavigationBar: CustomBottomNavigationBar(
             currentIndex: navigationProvider.currentIndex,
+            unreadNotificationCount:
+                navigationProvider.unreadNotificationCount,
             onTap: (index) {
               if (index == 2) {
                 // プラスボタンの場合はモーダルで表示

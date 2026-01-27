@@ -3,6 +3,7 @@ import '../utils/spotlight_colors.dart';
 import 'user_management_screen.dart';
 import 'report_management_screen.dart';
 import 'post_management_screen.dart';
+import 'admin_notification_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -125,6 +126,19 @@ class AdminScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const PostManagementScreen(),
+                ),
+              );
+            },
+          ),
+          _buildAdminTile(
+            icon: Icons.notifications_active,
+            title: '管理者通知',
+            subtitle: 'ユーザーへ通知を送信',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminNotificationScreen(),
                 ),
               );
             },

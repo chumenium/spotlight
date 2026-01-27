@@ -631,6 +631,83 @@ class AdminService {
     return false;
   }
 
+  /// 管理者通知を送信
+  ///
+  /// パラメータ:
+  /// - title: 通知タイトル
+  /// - message: 通知本文
+  /// - targetUid: 送信対象ユーザーID（全員の場合は "all"）
+  ///
+  /// 戻り値:
+  /// - bool: 成功時true、失敗時false
+  static Future<bool> sendAdminNotification({
+    required String title,
+    required String message,
+    required String targetUid,
+  }) async {
+    try {
+      final jwtToken = await JwtService.getJwtToken();
+
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: JWTトークンが取得できません');
+        }
+        return false;
+      }
+
+      final url = '${AppConfig.backendUrl}/api/admin/adminnotification';
+
+      if (kDebugMode) {
+        debugPrint('🔔 管理者API: 通知送信URL: $url');
+        debugPrint(
+            '🔔 管理者API: title="$title", targetUid="$targetUid"');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $jwtToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'title': title,
+          'message': message,
+          'targetuid': targetUid,
+        }),
+      );
+
+      if (kDebugMode) {
+        debugPrint('🔔 管理者API: レスポンス statusCode=${response.statusCode}');
+        debugPrint('🔔 管理者API: レスポンス本文: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['status'] == 'success') {
+          if (kDebugMode) {
+            debugPrint('✅ 管理者API: 通知送信に成功');
+          }
+          return true;
+        } else {
+          if (kDebugMode) {
+            debugPrint('❌ 管理者API: ${responseData['message'] ?? 'エラー'}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ 管理者API: エラー statusCode=${response.statusCode}');
+          debugPrint('  レスポンス本文: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 管理者API: 例外: $e');
+      }
+    }
+
+    return false;
+  }
+
   /// 全コンテンツ情報を取得（管理者用）
   ///
   /// パラメータ:

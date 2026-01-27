@@ -21,7 +21,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   int _lastRefreshTrigger = -1; // 最後に処理したリフレッシュトリガーの値
 
   // タブの定義
-  final List<String> _tabs = ['すべて', 'スポットライト', 'コメント'];
+  final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'システム'];
 
   @override
   void initState() {
@@ -46,6 +46,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           notifications = fetched;
           _isLoading = false;
         });
+        _updateUnreadCount(fetched);
       }
     } catch (e) {
       if (mounted) {
@@ -138,6 +139,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                             ))
                         .toList();
                   });
+                  _updateUnreadCount(notifications);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('すべて既読にしました'),
@@ -169,7 +171,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               labelPadding: const EdgeInsets.symmetric(horizontal: 13),
               tabAlignment: TabAlignment.start,
               padding: const EdgeInsets.only(left: 8),
-              tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+              tabs: _tabs.map((tab) => _buildTabLabel(tab)).toList(),
             ),
           ),
           body: TabBarView(
@@ -260,6 +262,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 n.type == NotificationType.comment ||
                 n.type == NotificationType.reply)
             .toList();
+      case 'システム':
+        return notifications
+            .where((n) => n.type == NotificationType.system)
+            .toList();
       default:
         return notifications;
     }
@@ -281,6 +287,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'コメント':
         message = 'コメント通知はありません';
         icon = Icons.comment;
+        break;
+      case 'システム':
+        message = 'システム通知はありません';
+        icon = Icons.info_outline;
         break;
       default:
         message = '通知はありません';
@@ -304,6 +314,74 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               color: Colors.grey,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _updateUnreadCount(List<NotificationItem> list) {
+    final unreadCount = list.where((n) => !n.isRead).length;
+    Provider.of<NavigationProvider>(context, listen: false)
+        .setUnreadNotificationCount(unreadCount);
+  }
+
+  int _getUnreadCountForTab(String tabName) {
+    switch (tabName) {
+      case 'すべて':
+        return notifications.where((n) => !n.isRead).length;
+      case 'スポットライト':
+        return notifications
+            .where((n) => n.type == NotificationType.spotlight && !n.isRead)
+            .length;
+      case 'コメント':
+        return notifications
+            .where((n) =>
+                (n.type == NotificationType.comment ||
+                    n.type == NotificationType.reply) &&
+                !n.isRead)
+            .length;
+      case 'システム':
+        return notifications
+            .where((n) => n.type == NotificationType.system && !n.isRead)
+            .length;
+      default:
+        return 0;
+    }
+  }
+
+  String _formatUnreadCount(int count) {
+    if (count > 99) return '99+';
+    return count.toString();
+  }
+
+  Widget _buildTabLabel(String tabName) {
+    final unreadCount = _getUnreadCountForTab(tabName);
+    return Tab(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Text(tabName),
+          if (unreadCount > 0)
+            Positioned(
+              right: -16,
+              top: -6,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _formatUnreadCount(unreadCount),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -344,6 +422,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               commentID: notification.commentID,
             );
           });
+          _updateUnreadCount(notifications);
 
           // 投稿IDがある場合、ホーム画面に遷移
           if (notification.postId != null) {

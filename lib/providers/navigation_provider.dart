@@ -10,6 +10,7 @@ class NavigationProvider with ChangeNotifier {
   bool _shouldOpenComments = false; // コメント画面を開くかどうか
   int _notificationRefreshTrigger = 0; // 通知再読み込み用のトリガー
   int _profileHistoryRefreshTrigger = 0;
+  int _unreadNotificationCount = 0;
 
   int get currentIndex => _currentIndex;
   String? get targetPostId => _targetPostId;
@@ -19,6 +20,7 @@ class NavigationProvider with ChangeNotifier {
   bool get shouldOpenComments => _shouldOpenComments;
   int get notificationRefreshTrigger => _notificationRefreshTrigger;
   int get profileHistoryRefreshTrigger => _profileHistoryRefreshTrigger;
+  int get unreadNotificationCount => _unreadNotificationCount;
 
   void setCurrentIndex(int index) {
     if (_currentIndex != index) {
@@ -81,11 +83,19 @@ class NavigationProvider with ChangeNotifier {
     _targetCommentId = null;
     _shouldOpenComments = false;
     _profileHistoryRefreshTrigger = 0;
+    _unreadNotificationCount = 0;
     notifyListeners();
   }
 
   void notifyProfileHistoryUpdated() {
     _profileHistoryRefreshTrigger++;
     notifyListeners();
+  }
+
+  void setUnreadNotificationCount(int count) {
+    if (_unreadNotificationCount != count) {
+      _unreadNotificationCount = count;
+      notifyListeners();
+    }
   }
 }

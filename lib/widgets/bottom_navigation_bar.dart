@@ -4,11 +4,13 @@ import '../utils/spotlight_colors.dart';
 class CustomBottomNavigationBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
+  final int unreadNotificationCount;
 
   const CustomBottomNavigationBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.unreadNotificationCount = 0,
   });
 
   @override
@@ -100,6 +102,16 @@ class CustomBottomNavigationBar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final inactiveColor = isDark ? Colors.grey[400] : Colors.grey[600];
 
+    final iconWidget = Icon(
+      isSelected ? activeIcon : icon,
+      color: isSelected
+          ? SpotLightColors.getSpotlightColor(index)
+          : inactiveColor,
+      size: isCenter ? 36 : 26,
+    );
+
+    final shouldShowDot = index == 3 && unreadNotificationCount > 0;
+
     return GestureDetector(
       onTap: () => onTap(index),
       child: Container(
@@ -110,24 +122,30 @@ class CustomBottomNavigationBar extends StatelessWidget {
         ),
         child: isCenter
             ? Center(
-                child: Icon(
-                  isSelected ? activeIcon : icon,
-                  color: isSelected
-                      ? SpotLightColors.getSpotlightColor(index)
-                      : inactiveColor,
-                  size: 36,
-                ),
+                child: iconWidget,
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    isSelected ? activeIcon : icon,
-                    color: isSelected
-                        ? SpotLightColors.getSpotlightColor(index)
-                        : inactiveColor,
-                    size: 26,
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      iconWidget,
+                      if (shouldShowDot)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
