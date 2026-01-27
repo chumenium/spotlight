@@ -814,11 +814,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Icon(
                             Icons.edit,
                             size: 16,
-                            color: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.color ??
-                                Colors.grey[400],
+                            color:
+                                Theme.of(context).textTheme.bodySmall?.color ??
+                                    Colors.grey[400],
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -1262,15 +1260,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return GestureDetector(
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
+        if (!mounted) return;
         try {
-          final postId = post.id;
-          // undefinedの可能性があるため、安全にチェック
-          final postIdStr = postId.toString();
+          final postIdStr = post.id.toString();
           if (postIdStr.isNotEmpty) {
+            final rootContext = context;
             final navigationProvider =
-                Provider.of<NavigationProvider>(context, listen: false);
+                Provider.of<NavigationProvider>(rootContext, listen: false);
             navigationProvider.navigateToHome(
               postId: postIdStr,
+              postTitle: _getSafeTitle(post.title),
               post: post,
             );
 
@@ -1495,14 +1494,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return GestureDetector(
       onTap: () {
         // 投稿をタップしたらホーム画面に遷移してその投稿を表示
+        if (!mounted) return;
         try {
-          final postId = post.id;
-          // undefinedの可能性があるため、安全にチェック
-          final postIdStr = postId.toString();
+          final postIdStr = post.id.toString();
           if (postIdStr.isNotEmpty) {
+            final rootContext = context;
             final navigationProvider =
-                Provider.of<NavigationProvider>(context, listen: false);
-            navigationProvider.navigateToHome(postId: postIdStr, post: post);
+                Provider.of<NavigationProvider>(rootContext, listen: false);
+            navigationProvider.navigateToHome(
+              postId: postIdStr,
+              postTitle: _getSafeTitle(post.title),
+              post: post,
+            );
 
             if (kDebugMode) {
               debugPrint(

@@ -1959,21 +1959,11 @@ class PostService {
     return [];
   }
 
-  /// /api/content/getcontent APIを使用して1件のコンテンツを取得
-  /// 外部画面からホームの特定コンテンツに遷移する際に使用
+  /// /api/content/getcontents/random から候補を取得して該当IDを探す
+  /// 注意: ランダム取得のため見つからない可能性があります
   /// 戻り値: 成功時はPost、失敗時はnull
   static Future<Post?> fetchContentById(String contentId) async {
     try {
-      final jwtToken = await JwtService.getJwtToken();
-
-      if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [getcontent] JWTトークンが取得できません: contentID=$contentId');
-        }
-        return null;
-      }
-
-      final url = '${AppConfig.apiBaseUrl}/content/detail';
       final contentIdInt = int.tryParse(contentId) ?? 0;
 
       if (contentIdInt == 0) {
@@ -1983,114 +1973,17 @@ class PostService {
         return null;
       }
 
+      final posts = await fetchContents(excludeContentIDs: []);
+      for (final post in posts) {
+        if (post.id == contentId) {
+          return post;
+        }
+      }
+
       if (kDebugMode) {
-        debugPrint('📝 [getcontent] API呼び出し: $url, contentID=$contentId');
+        debugPrint('⚠️ [getcontent] 該当IDが見つかりません: contentID=$contentId');
       }
-
-      // 429エラー時のリトライロジック（最大3回）
-      for (int retry = 0; retry < 3; retry++) {
-        if (retry > 0) {
-          // リトライ前に待機（指数バックオフ: 1秒、2秒、4秒）
-          final delaySeconds = retry;
-          if (kDebugMode) {
-            debugPrint(
-                '⏳ [getcontent] 429エラーのため${delaySeconds}秒待機してリトライ: contentID=$contentId (${retry}/3)');
-          }
-          await Future.delayed(Duration(seconds: delaySeconds));
-        }
-
-        final response = await http.post(
-          Uri.parse(url),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $jwtToken',
-          },
-          body: jsonEncode({'contentID': contentIdInt}),
-        );
-
-        // 429エラーの場合、リトライ
-        if (response.statusCode == 429) {
-          if (kDebugMode) {
-            debugPrint(
-                '⚠️ [getcontent] HTTP 429エラー: contentID=$contentId (リトライ${retry + 1}/3)');
-          }
-          if (retry < 2) {
-            continue; // リトライ
-          } else {
-            // 最後のリトライでも失敗した場合
-            if (kDebugMode) {
-              debugPrint(
-                  '❌ [getcontent] 429エラーが解決しませんでした: contentID=$contentId');
-            }
-            return null;
-          }
-        }
-
-        if (response.statusCode == 200) {
-          final responseData = jsonDecode(response.body);
-
-          if (kDebugMode) {
-            debugPrint('📝 [getcontent] レスポンス: ${responseData.toString()}');
-          }
-
-          if (responseData['status'] == 'success' &&
-              responseData['data'] != null) {
-            // /api/content/detailは単一のオブジェクトを返す（Listではない）
-            final contentJson = responseData['data'] as Map<String, dynamic>;
-
-            // contentIDがレスポンスに含まれていない場合、nextcontentidまたはパラメータのcontentIdを使用
-            if (!contentJson.containsKey('contentID')) {
-              if (contentJson.containsKey('nextcontentid')) {
-                contentJson['contentID'] =
-                    contentJson['nextcontentid'].toString();
-              } else {
-                if (kDebugMode) {
-                  debugPrint(
-                      '⚠️ [getcontent] contentIDがレスポンスに含まれていません。パラメータのcontentIdを使用: $contentId');
-                }
-                contentJson['contentID'] = contentId;
-              }
-            }
-
-            // contentIDをidとして設定
-            final responseContentId =
-                contentJson['contentID']?.toString() ?? contentId;
-            contentJson['id'] = responseContentId;
-
-            // Post.fromJsonを使用してPostオブジェクトに変換
-            try {
-              final post =
-                  Post.fromJson(contentJson, backendUrl: AppConfig.backendUrl);
-
-              if (kDebugMode) {
-                debugPrint(
-                    '📝 [getcontent] 取得成功: contentID=$contentId, タイトル=${post.title}');
-              }
-
-              return post;
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint(
-                    '⚠️ [getcontent] Post変換エラー: $e, contentID=$contentId');
-              }
-              return null;
-            }
-          } else {
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 [getcontent] APIレスポンスエラー: ${responseData['status']}');
-            }
-            return null; // 成功したが、データが不正な場合はnullを返す
-          }
-        } else {
-          // 200以外のステータスコード（429以外）の場合
-          if (kDebugMode) {
-            debugPrint('📝 [getcontent] HTTPエラー: ${response.statusCode}');
-            debugPrint('📝 [getcontent] レスポンス: ${response.body}');
-          }
-          return null;
-        }
-      }
+      return null;
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('📝 [getcontent] 例外: $e');

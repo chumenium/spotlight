@@ -120,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _suppressVideoTap = false;
 
   int? _scrollStartIndex;
+  bool _isPageScrolling = false;
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
@@ -147,6 +148,7 @@ class _HomeScreenState extends State<HomeScreen>
     _pageController = PageController(
       initialPage: 0,
     );
+  _pageController.addListener(_handlePageScroll);
 
     _spotlightAnimationController = AnimationController(
       vsync: this,
@@ -202,6 +204,7 @@ class _HomeScreenState extends State<HomeScreen>
     _spotlightAnimationController.dispose();
 
     // PageControllerを破棄
+  _pageController.removeListener(_handlePageScroll);
     _pageController.dispose();
 
     // 動画プレイヤーのリソース解放（段階4）
@@ -479,17 +482,12 @@ class _HomeScreenState extends State<HomeScreen>
   void _onPageChanged(int index) {
     if (_isDisposed) return;
 
-    final previousIndex = _currentIndex;
     setState(() {
       _currentIndex = index;
     });
 
-    // 投稿切り替え時は必ずメディアを停止・初期化
-    _stopAndResetAllMedia();
-
-    // ページ遷移時は一度すべて停止して、重複再生を防ぐ
-    _stopAllVideos();
-    _stopAllAudios();
+    // 投稿切り替え時は必ずメディアを停止・破棄してから再初期化
+    _stopAndDisposeAllMedia();
 
     // 現在の投稿の動画を再生（段階4）
     _handleMediaPageChange(index);
@@ -636,6 +634,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       _stopAndResetAllMedia();
+      _stopAndDisposeAllMedia();
       _lastPlayingVideoBeforeNavigation = null;
       _lastPlayingAudioBeforeNavigation = null;
     }
@@ -663,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didPushNext() {
     if (_isDisposed) return;
-    _stopAndResetAllMedia();
+    _stopAndDisposeAllMedia();
     _lastPlayingVideoBeforeNavigation = null;
     _lastPlayingAudioBeforeNavigation = null;
   }
@@ -701,6 +700,15 @@ class _HomeScreenState extends State<HomeScreen>
   void _stopAndResetAllMedia() {
     _stopAllVideos();
     _stopAllAudios();
+  }
+
+  /// すべてのメディアを停止して破棄
+  void _stopAndDisposeAllMedia() {
+    _stopAndResetAllMedia();
+    _disposeAllVideoControllersExcept(null);
+    _disposeAllAudioPlayersExcept(null);
+    _currentPlayingVideo = null;
+    _currentPlayingAudio = null;
   }
 
   void _schedulePendingTargetCheck() {
@@ -1113,30 +1121,94 @@ class _HomeScreenState extends State<HomeScreen>
   void _stopAllVideos() {
     for (final entry in _videoControllers.entries) {
       final controller = entry.value;
-      if (controller != null && controller.value.isInitialized) {
+      try {
+        controller.setVolume(0.0);
+      } catch (_) {}
+      try {
         controller.pause();
-        controller.seekTo(Duration.zero);
-        if (kDebugMode) {
-          debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
+      } catch (_) {}
+      try {
+        if (controller.value.isInitialized) {
+          controller.seekTo(Duration.zero);
         }
+      } catch (_) {}
+      if (kDebugMode) {
+        debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
       }
     }
     _currentPlayingVideo = null;
+  }
+
+  void _disposeVideoControllerForIndex(int postIndex) {
+    final controller = _videoControllers[postIndex];
+    if (controller == null) return;
+    controller.removeListener(_onVideoPositionChanged);
+    try {
+      controller.setVolume(0.0);
+    } catch (_) {}
+    try {
+      controller.pause();
+    } catch (_) {}
+    try {
+      controller.dispose();
+    } catch (_) {}
+    _videoControllers.remove(postIndex);
+    _initializedVideos.remove(postIndex);
+    if (_currentPlayingVideo == postIndex) {
+      _currentPlayingVideo = null;
+    }
+  }
+
+  void _disposeAllVideoControllersExcept(int? keepPostIndex) {
+    final indices = _videoControllers.keys.toList();
+    for (final index in indices) {
+      if (keepPostIndex != null && index == keepPostIndex) continue;
+      _disposeVideoControllerForIndex(index);
+    }
   }
 
   /// すべての音声を停止する
   void _stopAllAudios() {
     for (final entry in _audioPlayers.entries) {
       final player = entry.value;
-      if (player != null) {
+      try {
+        player.stop();
+      } catch (_) {}
+      try {
         player.pause();
+      } catch (_) {}
+      try {
         player.seek(Duration.zero);
-        if (kDebugMode) {
-          debugPrint('⏸️ すべての音声を停止: index=${entry.key}');
-        }
+      } catch (_) {}
+      if (kDebugMode) {
+        debugPrint('⏸️ すべての音声を停止: index=${entry.key}');
       }
     }
     _currentPlayingAudio = null;
+  }
+
+  void _disposeAudioPlayerForIndex(int postIndex) {
+    final player = _audioPlayers[postIndex];
+    if (player == null) return;
+    try {
+      player.stop();
+    } catch (_) {}
+    try {
+      player.dispose();
+    } catch (_) {}
+    _audioPlayers.remove(postIndex);
+    _initializedAudios.remove(postIndex);
+    if (_currentPlayingAudio == postIndex) {
+      _currentPlayingAudio = null;
+    }
+  }
+
+  void _disposeAllAudioPlayersExcept(int? keepPostIndex) {
+    final indices = _audioPlayers.keys.toList();
+    for (final index in indices) {
+      if (keepPostIndex != null && index == keepPostIndex) continue;
+      _disposeAudioPlayerForIndex(index);
+    }
   }
 
   void _suppressVideoTapOnce() {
@@ -1153,8 +1225,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_isDisposed) return;
 
     _scrollStartIndex = _currentIndex;
-    _stopAllVideos();
-    _stopAllAudios();
+    _stopAndDisposeAllMedia();
     if (kDebugMode) {
       debugPrint('🛑 スクロール開始: 再生を停止しました');
     }
@@ -1166,6 +1237,19 @@ class _HomeScreenState extends State<HomeScreen>
     _scrollStartIndex = null;
     if (startIndex != null && startIndex == _currentIndex) {
       _handleMediaPageChange(_currentIndex);
+    }
+  }
+
+  void _handlePageScroll() {
+    if (_isDisposed) return;
+    final page = _pageController.page;
+    if (page == null) return;
+    final isScrolling = (page - page.round()).abs() > 0.0001;
+    if (isScrolling && !_isPageScrolling) {
+      _isPageScrolling = true;
+      _stopAndDisposeAllMedia();
+    } else if (!isScrolling && _isPageScrolling) {
+      _isPageScrolling = false;
     }
   }
 
@@ -1779,35 +1863,40 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return false; // 通知を下に伝播させる
       },
-      child: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        itemCount: itemCount,
-        onPageChanged: _onPageChanged,
-        itemBuilder: (context, index) {
-          // 広告のインデックスかどうかを判定
-          final adIndex = _getAdIndex(index);
-          if (adIndex != null) {
-            // 広告を表示
-            return const NativeAdWidget();
-          }
-
-          // 投稿のインデックスを計算（広告を考慮）
-          final postIndex = _getPostIndex(index);
-
-          // 範囲外のインデックスの場合はプレースホルダーを表示
-          if (postIndex < 0 || postIndex >= _posts.length) {
-            // 最後のページ（読み込み中または続きがある場合）を表示
-            final totalItems = _posts.length + adCount;
-            if (index == totalItems && hasMoreContent) {
-              return _buildLoadingPlaceholder();
-            }
-            return _buildOutOfRangePlaceholder();
-          }
-
-          final post = _posts[postIndex];
-          return _buildPostItem(post, postIndex);
+      child: Listener(
+        onPointerDown: (_) {
+          _stopAndDisposeAllMedia();
         },
+        child: PageView.builder(
+          controller: _pageController,
+          scrollDirection: Axis.vertical,
+          itemCount: itemCount,
+          onPageChanged: _onPageChanged,
+          itemBuilder: (context, index) {
+            // 広告のインデックスかどうかを判定
+            final adIndex = _getAdIndex(index);
+            if (adIndex != null) {
+              // 広告を表示
+              return const NativeAdWidget();
+            }
+
+            // 投稿のインデックスを計算（広告を考慮）
+            final postIndex = _getPostIndex(index);
+
+            // 範囲外のインデックスの場合はプレースホルダーを表示
+            if (postIndex < 0 || postIndex >= _posts.length) {
+              // 最後のページ（読み込み中または続きがある場合）を表示
+              final totalItems = _posts.length + adCount;
+              if (index == totalItems && hasMoreContent) {
+                return _buildLoadingPlaceholder();
+              }
+              return _buildOutOfRangePlaceholder();
+            }
+
+            final post = _posts[postIndex];
+            return _buildPostItem(post, postIndex);
+          },
+        ),
       ),
     );
   }
