@@ -121,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   int? _scrollStartIndex;
   bool _isPageScrolling = false;
+  int _mediaResetToken = 0;
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
@@ -243,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen>
           debugPrint('📱 [ライフサイクル] アプリがバックグラウンドに移動');
         }
         _isAppInForeground = false;
-        _stopAndResetAllMedia();
+        _forceStopAndResetMedia();
         _lastPlayingVideoBeforeNavigation = null;
         _lastPlayingAudioBeforeNavigation = null;
         break;
@@ -257,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen>
         break;
       case AppLifecycleState.hidden:
         _isAppInForeground = false;
+        _forceStopAndResetMedia();
         break;
     }
   }
@@ -486,8 +488,8 @@ class _HomeScreenState extends State<HomeScreen>
       _currentIndex = index;
     });
 
-    // 投稿切り替え時は必ずメディアを停止・破棄してから再初期化
-    _stopAndDisposeAllMedia();
+    // 投稿切り替え時は必ずメディアを停止・初期化してから再初期化
+    _forceStopAndResetMedia();
 
     // 現在の投稿の動画を再生（段階4）
     _handleMediaPageChange(index);
@@ -521,6 +523,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// メディアページ変更時の処理（段階4-5: 動画・音声の初期化・再生）
   Future<void> _handleMediaPageChange(int index) async {
     if (_isDisposed) return;
+    if (_isPageScrolling) return;
 
     final postIndex = _getActualPostIndex(index);
     if (postIndex == null) return;
@@ -633,8 +636,7 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
       }
 
-      _stopAndResetAllMedia();
-      _stopAndDisposeAllMedia();
+      _forceStopAndResetMedia();
       _lastPlayingVideoBeforeNavigation = null;
       _lastPlayingAudioBeforeNavigation = null;
     }
@@ -662,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didPushNext() {
     if (_isDisposed) return;
-    _stopAndDisposeAllMedia();
+    _forceStopAndResetMedia();
     _lastPlayingVideoBeforeNavigation = null;
     _lastPlayingAudioBeforeNavigation = null;
   }
@@ -700,6 +702,21 @@ class _HomeScreenState extends State<HomeScreen>
   void _stopAndResetAllMedia() {
     _stopAllVideos();
     _stopAllAudios();
+  }
+
+  /// 画面遷移・スクロール時に強制停止と初期化
+  void _forceStopAndResetMedia() {
+    _stopAndDisposeAllMedia();
+    _mediaResetToken++;
+    _isSeeking = false;
+    _isSeekingAudio = false;
+    _currentVideoPosition = null;
+    _currentVideoDuration = null;
+    _currentAudioPosition = null;
+    _currentAudioDuration = null;
+    _seekBarUpdateTimer?.cancel();
+    _seekDebounceTimer?.cancel();
+    _seekBarUpdateTimerAudio?.cancel();
   }
 
   /// すべてのメディアを停止して破棄
@@ -985,13 +1002,14 @@ class _HomeScreenState extends State<HomeScreen>
   /// 動画コントローラーを初期化（段階4）
   Future<void> _initializeVideoController(int postIndex, Post post) async {
     if (_isDisposed || postIndex < 0 || postIndex >= _posts.length) return;
+    final token = _mediaResetToken;
 
     // 既に初期化済みの場合は、再生状態を確認して再生
     if (_initializedVideos.contains(postIndex)) {
       final controller = _videoControllers[postIndex];
       if (controller != null && controller.value.isInitialized) {
         // 現在表示中の動画を確実に再生（逆スクロール時も対応）
-        if (_canAutoPlayPost(postIndex)) {
+        if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
           if (!controller.value.isPlaying) {
             _startVideoPlayback(postIndex);
             if (kDebugMode) {
@@ -1049,6 +1067,10 @@ class _HomeScreenState extends State<HomeScreen>
         controller.dispose();
         return;
       }
+      if (token != _mediaResetToken) {
+        controller.dispose();
+        return;
+      }
 
       // リスナーを追加
       controller.addListener(_onVideoPositionChanged);
@@ -1060,7 +1082,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       // 現在表示中の動画を再生
-      if (_canAutoPlayPost(postIndex)) {
+      if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
         _startVideoPlayback(postIndex);
 
         if (kDebugMode) {
@@ -1225,7 +1247,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_isDisposed) return;
 
     _scrollStartIndex = _currentIndex;
-    _stopAndDisposeAllMedia();
+    _forceStopAndResetMedia();
     if (kDebugMode) {
       debugPrint('🛑 スクロール開始: 再生を停止しました');
     }
@@ -1247,7 +1269,7 @@ class _HomeScreenState extends State<HomeScreen>
     final isScrolling = (page - page.round()).abs() > 0.0001;
     if (isScrolling && !_isPageScrolling) {
       _isPageScrolling = true;
-      _stopAndDisposeAllMedia();
+      _forceStopAndResetMedia();
     } else if (!isScrolling && _isPageScrolling) {
       _isPageScrolling = false;
     }
@@ -1865,7 +1887,7 @@ class _HomeScreenState extends State<HomeScreen>
       },
       child: Listener(
         onPointerDown: (_) {
-          _stopAndDisposeAllMedia();
+          _forceStopAndResetMedia();
         },
         child: PageView.builder(
           controller: _pageController,
@@ -2238,6 +2260,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// 音声プレイヤーを初期化（段階5）
   Future<void> _initializeAudioPlayer(int postIndex, Post post) async {
     if (_isDisposed || postIndex < 0 || postIndex >= _posts.length) return;
+    final token = _mediaResetToken;
 
     // 既に初期化済みの場合はスキップ
     if (_initializedAudios.contains(postIndex)) {
@@ -2245,7 +2268,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (player != null) {
         await player.setLoopMode(LoopMode.one);
         // 現在表示中の音声を再生
-        if (_canAutoPlayPost(postIndex) && _currentPlayingAudio != postIndex) {
+        if (_canAutoPlayPost(postIndex) &&
+            _currentPlayingAudio != postIndex &&
+            token == _mediaResetToken) {
           // 他の動画と音声をすべて停止してから再生
           _stopAllVideos();
           _stopAllAudios();
@@ -2289,6 +2314,10 @@ class _HomeScreenState extends State<HomeScreen>
         player.dispose();
         return;
       }
+      if (token != _mediaResetToken) {
+        player.dispose();
+        return;
+      }
 
       setState(() {
         _audioPlayers[postIndex] = player;
@@ -2296,7 +2325,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       // 現在表示中の音声を再生
-      if (_canAutoPlayPost(postIndex)) {
+      if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
         // 他の動画と音声をすべて停止してから再生
         _stopAllVideos();
         _stopAllAudios();
