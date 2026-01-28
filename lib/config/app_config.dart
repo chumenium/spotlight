@@ -11,14 +11,14 @@ class AppConfig {
   // APIのベースURL（将来的に使用）
   static String get apiBaseUrl {
     if (isDevelopment) {
-      return 'https://api.spotlight-app.click/api'; // 開発環境のバックエンドサーバー
+      return 'https://spotlight-app.click/api'; // 開発環境のバックエンドサーバー
     } else {
-      return 'https://api.spotlight-app.click/api'; // 本番環境のURL
+      return 'https://spotlight-app.click/api'; // 本番環境のURL
     }
   }
   
   // バックエンドサーバーのURL（直接接続）
-  static String get backendUrl => 'https://api.spotlight-app.click';
+  static String get backendUrl => 'https://spotlight-app.click';
   
   // CloudFrontのURL（S3コンテンツ配信用）
   // メディアファイル（画像、動画、サムネイル）はCloudFront経由で配信

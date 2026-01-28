@@ -43,49 +43,20 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-6754131556002286~8157867553</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBonjourServices</key>
 	<array/>
+	<key>NSCameraUsageDescription</key>
+	<string>This app accesses the camera to allow users to take photos or record videos for posting within the app.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app accesses the microphone to record audio when users create videos or audio content to upload as posts within the app.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app accesses your photo library so you can select photos and videos to upload as posts or set as your profile image within the app.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>通知を送信します。</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>マイクを使用します。</string>
-	<key>NSCameraUsageDescription</key>
-	<string>カメラを使用します。</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>ネットワークを使用します。</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>フォトライブラリに保存します。</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>フォトライブラリを使用します。</string>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
-	<key>UIStatusBarHidden</key>
-	<false/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
-	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-6754131556002286~8157867553</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>
@@ -264,6 +235,31 @@
 			<key>SKAdNetworkIdentifier</key>
 			<string>3qcr597p9d.skadnetwork</string>
 		</dict>
+	</array>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

@@ -647,6 +647,8 @@ class _HomeScreenState extends State<HomeScreen>
             '📱 [画面遷移] 別画面からホーム画面に戻る: previousIndex=$_lastNavigationIndex');
       }
 
+      _forceStopAndResetMedia();
+
       // 戻ったら現在の投稿を最初から自動再生
       if (!_isDisposed) {
         _handleMediaPageChange(_currentIndex);
@@ -907,6 +909,7 @@ class _HomeScreenState extends State<HomeScreen>
         _schedulePendingTargetCheck();
         return;
       }
+      _forceStopAndResetMedia();
       _pageController.jumpToPage(targetPageIndex);
       if (mounted) {
         setState(() {
