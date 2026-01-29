@@ -347,9 +347,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (mounted) {
+        final sortedPlaylists = List<Playlist>.from(playlists);
+        final spotlightIndex = sortedPlaylists.indexWhere(
+          (playlist) => playlist.title == PlaylistService.spotlightPlaylistTitle,
+        );
+        if (spotlightIndex > 0) {
+          final spotlightPlaylist = sortedPlaylists.removeAt(spotlightIndex);
+          sortedPlaylists.insert(0, spotlightPlaylist);
+        }
+
         setState(() {
-          // 最前の5件までを表示
-          _playlists = playlists.take(5).toList();
+          // 最前の5件までを表示（スポットライトを先頭に固定）
+          _playlists = sortedPlaylists.take(5).toList();
           _isLoadingPlaylists = false;
         });
       }

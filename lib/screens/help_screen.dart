@@ -180,13 +180,13 @@ class HelpScreen extends StatelessWidget {
                 _buildContactItem(
                   icon: Icons.language,
                   label: 'ウェブサイト',
-                  value: 'https://spotlight.app/index.html',
+                  value: 'https://spotlight-app.click/',
                 ),
                 const SizedBox(height: 12),
                 _buildContactItem(
                   icon: Icons.schedule,
                   label: '対応時間',
-                  value: '平日 9:00-18:00',
+                  value: '24時間対応可能',
                 ),
               ],
             ),
