@@ -50,10 +50,13 @@ class _SearchScreenState extends State<SearchScreen> {
 
     try {
       final history = await SearchService.fetchSearchHistory();
+      // 検索されたタイミングの新しい順（上に随時追加）で表示
+      final sorted = List<SearchHistory>.from(history)
+        ..sort((a, b) => b.searchedAt.compareTo(a.searchedAt));
 
       if (!_isDisposed && mounted) {
         setState(() {
-          _searchHistory = history;
+          _searchHistory = sorted;
           _isLoadingHistory = false;
         });
       }
@@ -144,10 +147,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
       if (!_isDisposed && mounted) {
         setState(() {
-          // 検索結果を完全に置き換える（新しい検索の場合は既存の結果をクリア）
           _searchResults = results;
           _isSearching = false;
         });
+        // 検索履歴を再取得して、今回の検索を上に追加した順で表示
+        _fetchSearchHistory();
       }
     } catch (e) {
       if (kDebugMode) {
@@ -188,34 +192,21 @@ class _SearchScreenState extends State<SearchScreen> {
           appBar: AppBar(
             backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 0,
-            toolbarHeight: 60,
-            leadingWidth: 160,
-            leading: SizedBox(
-              height: 45,
-              width: 160,
-              child: RepaintBoundary(
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                  isAntiAlias: true,
-                  cacheWidth: (160 * MediaQuery.of(context).devicePixelRatio).round(),
-                  cacheHeight: (45 * MediaQuery.of(context).devicePixelRatio).round(),
-                  errorBuilder: (context, error, stackTrace) {
-                    // ロゴ画像が見つからない場合は何も表示しない
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
+            toolbarHeight: 56,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                final nav = Provider.of<NavigationProvider>(context, listen: false);
+                nav.setCurrentIndex(0); // ホームタブへ
+              },
+              color: Theme.of(context).iconTheme.color,
             ),
+            title: _buildSearchBar(),
+            titleSpacing: 0,
           ),
           body: SafeArea(
             child: Column(
               children: [
-                // 検索バー
-                _buildSearchBar(),
-
-                // 検索結果または検索履歴・おすすめ
                 Expanded(
                   child: _searchResults.isNotEmpty || _isSearching
                       ? _buildSearchResults()
@@ -229,79 +220,69 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  /// 検索バー（アプリバー内・音声入力なし）。タップでキーボード表示。
   Widget _buildSearchBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          // 検索入力フィールド
-          Expanded(
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.grey[800],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                maxLength: 100,
-                maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                textAlignVertical: TextAlignVertical.center,
-                buildCounter: (
-                  BuildContext context, {
-                  required int currentLength,
-                  required bool isFocused,
-                  int? maxLength,
-                }) =>
-                    null,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyLarge?.color ?? const Color(0xFF2C2C2C),
-                ),
-                decoration: InputDecoration(
-                  hintText: '検索',
-                  hintStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark 
-                        ? Colors.grey[400] 
-                        : Colors.grey[600],
-                  ),
-                  isDense: true,
-                  border: InputBorder.none,
-                  prefixIcon: const Icon(
-                    Icons.search,
+      height: 46,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        borderRadius: BorderRadius.circular(23),
+      ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        maxLength: 100,
+        maxLengthEnforcement: MaxLengthEnforcement.enforced,
+        textAlignVertical: TextAlignVertical.center,
+        keyboardType: TextInputType.text,
+        buildCounter: (
+          BuildContext context, {
+          required int currentLength,
+          required bool isFocused,
+          int? maxLength,
+        }) =>
+            null,
+        style: TextStyle(
+          color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white,
+          fontSize: 18,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Spotlightを検索',
+          hintStyle: TextStyle(
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            fontSize: 18,
+          ),
+          isDense: true,
+          border: InputBorder.none,
+          prefixIcon: null,
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 0,
+            minHeight: 0,
+          ),
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 36,
+            minHeight: 36,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                  icon: const Icon(
+                    Icons.clear,
                     color: Colors.grey,
                     size: 20,
                   ),
-                  prefixIconConstraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  suffixIconConstraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                          },
-                          icon: const Icon(
-                            Icons.clear,
-                            color: Colors.grey,
-                            size: 20,
-                          ),
-                        )
-                      : null,
-                ),
-                onSubmitted: _performSearch,
-              ),
-            ),
-          ),
-        ],
+                )
+              : null,
+        ),
+        onSubmitted: _performSearch,
       ),
     );
   }
@@ -322,39 +303,29 @@ class _SearchScreenState extends State<SearchScreen> {
       return _buildSearchSuggestions();
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 検索履歴
-          if (_searchHistory.isNotEmpty) ...[
-            _buildSectionHeader('最近の検索'),
-            _buildSearchHistoryChips(),
-            const SizedBox(height: 20),
-          ],
+    // 直近の検索を一列リスト表示（サムネイルなし）
+    if (_searchHistory.isEmpty) {
+      return Center(
+        child: Text(
+          '最近の検索はありません',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.6) ?? Colors.grey,
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
 
-          // おすすめ検索
-          _buildSectionHeader('おすすめ検索'),
-          if (_allSuggestions.isEmpty)
-            Padding(
-              // 左詰めで固定（左端の余白を8pxに設定）
-              padding:
-                  const EdgeInsets.only(left: 8, top: 8, bottom: 8, right: 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: const Text(
-                  'おすすめ検索がありません',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            )
-          else
-            _buildSuggestionsChips(),
-        ],
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      itemCount: _searchHistory.length,
+      itemBuilder: (context, index) {
+        final history = _searchHistory[index];
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: _buildSearchHistoryRow(history),
+        );
+      },
     );
   }
 
@@ -627,73 +598,47 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  /// 検索履歴をチップ形式で表示
-  Widget _buildSearchHistoryChips() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: _searchHistory.take(10).map((history) {
-          return _buildHistoryChip(history);
-        }).toList(),
+  /// 検索履歴を1行表示（サムネイルなし・履歴アイコン＋クエリ＋矢印）
+  Widget _buildSearchHistoryRow(SearchHistory history) {
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white;
+    return ListTile(
+      leading: Icon(
+        Icons.history,
+        color: Colors.grey,
+        size: 26,
       ),
-    );
-  }
-
-  Widget _buildHistoryChip(SearchHistory history) {
-    return GestureDetector(
+      title: Text(
+        history.query,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 18,
+        ),
+      ),
+      trailing: IconButton(
+        icon: const Icon(
+          Icons.north_east,
+          color: Colors.grey,
+          size: 20,
+        ),
+        onPressed: () {
+          _searchController.text = history.query;
+          _searchFocusNode.requestFocus();
+        },
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
       onTap: () {
         _searchController.text = history.query;
         _performSearch(history.query);
       },
-      child: Container(
-        margin: const EdgeInsets.only(right: 8, bottom: 8),
-        child: Chip(
-          avatar: const Icon(
-            Icons.history,
-            size: 16,
-            color: Colors.grey,
-          ),
-          label: Text(
-            history.query,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-            ),
-          ),
-          backgroundColor: Colors.grey[800],
-          deleteIcon: const Icon(
-            Icons.close,
-            size: 16,
-            color: Colors.grey,
-          ),
-          onDeleted: () async {
-            // バックエンドから検索履歴を削除
-            final success = await SearchService.deleteSearchHistory(history.id);
-            
-            if (success) {
-              // 削除成功時はローカルのリストからも削除
-              if (mounted) {
-                setState(() {
-                  _searchHistory.remove(history);
-                });
-              }
-            } else {
-              // 削除失敗時はエラーメッセージを表示（オプション）
-              if (kDebugMode) {
-                debugPrint('⚠️ 検索履歴の削除に失敗しました: serchID=${history.id}');
-              }
-              // エラー時もローカルから削除（UIの一貫性のため）
-              if (mounted) {
-                setState(() {
-                  _searchHistory.remove(history);
-                });
-              }
-            }
-          },
-        ),
-      ),
+      onLongPress: () async {
+        final success = await SearchService.deleteSearchHistory(history.id);
+        if (success && mounted) {
+          setState(() {
+            _searchHistory.remove(history);
+          });
+        }
+      },
     );
   }
 

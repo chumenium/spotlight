@@ -13,29 +13,44 @@ class SearchHistory {
   });
 
   factory SearchHistory.fromJson(dynamic json) {
-    // API仕様: 検索履歴は文字列の配列として返される
+    // API仕様: 検索履歴はオブジェクト配列 [{"serchID": 1, "query": "検索ワード"}, ...] で返される（直近順）
     if (json is String) {
       return SearchHistory(
         id: json,
         query: json,
-        searchedAt: DateTime.now().toLocal(), // 履歴には日時情報がないため現在時刻を使用
+        searchedAt: DateTime.now().toLocal(),
         resultCount: null,
       );
     }
 
-    // オブジェクト形式の場合
+    // オブジェクト形式（serchID, query）: 直近順で返るため serchID でソートキーを表現
     if (json is Map<String, dynamic>) {
+      final serchId = json['serchID'];
+      final query = json['query']?.toString() ?? '';
+      final id = serchId?.toString() ?? json['id']?.toString() ?? query;
+      // serchID が大きいほど直近 → searchedAt として扱いフロントのソートで直近が上になる
+      final searchedAt = json['searched_at'] != null
+          ? DateTime.tryParse(json['searched_at'])?.toLocal()
+          : null;
+      final orderTime = searchedAt ??
+          (serchId != null
+              ? DateTime.fromMillisecondsSinceEpoch(0).add(
+                  Duration(
+                    seconds: serchId is int
+                        ? serchId
+                        : (int.tryParse(serchId.toString()) ?? 0),
+                  ),
+                )
+              : DateTime.now().toLocal());
+
       return SearchHistory(
-        id: json['id']?.toString() ?? json['query']?.toString() ?? '',
-        query: json['query']?.toString() ?? json.toString(),
-        searchedAt: json['searched_at'] != null
-            ? DateTime.tryParse(json['searched_at'])?.toLocal() ?? DateTime.now().toLocal()
-            : DateTime.now(),
+        id: id,
+        query: query,
+        searchedAt: orderTime,
         resultCount: json['result_count']?.toString(),
       );
     }
 
-    // フォールバック
     return SearchHistory(
       id: json.toString(),
       query: json.toString(),
