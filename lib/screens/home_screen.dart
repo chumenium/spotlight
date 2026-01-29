@@ -98,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen>
   Timer? _seekBarUpdateTimerAudio;
   Timer? _loadMoreRetryTimer;
   Timer? _tapSuppressionTimer;
+  Timer? _pendingTargetRetryTimer;
   bool _isRouteObserverSubscribed = false;
 
   // リアルタイム更新関連（段階12）
@@ -123,6 +124,8 @@ class _HomeScreenState extends State<HomeScreen>
   int? _scrollStartIndex;
   bool _isPageScrolling = false;
   int _mediaResetToken = 0;
+  int _pendingTargetRetryCount = 0;
+  static const int _maxPendingTargetRetryCount = 25;
   bool _resumeVideoAfterLongPress = false;
   bool _resumeAudioAfterLongPress = false;
   int? _longPressMediaToken;
@@ -598,6 +601,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (targetPostId != null) {
       final hasTargetInList = _posts.any((post) => post.id == targetPostId);
+      final existingTargetPost = hasTargetInList
+          ? _posts.firstWhere((post) => post.id == targetPostId)
+          : null;
+      final shouldFetchDetail =
+          _needsPostDetailFetch(existingTargetPost ?? targetPost);
       if (targetPostId != _pendingTargetPostId || !hasTargetInList) {
         _pendingTargetPostId = targetPostId;
         // targetPostが挿入された場合は、API呼び出しをスキップ
@@ -606,23 +614,23 @@ class _HomeScreenState extends State<HomeScreen>
           debugPrint(
               '📱 [didChangeDependencies] _insertProviderPostIfNeeded結果: inserted=$inserted');
         }
-        if (!inserted && !hasTargetInList) {
-          // targetPostが挿入されず、一覧にも存在しない場合のみAPIから取得
+        if ((!inserted && !hasTargetInList) || shouldFetchDetail) {
+          // targetPostが未取得、または詳細不足の場合はAPIから取得
           if (kDebugMode) {
             debugPrint(
-                '📱 [didChangeDependencies] targetPostが未取得のため、APIから取得を試みます: postId=$targetPostId');
+                '📱 [didChangeDependencies] targetPostをAPIから取得します: postId=$targetPostId');
           }
           _fetchTargetPost(targetPostId);
         } else {
           if (kDebugMode) {
             debugPrint(
-                '📱 [didChangeDependencies] targetPostが既に存在または挿入済みのため、API呼び出しをスキップします');
+                '📱 [didChangeDependencies] targetPostが既に存在/十分なため、API呼び出しをスキップします');
           }
         }
         _schedulePendingTargetCheck();
       }
     }
-    _tryJumpToPendingTarget();
+    _startPendingTargetRetries();
   }
 
   /// 画面遷移時のメディア再生制御
@@ -741,7 +749,24 @@ class _HomeScreenState extends State<HomeScreen>
   void _schedulePendingTargetCheck() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isDisposed) return;
-      _tryJumpToPendingTarget();
+      _startPendingTargetRetries();
+    });
+  }
+
+  void _startPendingTargetRetries() {
+    _pendingTargetRetryTimer?.cancel();
+    _pendingTargetRetryCount = 0;
+    _pendingTargetRetryTimer =
+        Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      if (_isDisposed) {
+        timer.cancel();
+        return;
+      }
+      final succeeded = _tryJumpToPendingTarget();
+      _pendingTargetRetryCount++;
+      if (succeeded || _pendingTargetRetryCount >= _maxPendingTargetRetryCount) {
+        timer.cancel();
+      }
     });
   }
 
@@ -858,6 +883,14 @@ class _HomeScreenState extends State<HomeScreen>
     return true;
   }
 
+  bool _needsPostDetailFetch(Post? post) {
+    if (post == null) return true;
+    if (post.isText) return false;
+    final hasMedia = (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) ||
+        (post.contentPath != null && post.contentPath!.isNotEmpty);
+    return !hasMedia;
+  }
+
   Future<void> _fetchTargetPost(String postId) async {
     if (_isFetchingTargetPost) return;
     _isFetchingTargetPost = true;
@@ -898,27 +931,33 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _tryJumpToPendingTarget() {
-    if (_pendingTargetPostId == null || _posts.isEmpty || _isDisposed) return;
+  bool _tryJumpToPendingTarget() {
+    if (_pendingTargetPostId == null || _posts.isEmpty || _isDisposed) {
+      return false;
+    }
     final targetPostId = _pendingTargetPostId;
     final targetPostIndex =
         _posts.indexWhere((post) => post.id == targetPostId);
-    if (targetPostIndex < 0 || targetPostIndex >= _posts.length) return;
+    if (targetPostIndex < 0 || targetPostIndex >= _posts.length) {
+      return false;
+    }
     final targetPageIndex = _getPageIndexForPostId(targetPostId);
-    if (targetPageIndex == null) return;
+    if (targetPageIndex == null) {
+      return false;
+    }
 
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
     final shouldOpenComments = navigationProvider.shouldOpenComments;
     final targetCommentId = navigationProvider.targetCommentId;
 
+    if (!_pageController.hasClients) {
+      return false;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isDisposed || !mounted) return;
       if (targetPostIndex >= _posts.length) return;
-      if (!_pageController.hasClients) {
-        _schedulePendingTargetCheck();
-        return;
-      }
       _forceStopAndResetMedia();
       _pageController.jumpToPage(targetPageIndex);
       if (mounted) {
@@ -949,6 +988,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     });
+    return true;
   }
 
   /// インデックス0 などで投稿を挿入した際にメディア管理マップを再インデックス
