@@ -14,6 +14,7 @@ class BlurAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Color? backgroundColor;
   final Color? foregroundColor;
   final bool? automaticallyImplyLeading;
+  final double? titleSpacing;
 
   const BlurAppBar({
     super.key,
@@ -28,6 +29,7 @@ class BlurAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.backgroundColor,
     this.foregroundColor,
     this.automaticallyImplyLeading,
+    this.titleSpacing,
   });
 
   @override
@@ -53,6 +55,7 @@ class BlurAppBar extends StatelessWidget implements PreferredSizeWidget {
       leading: leading,
       leadingWidth: leadingWidth,
       actions: actions,
+      titleSpacing: titleSpacing,
       toolbarHeight: toolbarHeight,
       bottom: bottom,
       elevation: elevation ?? 0,
