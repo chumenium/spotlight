@@ -606,7 +606,9 @@ class _HomeScreenState extends State<HomeScreen>
           : null;
       final shouldFetchDetail =
           _needsPostDetailFetch(existingTargetPost ?? targetPost);
-      if (targetPostId != _pendingTargetPostId || !hasTargetInList) {
+      if (targetPostId != _pendingTargetPostId ||
+          !hasTargetInList ||
+          shouldFetchDetail) {
         _pendingTargetPostId = targetPostId;
         // targetPostが挿入された場合は、API呼び出しをスキップ
         final inserted = _insertProviderPostIfNeeded(targetPostId);
@@ -628,6 +630,8 @@ class _HomeScreenState extends State<HomeScreen>
           }
         }
         _schedulePendingTargetCheck();
+      } else if (_pendingTargetPostId != null) {
+        _startPendingTargetRetries();
       }
     }
     _startPendingTargetRetries();
