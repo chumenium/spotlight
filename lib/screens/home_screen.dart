@@ -892,10 +892,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _tryJumpToPendingTarget() {
     if (_pendingTargetPostId == null || _posts.isEmpty || _isDisposed) return;
+    final targetPostId = _pendingTargetPostId;
     final targetPostIndex =
-        _posts.indexWhere((post) => post.id == _pendingTargetPostId);
+        _posts.indexWhere((post) => post.id == targetPostId);
     if (targetPostIndex < 0 || targetPostIndex >= _posts.length) return;
-    final targetPageIndex = _getPageIndexForPostIndex(targetPostIndex);
+    final targetPageIndex = _getPageIndexForPostId(targetPostId);
+    if (targetPageIndex == null) return;
 
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
@@ -1340,6 +1342,23 @@ class _HomeScreenState extends State<HomeScreen>
     if (postIndex <= 0) return 0;
     final adCountBeforePost = postIndex ~/ _adInterval;
     return postIndex + adCountBeforePost;
+  }
+
+  int? _getPageIndexForPostId(String? postId) {
+    if (postId == null || postId.isEmpty) return null;
+    if (_posts.isEmpty) return null;
+    final targetIndex = _posts.indexWhere((post) => post.id == postId);
+    if (targetIndex < 0) return null;
+
+    final maxPageIndex = _posts.length + _calculateAdCount(_posts.length) - 1;
+    for (var pageIndex = 0; pageIndex <= maxPageIndex; pageIndex++) {
+      final actualIndex = _getActualPostIndex(pageIndex);
+      if (actualIndex == targetIndex) {
+        return pageIndex;
+      }
+    }
+
+    return _getPageIndexForPostIndex(targetIndex);
   }
 
   /// 指定されたインデックスより前にある広告の数を計算
