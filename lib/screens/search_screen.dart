@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/search_history.dart';
 import '../models/post.dart';
 import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
-import '../widgets/blur_app_bar.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -190,7 +190,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          appBar: BlurAppBar(
+          appBar: AppBar(
             backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 0,
             toolbarHeight: 56,
@@ -393,14 +393,14 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    // TikTok風のタイル表示（グリッドレイアウト）
+    // サムネイル＋下にメタデータ（参考画像レイアウト）
     return GridView.builder(
       padding: const EdgeInsets.all(2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2, // 2列のグリッド
+        crossAxisCount: 2,
         crossAxisSpacing: 2,
         mainAxisSpacing: 2,
-        childAspectRatio: 0.75, // 縦長のタイル
+        childAspectRatio: 0.58, // サムネイル＋下のメタデータ行の高さ
       ),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
@@ -410,145 +410,203 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  /// TikTok風のタイル表示
+  /// 投稿日時を端末のローカル時刻に変換（Post.createdAt は UTC で保持されている前提）
+  DateTime _postTimeLocal(Post post) {
+    return post.createdAt.toLocal();
+  }
+
+  /// 投稿日時を相対表示（視聴履歴画面と同じロジック：.toLocal() 済みのローカル時刻で算出）
+  String _formatRelativeTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}日前';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}時間前';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}分前';
+    } else {
+      return 'たった今';
+    }
+  }
+
+  /// 再生回数を表示用にフォーマット（1.8万 など）
+  String _formatPlayCount(int playNum) {
+    if (playNum >= 10000) {
+      return '${(playNum / 10000).toStringAsFixed(1)}万';
+    }
+    return playNum.toString();
+  }
+
+  /// 投稿者のアイコン表示（URLがあればネットワーク画像、なければプレースホルダー）
+  Widget _buildUserIcon(Post post, Color placeholderColor) {
+    final iconUrl = post.userIconUrl;
+    if (iconUrl != null && iconUrl.isNotEmpty) {
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: iconUrl,
+          fit: BoxFit.cover,
+          width: 28,
+          height: 28,
+          errorWidget: (_, __, ___) => Icon(
+            Icons.person,
+            size: 20,
+            color: placeholderColor,
+          ),
+        ),
+      );
+    }
+    return Icon(
+      Icons.person,
+      size: 20,
+      color: placeholderColor,
+    );
+  }
+
+  /// 検索結果タイル：サムネイル内にタイトルのみ、メタデータはサムネイルの下（参考画像レイアウト）
   Widget _buildSearchResultTile(Post post) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final overlayTextColor =
         isDark ? Colors.white : const Color(0xFF1A1A1A);
-    final overlaySecondaryTextColor =
-        isDark ? Colors.white70 : const Color(0xFF5A5A5A);
     final overlayEndColor = isDark
         ? Colors.black.withOpacity(0.8)
         : SpotLightColors.peach.withOpacity(0.9);
+    final metaTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final metaSecondaryColor =
+        isDark ? Colors.white70 : const Color(0xFF5A5A5A);
     final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
 
     return GestureDetector(
       onTap: () {
-        // ホーム画面に遷移して投稿を再生
         if (kDebugMode) {
           debugPrint('🔍 検索結果タップ: ${post.id} - ${post.title}');
         }
         _navigateToPost(post);
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark
-              ? Colors.grey[900]
-              : SpotLightColors.peach.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // サムネイル画像
-            if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  thumbnailUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Colors.grey[800],
-                      child: const Center(
-                        child: Icon(
-                          Icons.image,
-                          color: Colors.grey,
-                          size: 32,
-                        ),
-                      ),
-                    );
-                  },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // サムネイル（内側にタイトルのみオーバーレイ）
+          Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
                 ),
-              )
-            else
-              Container(
-                color: Colors.grey[800],
-                child: const Center(
-                  child: Icon(
-                    Icons.image,
-                    color: Colors.grey,
-                    size: 32,
-                  ),
-                ),
-              ),
-
-            // グラデーションオーバーレイ（下部）
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(4),
-                    bottomRight: Radius.circular(4),
-                  ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      overlayEndColor,
-                    ],
-                  ),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    // タイトル
-                    Text(
-                      post.title,
-                      style: TextStyle(
-                        color: overlayTextColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    // 統計情報
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.flashlight_on,
-                          size: 12,
-                          color: SpotLightColors.getSpotlightColor(0),
+                    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+                      Image.network(
+                        thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[800],
+                            child: const Center(
+                              child: Icon(
+                                Icons.image,
+                                color: Colors.grey,
+                                size: 32,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      Container(
+                        color: Colors.grey[800],
+                        child: const Center(
+                          child: Icon(
+                            Icons.image,
+                            color: Colors.grey,
+                            size: 32,
+                          ),
                         ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${post.likes}',
+                      ),
+                    // タイトルのみサムネイル内に表示
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              overlayEndColor,
+                            ],
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          post.title,
                           style: TextStyle(
                             color: overlayTextColor,
-                            fontSize: 10,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.play_circle_outline,
-                          size: 12,
-                          color: overlaySecondaryTextColor,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${post.playNum}',
-                          style: TextStyle(
-                            color: overlaySecondaryTextColor,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
+            // サムネイルの下：左にアイコン、右にユーザー名／回視聴・投稿日時（参考画像レイアウト）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 左：円形アイコン
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                    child: _buildUserIcon(post, metaSecondaryColor),
+                  ),
+                  const SizedBox(width: 8),
+                  // 右：ユーザー名＋回視聴・投稿日時（2行）
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          post.username.isNotEmpty
+                              ? post.username
+                              : 'ユーザー',
+                          style: TextStyle(
+                            color: metaTextColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_formatPlayCount(post.playNum)} 回視聴・${_formatRelativeTime(_postTimeLocal(post))}',
+                          style: TextStyle(
+                            color: metaSecondaryColor,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
     );
   }
 
@@ -570,12 +628,8 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    // ホーム画面に遷移して投稿IDと投稿データを設定
-    navigationProvider.navigateToHome(
-      postId: post.id,
-      postTitle: post.title,
-      post: post,
-    );
+    // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
+    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
 
     if (kDebugMode) {
       debugPrint(
@@ -616,7 +670,7 @@ class _SearchScreenState extends State<SearchScreen> {
         history.query,
         style: TextStyle(
           color: textColor,
-          fontSize: 18,
+          fontSize: 14,
         ),
       ),
       trailing: IconButton(

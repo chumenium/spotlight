@@ -509,21 +509,22 @@ class Post {
       isText: isTextFlag,
       nextContentId: nextContentIdStr,
       createdAt: () {
-        final timestampStr = json['posttimestamp'] as String? ?? '';
-        if (timestampStr.isEmpty) {
-          return DateTime.now();
+        final raw = json['posttimestamp'];
+        if (raw == null) return DateTime.now();
+        final timestampStr = raw is String ? raw : raw.toString();
+        if (timestampStr.isEmpty) return DateTime.now();
+
+        // 視聴履歴API・検索APIは "YYYY-MM-DD HH:MM:SS" で返す。Dartのパース用に T に置換してから Z を付与
+        String normalized = timestampStr.trim();
+        if (normalized.length > 10 && normalized[10] == ' ') {
+          normalized = '${normalized.substring(0, 10)}T${normalized.substring(11)}';
         }
-        // バックエンドから来るデータはUTCとして扱う
-        // タイムゾーン情報がない場合は、'Z'を追加してUTCとして明示的にパース
-        final hasTimezone = timestampStr.endsWith('Z') ||
-            timestampStr.contains('+') ||
-            (timestampStr.length > 10 &&
-                timestampStr[10] == '-' &&
-                timestampStr.contains('T'));
-        final normalizedTimestamp =
-            hasTimezone ? timestampStr : '${timestampStr}Z';
-        final parsed = DateTime.tryParse(normalizedTimestamp);
-        // UTCとして解釈されたDateTimeを返す（表示時に.toLocal()でローカルタイムに変換）
+        final hasTimezone = normalized.endsWith('Z') || normalized.contains('+');
+        if (!hasTimezone) {
+          normalized = '$normalized';
+        }
+        final parsed = DateTime.tryParse(normalized);
+        // UTC として保持。表示時は必ず .toLocal() でローカル時刻に変換すること（視聴履歴画面と同様）
         return parsed ?? DateTime.now();
       }(),
     );

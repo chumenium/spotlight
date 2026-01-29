@@ -124,19 +124,17 @@ class SearchService {
             }
             
             // APIレスポンスのフィールド名をPost.fromJsonが期待する形式に変換
-            // 検索結果にはthumbnailurlしか含まれないため、contentpathは空にする
-            // 実際のコンテンツはPostService.fetchPostDetailで取得する
             final postData = <String, dynamic>{
-              'contentID': contentIdStr, // 文字列として設定
+              'contentID': contentIdStr,
               'title': item['title'] ?? '',
-              'contentpath': '', // 検索結果には含まれないため空にする
-              'thumbnailpath': item['thumbnailurl'] ?? '', // 検索結果ではthumbnailurlがthumbnailpath
+              'contentpath': '',
+              'thumbnailpath': item['thumbnailurl'] ?? '',
               'spotlightnum': item['spotlightnum'] ?? 0,
               'playnum': item['playnum'] ?? 0,
               'posttimestamp': item['posttimestamp'] ?? DateTime.now().toIso8601String(),
               'link': item['link'],
-              'username': '', // 検索結果には含まれない
-              'iconimgpath': '', // 検索結果には含まれない
+              'username': item['username'] ?? '',
+              'iconimgpath': item['iconimgpath'] ?? '',
               'spotlightflag': false,
               'textflag': false,
             };
