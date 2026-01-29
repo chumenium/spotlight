@@ -11,6 +11,7 @@ import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
 import '../services/share_link_service.dart';
+import '../widgets/blur_app_bar.dart';
 
 /// プレイリスト詳細画面
 /// API仕様書（API_ENDPOINTS.md 135-156行目）に基づいて実装
@@ -244,7 +245,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         title: Text(widget.playlistTitle),
         elevation: 0,

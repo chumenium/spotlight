@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
@@ -122,6 +123,10 @@ class _HomeScreenState extends State<HomeScreen>
   int? _scrollStartIndex;
   bool _isPageScrolling = false;
   int _mediaResetToken = 0;
+  bool _resumeVideoAfterLongPress = false;
+  bool _resumeAudioAfterLongPress = false;
+  int? _longPressMediaToken;
+  bool _isLongPressHolding = false;
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
@@ -591,28 +596,31 @@ class _HomeScreenState extends State<HomeScreen>
           '📱 [didChangeDependencies] targetPostId=$targetPostId, targetPost=${targetPost != null ? "存在(Id: ${targetPost.id})" : "null"}, _pendingTargetPostId=$_pendingTargetPostId');
     }
 
-    if (targetPostId != null && targetPostId != _pendingTargetPostId) {
-      _pendingTargetPostId = targetPostId;
-      // targetPostが挿入された場合は、API呼び出しをスキップ
-      final inserted = _insertProviderPostIfNeeded(targetPostId);
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [didChangeDependencies] _insertProviderPostIfNeeded結果: inserted=$inserted');
-      }
-      if (!inserted) {
-        // targetPostが挿入されなかった場合のみ、APIから取得を試みる
+    if (targetPostId != null) {
+      final hasTargetInList = _posts.any((post) => post.id == targetPostId);
+      if (targetPostId != _pendingTargetPostId || !hasTargetInList) {
+        _pendingTargetPostId = targetPostId;
+        // targetPostが挿入された場合は、API呼び出しをスキップ
+        final inserted = _insertProviderPostIfNeeded(targetPostId);
         if (kDebugMode) {
           debugPrint(
-              '📱 [didChangeDependencies] targetPostが挿入されなかったため、APIから取得を試みます: postId=$targetPostId');
+              '📱 [didChangeDependencies] _insertProviderPostIfNeeded結果: inserted=$inserted');
         }
-        _fetchTargetPost(targetPostId);
-      } else {
-        if (kDebugMode) {
-          debugPrint(
-              '📱 [didChangeDependencies] targetPostが挿入されたため、API呼び出しをスキップします');
+        if (!inserted && !hasTargetInList) {
+          // targetPostが挿入されず、一覧にも存在しない場合のみAPIから取得
+          if (kDebugMode) {
+            debugPrint(
+                '📱 [didChangeDependencies] targetPostが未取得のため、APIから取得を試みます: postId=$targetPostId');
+          }
+          _fetchTargetPost(targetPostId);
+        } else {
+          if (kDebugMode) {
+            debugPrint(
+                '📱 [didChangeDependencies] targetPostが既に存在または挿入済みのため、API呼び出しをスキップします');
+          }
         }
+        _schedulePendingTargetCheck();
       }
-      _schedulePendingTargetCheck();
     }
     _tryJumpToPendingTarget();
   }
@@ -1907,11 +1915,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return false; // 通知を下に伝播させる
       },
-      child: Listener(
-        onPointerDown: (_) {
-          _forceStopAndResetMedia();
-        },
-        child: PageView.builder(
+      child: PageView.builder(
           controller: _pageController,
           scrollDirection: Axis.vertical,
           itemCount: itemCount,
@@ -1941,7 +1945,6 @@ class _HomeScreenState extends State<HomeScreen>
             return _buildPostItem(post, postIndex);
           },
         ),
-      ),
     );
   }
 
@@ -1988,7 +1991,20 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 投稿アイテムを構築（段階4: 動画コンテンツ表示を追加、段階7: 上スワイプジェスチャー対応）
   Widget _buildPostItem(Post post, int index) {
-    return GestureDetector(
+    return RawGestureDetector(
+      behavior: HitTestBehavior.translucent,
+      gestures: {
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(
+              duration: const Duration(milliseconds: 220)),
+          (instance) {
+            instance.onLongPressStart = (_) => _pauseMediaForLongPress(index);
+            instance.onLongPressEnd = (_) => _resumeMediaAfterLongPress(index);
+            instance.onLongPressCancel = () => _resumeMediaAfterLongPress(index);
+          },
+        ),
+      },
       child: Container(
         color: Colors.black,
         child: Stack(
@@ -2037,6 +2053,77 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  void _pauseMediaForLongPress(int index) {
+    final currentPostIndex = _getActualPostIndex(_currentIndex);
+    if (currentPostIndex != index) return;
+    _isLongPressHolding = true;
+    _resumeVideoAfterLongPress = false;
+    _resumeAudioAfterLongPress = false;
+    _longPressMediaToken = _mediaResetToken;
+
+    final playingVideoIndex = _currentPlayingVideo;
+    if (playingVideoIndex != null) {
+      final controller = _videoControllers[playingVideoIndex];
+      if (controller != null &&
+          controller.value.isInitialized &&
+          controller.value.isPlaying) {
+        controller.pause();
+        _resumeVideoAfterLongPress = true;
+      }
+    }
+
+    final playingAudioIndex = _currentPlayingAudio;
+    if (playingAudioIndex != null) {
+      final player = _audioPlayers[playingAudioIndex];
+      if (player != null && player.playing) {
+        player.pause();
+        _resumeAudioAfterLongPress = true;
+      }
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _resumeMediaAfterLongPress(int index) {
+    final currentPostIndex = _getActualPostIndex(_currentIndex);
+    if (currentPostIndex != index) return;
+    if (_longPressMediaToken != _mediaResetToken) {
+      _isLongPressHolding = false;
+      _resumeVideoAfterLongPress = false;
+      _resumeAudioAfterLongPress = false;
+      return;
+    }
+
+    if (_resumeVideoAfterLongPress) {
+      final playingVideoIndex = _currentPlayingVideo;
+      final controller =
+          playingVideoIndex != null ? _videoControllers[playingVideoIndex] : null;
+      if (controller != null && controller.value.isInitialized) {
+        controller.play();
+      }
+    }
+
+    if (_resumeAudioAfterLongPress) {
+      final playingAudioIndex = _currentPlayingAudio;
+      final player =
+          playingAudioIndex != null ? _audioPlayers[playingAudioIndex] : null;
+      if (player != null) {
+        player.play();
+      }
+    }
+
+    _resumeVideoAfterLongPress = false;
+    _resumeAudioAfterLongPress = false;
+    _longPressMediaToken = null;
+    _isLongPressHolding = false;
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// 投稿コンテンツを構築（段階4-6: 動画・音声・画像・テキスト対応）
@@ -2100,14 +2187,14 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-              // 再生/一時停止ボタン（オーバーレイ）- 再生中は非表示
+              // 停止中のアイコン（オーバーレイ）- 再生中は非表示
               if (!isPlaying)
                 Container(
                   color: Colors.black.withOpacity(0.3),
                   child: Center(
                     child: Icon(
-                      Icons.play_circle_filled,
-                      size: 64,
+                      Icons.pause_rounded,
+                      size: 72,
                       color: Colors.white.withOpacity(0.9),
                     ),
                   ),

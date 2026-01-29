@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 
 /// ユーザー詳細画面（管理者用）
 class UserDetailScreen extends StatefulWidget {
@@ -144,7 +145,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
+import '../widgets/blur_app_bar.dart';
 import 'dart:async';
 
 class NotificationsScreen extends StatefulWidget {
@@ -87,7 +88,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          appBar: AppBar(
+          appBar: BlurAppBar(
             backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 0,
             toolbarHeight: 60,

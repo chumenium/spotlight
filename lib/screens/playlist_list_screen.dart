@@ -7,6 +7,7 @@ import '../services/share_link_service.dart';
 import '../config/app_config.dart';
 import '../widgets/robust_network_image.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 import 'playlist_detail_screen.dart';
 
 class PlaylistListScreen extends StatefulWidget {
@@ -157,7 +158,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         isDark ? Colors.white : const Color(0xFF5A5A5A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         title: const Text('再生リスト'),
         elevation: 0,

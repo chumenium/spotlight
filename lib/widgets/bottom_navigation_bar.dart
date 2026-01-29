@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
 
@@ -15,74 +17,87 @@ class CustomBottomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const double glassOpacityPercent = 6;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final glassOpacity = glassOpacityPercent / 100;
+    final blurColor = Color.fromRGBO(255, 255, 255, glassOpacity);
+
     return SizedBox(
       height: 80,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Expanded(
-                  child: _buildNavItem(
-                    context: context,
-                    icon: Icons.flashlight_on_outlined,
-                    activeIcon: Icons.flashlight_on,
-                    index: 0,
-                  ),
-                ),
-                Expanded(
-                  child: _buildNavItem(
-                    context: context,
-                    icon: Icons.search_outlined,
-                    activeIcon: Icons.search,
-                    index: 1,
-                  ),
-                ),
-                Expanded(
-                  child: _buildNavItem(
-                    context: context,
-                    icon: Icons.add_outlined,
-                    activeIcon: Icons.add_circle_sharp,
-                    index: 2,
-                    isCenter: true,
-                  ),
-                ),
-                Expanded(
-                  child: _buildNavItem(
-                    context: context,
-                    icon: Icons.notifications_outlined,
-                    activeIcon: Icons.notifications,
-                    index: 3,
-                  ),
-                ),
-                Expanded(
-                  child: _buildNavItem(
-                    context: context,
-                    icon: Icons.person_outline,
-                    activeIcon: Icons.person,
-                    index: 4,
-                  ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: blurColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
                 ),
               ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: _buildNavItem(
+                        context: context,
+                        icon: Icons.flashlight_on_outlined,
+                        activeIcon: Icons.flashlight_on,
+                        index: 0,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildNavItem(
+                        context: context,
+                        icon: Icons.search_outlined,
+                        activeIcon: Icons.search,
+                        index: 1,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildNavItem(
+                        context: context,
+                        icon: Icons.add_outlined,
+                        activeIcon: Icons.add_circle_sharp,
+                        index: 2,
+                        isCenter: true,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildNavItem(
+                        context: context,
+                        icon: Icons.notifications_outlined,
+                        activeIcon: Icons.notifications,
+                        index: 3,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildNavItem(
+                        context: context,
+                        icon: Icons.person_outline,
+                        activeIcon: Icons.person,
+                        index: 4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

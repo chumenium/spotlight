@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
@@ -9,7 +10,7 @@ class HelpScreen extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

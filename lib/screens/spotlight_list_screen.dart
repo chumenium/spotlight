@@ -10,6 +10,7 @@ import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../services/playlist_service.dart';
 import '../services/share_link_service.dart';
+import '../widgets/blur_app_bar.dart';
 
 class SpotlightListScreen extends StatefulWidget {
   const SpotlightListScreen({super.key});
@@ -88,7 +89,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
         isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         title: const Text('自分の投稿'),
         elevation: 0,

@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import '../widgets/blur_app_bar.dart';
 import 'dart:io' show File, Directory, Platform;
 import 'dart:async';
 import 'dart:ui';
@@ -861,7 +862,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 0,
         title: Text(

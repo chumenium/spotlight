@@ -4,6 +4,7 @@ import 'user_management_screen.dart';
 import 'report_management_screen.dart';
 import 'post_management_screen.dart';
 import 'admin_notification_screen.dart';
+import '../widgets/blur_app_bar.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -13,7 +14,7 @@ class AdminScreen extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

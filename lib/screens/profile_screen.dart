@@ -19,6 +19,7 @@ import 'settings_screen.dart';
 import 'blocked_users_screen.dart';
 import 'profile_edit_screen.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
@@ -517,7 +518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         toolbarHeight: 60,

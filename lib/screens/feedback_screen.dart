@@ -6,6 +6,7 @@ import '../config/app_config.dart';
 import '../services/jwt_service.dart';
 import '../auth/auth_provider.dart';
 import 'package:provider/provider.dart';
+import '../widgets/blur_app_bar.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -156,7 +157,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

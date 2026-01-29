@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/user_service.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 
 /// ブロックしたユーザー一覧画面
 class BlockedUsersScreen extends StatefulWidget {
@@ -82,7 +83,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
+      appBar: BlurAppBar(
         title: const Text('ブロックしたユーザー'),
         backgroundColor: theme.appBarTheme.backgroundColor,
       ),

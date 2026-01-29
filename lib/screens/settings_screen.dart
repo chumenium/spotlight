@@ -9,6 +9,7 @@ import '../services/post_service.dart';
 import '../services/search_service.dart';
 import 'profile_edit_screen.dart';
 import 'tutorial_screen.dart';
+import '../widgets/blur_app_bar.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 class SettingsScreen extends StatefulWidget {
@@ -24,7 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

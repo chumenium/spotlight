@@ -7,6 +7,7 @@ import '../models/post.dart';
 import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
+import '../widgets/blur_app_bar.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -189,7 +190,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          appBar: AppBar(
+          appBar: BlurAppBar(
             backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 0,
             toolbarHeight: 56,
@@ -569,8 +570,12 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
-    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
+    // ホーム画面に遷移して投稿IDと投稿データを設定
+    navigationProvider.navigateToHome(
+      postId: post.id,
+      postTitle: post.title,
+      post: post,
+    );
 
     if (kDebugMode) {
       debugPrint(

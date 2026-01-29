@@ -5,6 +5,7 @@ import '../services/admin_service.dart';
 import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import 'user_detail_screen.dart';
+import '../widgets/blur_app_bar.dart';
 
 /// ユーザー管理画面
 class UserManagementScreen extends StatefulWidget {
@@ -96,7 +97,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

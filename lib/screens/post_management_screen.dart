@@ -4,6 +4,7 @@ import '../services/admin_service.dart';
 import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/blur_app_bar.dart';
 
 /// 投稿管理画面（管理者用）
 class PostManagementScreen extends StatefulWidget {
@@ -243,7 +244,7 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

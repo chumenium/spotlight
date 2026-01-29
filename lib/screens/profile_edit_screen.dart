@@ -7,6 +7,7 @@ import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../services/jwt_service.dart';
 import '../config/app_config.dart';
+import '../widgets/blur_app_bar.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -212,7 +213,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

@@ -228,11 +228,11 @@ class ThemeProvider with ChangeNotifier {
         brightness: Brightness.dark,
       ),
       scaffoldBackgroundColor: const Color(0xFF121212),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1E1E1E),
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFF1E1E1E),
         foregroundColor: Colors.white,
         elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle(
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
           statusBarBrightness: Brightness.dark,

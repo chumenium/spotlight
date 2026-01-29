@@ -9,6 +9,7 @@ import '../config/app_config.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
+import '../widgets/blur_app_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -293,7 +294,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(

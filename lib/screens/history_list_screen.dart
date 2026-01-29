@@ -7,6 +7,7 @@ import '../services/playlist_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/blur_app_bar.dart';
 
 class HistoryListScreen extends StatefulWidget {
   const HistoryListScreen({super.key});
@@ -157,7 +158,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
         isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
+      appBar: BlurAppBar(
         backgroundColor: theme.appBarTheme.backgroundColor,
         title: const Text('視聴履歴'),
         elevation: 0,
