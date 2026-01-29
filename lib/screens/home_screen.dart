@@ -708,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 画面遷移・スクロール時に強制停止と初期化
   void _forceStopAndResetMedia() {
-    _stopAndDisposeAllMedia();
+    _stopAndResetAllMedia();
     _mediaResetToken++;
     _isSeeking = false;
     _isSeekingAudio = false;
@@ -2040,46 +2040,12 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 動画が初期化されていない場合
     if (controller == null || !_initializedVideos.contains(index)) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(
-              color: Color(0xFFFF6B35),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '動画を読み込み中...',
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildVideoLoadingPlaceholder(post, '動画を読み込み中...');
     }
 
     // 動画プレイヤーを表示
     if (!controller.value.isInitialized) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(
-              color: Color(0xFFFF6B35),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '動画を初期化中...',
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildVideoLoadingPlaceholder(post, '動画を初期化中...');
     }
 
     // 動画の再生状態を監視してUIを更新（逆スクロール時も正しく表示）
@@ -2131,6 +2097,46 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildVideoLoadingPlaceholder(Post post, String message) {
+    final thumbnailUrl = post.thumbnailUrl;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+          CachedNetworkImage(
+            imageUrl: thumbnailUrl,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(color: Colors.black),
+            errorWidget: (context, url, error) =>
+                Container(color: Colors.black),
+          )
+        else
+          Container(color: Colors.black),
+        Container(
+          color: Colors.black.withOpacity(0.4),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xFFFF6B35),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

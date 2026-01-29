@@ -51,11 +51,14 @@ class PostService {
         // }
         return null;
       }
+      if (kDebugMode) {
+        debugPrint('📝 JWTトークン: $jwtToken');
+      }
 
-      final url = '${AppConfig.apiBaseUrl}/content/add';
-
+      final primaryUrl = '${AppConfig.postApiBaseUrl}/content/add';
+      final fallbackUrl = '${AppConfig.backendUrl}/content/add';
       // if (kDebugMode) {
-      //   debugPrint('📝 最小投稿URL: $url');
+      //   debugPrint('📝 最小投稿URL: $url');ƒƒ
       // }
 
       final Map<String, dynamic> body = {
@@ -67,7 +70,7 @@ class PostService {
       }
 
       final response = await http.post(
-        Uri.parse(url),
+        Uri.parse(primaryUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwtToken',
@@ -75,7 +78,23 @@ class PostService {
         body: jsonEncode(body),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 403 || response.statusCode == 404) {
+        final fallback = await http.post(
+          Uri.parse(fallbackUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $jwtToken',
+          },
+          body: jsonEncode(body),
+        );
+        if (fallback.statusCode == 200) {
+          final responseData = jsonDecode(fallback.body);
+          if (responseData['status'] == 'success') {
+            return responseData['data'];
+          }
+        }
+
+      } else if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         // if (kDebugMode) {
         //   debugPrint('📝 最小投稿レスポンス: ${responseData.toString()}');
@@ -1313,11 +1332,15 @@ class PostService {
         }
         throw Exception('JWTトークンが取得できません');
       }
+      if (kDebugMode) {
+        debugPrint('📝 JWTトークン: $jwtToken');
+      }
 
-      final url = '${AppConfig.apiBaseUrl}/content/add';
+      final primaryUrl = '${AppConfig.postApiBaseUrl}/content/add';
+      final fallbackUrl = '${AppConfig.backendUrl}/content/add';
 
       if (kDebugMode) {
-        debugPrint('📝 投稿作成URL: $url');
+        debugPrint('📝 投稿作成URL: $primaryUrl');
       }
 
       // リクエストボディ作成
@@ -1406,9 +1429,9 @@ class PostService {
       // 大きなファイルを送信するためのHTTPクライアント設定
       final client = http.Client();
       try {
-        final response = await client
+        var response = await client
             .post(
-          Uri.parse(url),
+          Uri.parse(primaryUrl),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $jwtToken',
@@ -1424,6 +1447,27 @@ class PostService {
             );
           },
         );
+
+        if (response.statusCode == 403 || response.statusCode == 404) {
+          response = await client
+              .post(
+            Uri.parse(fallbackUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $jwtToken',
+            },
+            body: jsonBody,
+          )
+              .timeout(
+            const Duration(minutes: 30),
+            onTimeout: () {
+              throw TimeoutException(
+                'リクエストがタイムアウトしました（30分）',
+                const Duration(minutes: 30),
+              );
+            },
+          );
+        }
 
         if (response.statusCode == 200) {
           final responseData = jsonDecode(response.body);
