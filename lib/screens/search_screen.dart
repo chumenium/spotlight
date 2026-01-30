@@ -8,7 +8,6 @@ import '../models/post.dart';
 import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
-import 'search_results_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -18,7 +17,6 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  static const double _metaIconSize = 32;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
@@ -133,20 +131,40 @@ class _SearchScreenState extends State<SearchScreen> {
 
     if (!_isDisposed && mounted) {
       setState(() {
-        _isSearching = false;
-        _searchResults = [];
+        _isSearching = true;
         _searchQuery = query;
       });
     }
 
-    _searchFocusNode.unfocus();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => SearchResultsScreen(query: query),
-      ),
-    );
+    try {
+      final results = await SearchService.searchPosts(query);
 
-    _fetchSearchHistory();
+      if (kDebugMode) {
+        debugPrint('🔍 検索結果取得: ${results.length}件');
+        for (final post in results) {
+          debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
+        }
+      }
+
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+        // 検索履歴を再取得して、今回の検索を上に追加した順で表示
+        _fetchSearchHistory();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🔍 検索エラー: $e');
+      }
+
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
+    }
   }
 
   @override
@@ -179,8 +197,7 @@ class _SearchScreenState extends State<SearchScreen> {
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
-                final nav =
-                    Provider.of<NavigationProvider>(context, listen: false);
+                final nav = Provider.of<NavigationProvider>(context, listen: false);
                 nav.setCurrentIndex(0); // ホームタブへ
               },
               color: Theme.of(context).iconTheme.color,
@@ -192,7 +209,9 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Column(
               children: [
                 Expanded(
-                  child: _buildSearchContent(),
+                  child: _searchResults.isNotEmpty || _isSearching
+                      ? _buildSearchResults()
+                      : _buildSearchContent(),
                 ),
               ],
             ),
@@ -291,12 +310,7 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Text(
           '最近の検索はありません',
           style: TextStyle(
-            color: Theme.of(context)
-                    .textTheme
-                    .bodyLarge
-                    ?.color
-                    ?.withValues(alpha: 0.6) ??
-                Colors.grey,
+            color: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.6) ?? Colors.grey,
             fontSize: 14,
           ),
         ),
@@ -330,7 +344,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildSearchResults() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryTextColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final primaryTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
     final secondaryTextColor =
         isDark ? Colors.white70 : const Color(0xFF5A5A5A);
     if (_isSearching) {
@@ -366,7 +381,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              '該当する投稿が見つかりません',
+              '「$_searchQuery」の検索結果はありません',
               style: TextStyle(
                 color: secondaryTextColor,
                 fontSize: 16,
@@ -380,11 +395,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
     // サムネイル＋下にメタデータ（参考画像レイアウト）
     return GridView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
         childAspectRatio: 0.58, // サムネイル＋下のメタデータ行の高さ
       ),
       itemCount: _searchResults.length,
@@ -432,37 +447,33 @@ class _SearchScreenState extends State<SearchScreen> {
         child: CachedNetworkImage(
           imageUrl: iconUrl,
           fit: BoxFit.cover,
-          width: _metaIconSize,
-          height: _metaIconSize,
+          width: 28,
+          height: 28,
           errorWidget: (_, __, ___) => Icon(
             Icons.person,
-            size: _metaIconSize,
+            size: 20,
             color: placeholderColor,
           ),
         ),
       );
     }
-    return SizedBox(
-      width: _metaIconSize,
-      height: _metaIconSize,
-      child: Center(
-        child: Icon(
-          Icons.person,
-          size: _metaIconSize,
-          color: placeholderColor,
-        ),
-      ),
+    return Icon(
+      Icons.person,
+      size: 20,
+      color: placeholderColor,
     );
   }
 
   /// 検索結果タイル：サムネイル内にタイトルのみ、メタデータはサムネイルの下（参考画像レイアウト）
   Widget _buildSearchResultTile(Post post) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final overlayTextColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final overlayTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
     final overlayEndColor = isDark
         ? Colors.black.withOpacity(0.8)
         : SpotLightColors.peach.withOpacity(0.9);
-    final metaTextColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final metaTextColor =
+        isDark ? Colors.white : const Color(0xFF1A1A1A);
     final metaSecondaryColor =
         isDark ? Colors.white70 : const Color(0xFF5A5A5A);
     final thumbnailUrl = post.thumbnailUrl ?? post.mediaUrl;
@@ -479,118 +490,123 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           // サムネイル（内側にタイトルのみオーバーレイ）
           Expanded(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(4),
-              ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-                    Image.network(
-                      thumbnailUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey[800],
-                          child: const Center(
-                            child: Icon(
-                              Icons.image,
-                              color: Colors.grey,
-                              size: 32,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+                      Image.network(
+                        thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[800],
+                            child: const Center(
+                              child: Icon(
+                                Icons.image,
+                                color: Colors.grey,
+                                size: 32,
+                              ),
                             ),
+                          );
+                        },
+                      )
+                    else
+                      Container(
+                        color: Colors.grey[800],
+                        child: const Center(
+                          child: Icon(
+                            Icons.image,
+                            color: Colors.grey,
+                            size: 32,
                           ),
-                        );
-                      },
-                    )
-                  else
-                    Container(
-                      color: Colors.grey[800],
-                      child: const Center(
-                        child: Icon(
-                          Icons.image,
-                          color: Colors.grey,
-                          size: 32,
+                        ),
+                      ),
+                    // タイトルのみサムネイル内に表示
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              overlayEndColor,
+                            ],
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          post.title,
+                          style: TextStyle(
+                            color: overlayTextColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
-                  // タイトルのみサムネイル内に表示
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            overlayEndColor,
-                          ],
+                  ],
+                ),
+              ),
+            ),
+            // サムネイルの下：左にアイコン、右にユーザー名／回視聴・投稿日時（参考画像レイアウト）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 左：円形アイコン
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                    child: _buildUserIcon(post, metaSecondaryColor),
+                  ),
+                  const SizedBox(width: 8),
+                  // 右：ユーザー名＋回視聴・投稿日時（2行）
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          post.username.isNotEmpty
+                              ? post.username
+                              : 'ユーザー',
+                          style: TextStyle(
+                            color: metaTextColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        post.title,
-                        style: TextStyle(
-                          color: overlayTextColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_formatPlayCount(post.playNum)} 回視聴・${_formatRelativeTime(_postTimeLocal(post))}',
+                          style: TextStyle(
+                            color: metaSecondaryColor,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          // サムネイルの下：左にアイコン、右にユーザー名／回視聴・投稿日時（参考画像レイアウト）
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 左：円形アイコン
-                _buildUserIcon(post, metaSecondaryColor),
-                const SizedBox(width: 8),
-                // 右：ユーザー名＋回視聴・投稿日時（2行）
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        post.username.isNotEmpty ? post.username : 'ユーザー',
-                        style: TextStyle(
-                          color: metaTextColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_formatPlayCount(post.playNum)} 回視聴・${_formatRelativeTime(_postTimeLocal(post))}',
-                        style: TextStyle(
-                          color: metaSecondaryColor,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 
@@ -613,11 +629,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
-    // 検索結果の簡易データは避け、ホーム側で詳細を取得して表示する
-    navigationProvider.navigateToHome(
-      postId: post.id,
-      postTitle: post.title,
-    );
+    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
 
     if (kDebugMode) {
       debugPrint(
@@ -647,8 +659,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// 検索履歴を1行表示（サムネイルなし・履歴アイコン＋クエリ＋矢印）
   Widget _buildSearchHistoryRow(SearchHistory history) {
-    final textColor =
-        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white;
     return ListTile(
       leading: Icon(
         Icons.history,
