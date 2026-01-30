@@ -93,7 +93,6 @@ class PostService {
             return responseData['data'];
           }
         }
-
       } else if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         // if (kDebugMode) {
@@ -336,7 +335,8 @@ class PostService {
 
         if (kDebugMode) {
           debugPrint('📝 [投稿編集] PATCH fallback URL: $fallbackUrl');
-          debugPrint('📝 [投稿編集] PATCH fallback statusCode: ${retryPatch.statusCode}');
+          debugPrint(
+              '📝 [投稿編集] PATCH fallback statusCode: ${retryPatch.statusCode}');
           debugPrint('📝 [投稿編集] PATCH fallback body: ${retryPatch.body}');
         }
 
@@ -375,7 +375,8 @@ class PostService {
 
         if (kDebugMode) {
           debugPrint('📝 [投稿編集] PUT fallback URL: $fallbackUrl');
-          debugPrint('📝 [投稿編集] PUT fallback statusCode: ${fallbackPut.statusCode}');
+          debugPrint(
+              '📝 [投稿編集] PUT fallback statusCode: ${fallbackPut.statusCode}');
           debugPrint('📝 [投稿編集] PUT fallback body: ${fallbackPut.body}');
         }
 
@@ -2160,6 +2161,59 @@ class PostService {
           debugPrint('📝 [getcontent] 無効なcontentID: $contentId');
         }
         return null;
+      }
+
+      final jwtToken = await JwtService.getJwtToken();
+      if (jwtToken == null) {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontent] JWTトークンが取得できません');
+        }
+        return null;
+      }
+
+      final url = '${AppConfig.apiBaseUrl}/content/detail';
+      final requestBody = {
+        'contentID': contentIdInt,
+      };
+
+      if (kDebugMode) {
+        debugPrint('📝 [getcontent] API呼び出し開始: $url');
+        debugPrint('📝 [getcontent] リクエストボディ: $requestBody');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (kDebugMode) {
+          debugPrint('📝 [getcontent] レスポンス: $responseData');
+        }
+
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
+          final dynamic data = responseData['data'];
+          if (data is Map<String, dynamic>) {
+            data['contentID'] = contentId;
+            data['id'] = contentId;
+            return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('❌ [getcontent] HTTPエラー: ${response.statusCode}');
+          debugPrint('❌ [getcontent] レスポンス: ${response.body}');
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('⚠️ [getcontent] /getcontentで取得できなかったため、ランダム取得にフォールバックします');
       }
 
       final posts = await fetchContents(excludeContentIDs: []);

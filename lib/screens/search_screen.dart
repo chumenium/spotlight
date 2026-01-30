@@ -634,7 +634,11 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
-    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
+    // 検索結果の簡易データは避け、ホーム側で詳細を取得して表示する
+    navigationProvider.navigateToHome(
+      postId: post.id,
+      postTitle: post.title,
+    );
 
     if (kDebugMode) {
       debugPrint(

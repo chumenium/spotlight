@@ -233,9 +233,8 @@ class Post {
     final playnum = json['playnum'] as int? ?? 0;
     final spotlightflag = json['spotlightflag'] as bool? ?? false;
     final playIdValue = json['playID'] ?? json['playId'] ?? json['playid'];
-    final playId = playIdValue != null
-        ? int.tryParse(playIdValue.toString())
-        : null;
+    final playId =
+        playIdValue != null ? int.tryParse(playIdValue.toString()) : null;
 
     // textflagはboolまたはintで来る可能性があるため柔軟に処理
     final textflagValue = json['textflag'];
@@ -308,7 +307,8 @@ class Post {
         // ローカルファイルパスでないことを確認
         if (!_isLocalFilePath(contentPath)) {
           // 既に完全なURLの場合はそのまま使用、相対パスの場合は正規化
-          if (contentPath.startsWith('http://') || contentPath.startsWith('https://')) {
+          if (contentPath.startsWith('http://') ||
+              contentPath.startsWith('https://')) {
             mediaUrl = contentPath;
             if (kDebugMode) {
               debugPrint('✅ contentpath（完全URL）からmediaUrlを取得: $mediaUrl');
@@ -316,14 +316,16 @@ class Post {
           } else {
             // 相対パスの場合は正規化
             final normalizedContentPath = _normalizeContentUrl(contentPath);
-            if (normalizedContentPath != null && !_isLocalFilePath(normalizedContentPath)) {
+            if (normalizedContentPath != null &&
+                !_isLocalFilePath(normalizedContentPath)) {
               mediaUrl = normalizedContentPath;
               if (kDebugMode) {
                 debugPrint('✅ contentpath（相対パス）からmediaUrlを生成: $mediaUrl');
               }
             } else {
               // 正規化できない場合、mediaBaseUrlと結合
-              final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
+              final builtUrl =
+                  _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
               if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
                 mediaUrl = builtUrl;
                 if (kDebugMode) {
@@ -350,29 +352,35 @@ class Post {
 
     // thumbnailpathから完全なURLを生成（CloudFront URLを使用）
     // APIは既にnormalize_content_urlで正規化済み
-    final thumbnailPath = json['thumbnailpath'] as String? ?? json['thumbnailurl'] as String?;
+    final thumbnailPath =
+        json['thumbnailpath'] as String? ?? json['thumbnailurl'] as String?;
     String? thumbnailUrl;
-    
+
     if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
       // ローカルファイルパスでないことを確認
       if (!_isLocalFilePath(thumbnailPath)) {
         // 既に完全なURLの場合はそのまま使用
-        if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
+        if (thumbnailPath.startsWith('http://') ||
+            thumbnailPath.startsWith('https://')) {
           thumbnailUrl = thumbnailPath;
           if (kDebugMode) {
-            debugPrint('✅ thumbnailpath（完全URL）からthumbnailUrlを取得: $thumbnailUrl');
+            debugPrint(
+                '✅ thumbnailpath（完全URL）からthumbnailUrlを取得: $thumbnailUrl');
           }
         } else {
           // 相対パスの場合、正規化してからURLを構築
           final normalizedThumbnailPath = _normalizeContentUrl(thumbnailPath);
-          if (normalizedThumbnailPath != null && !_isLocalFilePath(normalizedThumbnailPath)) {
+          if (normalizedThumbnailPath != null &&
+              !_isLocalFilePath(normalizedThumbnailPath)) {
             thumbnailUrl = normalizedThumbnailPath;
             if (kDebugMode) {
-              debugPrint('✅ thumbnailpath（相対パス）からthumbnailUrlを生成: $thumbnailUrl');
+              debugPrint(
+                  '✅ thumbnailpath（相対パス）からthumbnailUrlを生成: $thumbnailUrl');
             }
           } else {
             // 正規化できない場合、mediaBaseUrlと結合
-            final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
+            final builtUrl =
+                _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
             if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
               thumbnailUrl = builtUrl;
               if (kDebugMode) {
@@ -417,8 +425,10 @@ class Post {
     // typeフィールドがない場合、contentpathまたはlinkから推測
     String postType = json['type'] as String? ?? '';
     if (postType.isEmpty) {
-      // contentpathから推測
-      final pathToCheck = contentPath ?? link ?? '';
+      // contentpathから推測（空の場合はlinkを使う）
+      final pathToCheck = (contentPath != null && contentPath.isNotEmpty)
+          ? contentPath
+          : (link ?? '');
       if (pathToCheck.isNotEmpty) {
         // CloudFront URLのパスから推測（/movie/, /picture/, /audio/）
         if (pathToCheck.contains('/movie/') ||
@@ -462,9 +472,7 @@ class Post {
       }
     }
 
-    if (kDebugMode &&
-        userId.isEmpty &&
-        debugUsername.isNotEmpty) {
+    if (kDebugMode && userId.isEmpty && debugUsername.isNotEmpty) {
       debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
       debugPrint('  contentID: $contentIdStr');
       debugPrint('  username: $debugUsername');
@@ -517,9 +525,11 @@ class Post {
         // 視聴履歴API・検索APIは "YYYY-MM-DD HH:MM:SS" で返す。Dartのパース用に T に置換してから Z を付与
         String normalized = timestampStr.trim();
         if (normalized.length > 10 && normalized[10] == ' ') {
-          normalized = '${normalized.substring(0, 10)}T${normalized.substring(11)}';
+          normalized =
+              '${normalized.substring(0, 10)}T${normalized.substring(11)}';
         }
-        final hasTimezone = normalized.endsWith('Z') || normalized.contains('+');
+        final hasTimezone =
+            normalized.endsWith('Z') || normalized.contains('+');
         if (!hasTimezone) {
           normalized = '$normalized';
         }
