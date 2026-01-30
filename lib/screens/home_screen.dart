@@ -133,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   // 読み込み開始時のインデックス（読み込み完了時の自動遷移判定用）
   int? _loadingStartIndex;
-  String? _lastRecordedPostId;
+  final Set<String> _recordingHistoryIds = <String>{};
 
   @override
   void initState() {
@@ -496,6 +496,11 @@ class _HomeScreenState extends State<HomeScreen>
       _currentIndex = index;
     });
 
+    final postIndex = _getActualPostIndex(index);
+    if (postIndex != null && postIndex >= 0 && postIndex < _posts.length) {
+      _recordPlayHistoryIfNeeded(_posts[postIndex]);
+    }
+
     // 投稿切り替え時は必ずメディアを停止・初期化してから再初期化
     _forceStopAndResetMedia();
 
@@ -515,6 +520,10 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint(
             '📄 読み込み条件チェック（余裕あり）: index=$index, posts=${_posts.length}, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
       }
+      _scheduleLoadMoreWithGrace();
+    } else if (index == _posts.length &&
+        !_isLoadingMore &&
+        !_noMoreContent) {
       _scheduleLoadMoreWithGrace();
     } else if (kDebugMode && index >= _posts.length - 3) {
       debugPrint(
@@ -566,13 +575,18 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _recordPlayHistoryIfNeeded(Post post) {
     if (post.id.isEmpty) return;
-    if (_lastRecordedPostId == post.id) return;
-    _lastRecordedPostId = post.id;
-
+    if (_recordingHistoryIds.contains(post.id)) return;
+    _recordingHistoryIds.add(post.id);
     PostService.recordPlayHistory(post.id).then((success) {
-      if (success && !_isDisposed && _navigationProvider != null) {
+      _recordingHistoryIds.remove(post.id);
+      if (!success) {
+        return;
+      }
+      if (!_isDisposed && _navigationProvider != null) {
         _navigationProvider!.notifyProfileHistoryUpdated();
       }
+    }).catchError((_) {
+      _recordingHistoryIds.remove(post.id);
     });
   }
 
@@ -2189,13 +2203,15 @@ class _HomeScreenState extends State<HomeScreen>
     final controller = _videoControllers[index];
 
     // 動画が初期化されていない場合
-    if (controller == null || !_initializedVideos.contains(index)) {
+    if (controller == null) {
       return _buildVideoLoadingPlaceholder(post, '動画を読み込み中...');
     }
 
-    // 動画プレイヤーを表示
     if (!controller.value.isInitialized) {
       return _buildVideoLoadingPlaceholder(post, '動画を初期化中...');
+    }
+    if (!_initializedVideos.contains(index)) {
+      _initializedVideos.add(index);
     }
 
     // 動画の再生状態を監視してUIを更新（逆スクロール時も正しく表示）

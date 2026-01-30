@@ -8,6 +8,7 @@ import '../models/post.dart';
 import '../services/search_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
+import 'search_results_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -132,40 +133,20 @@ class _SearchScreenState extends State<SearchScreen> {
 
     if (!_isDisposed && mounted) {
       setState(() {
-        _isSearching = true;
+        _isSearching = false;
+        _searchResults = [];
         _searchQuery = query;
       });
     }
 
-    try {
-      final results = await SearchService.searchPosts(query);
+    _searchFocusNode.unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => SearchResultsScreen(query: query),
+      ),
+    );
 
-      if (kDebugMode) {
-        debugPrint('🔍 検索結果取得: ${results.length}件');
-        for (final post in results) {
-          debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
-        }
-      }
-
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _searchResults = results;
-          _isSearching = false;
-        });
-        // 検索履歴を再取得して、今回の検索を上に追加した順で表示
-        _fetchSearchHistory();
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔍 検索エラー: $e');
-      }
-
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _isSearching = false;
-        });
-      }
-    }
+    _fetchSearchHistory();
   }
 
   @override
@@ -211,9 +192,7 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Column(
               children: [
                 Expanded(
-                  child: _searchResults.isNotEmpty || _isSearching
-                      ? _buildSearchResults()
-                      : _buildSearchContent(),
+                  child: _buildSearchContent(),
                 ),
               ],
             ),
@@ -387,7 +366,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              '「$_searchQuery」の検索結果はありません',
+              '該当する投稿が見つかりません',
               style: TextStyle(
                 color: secondaryTextColor,
                 fontSize: 16,
