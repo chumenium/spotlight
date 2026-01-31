@@ -209,7 +209,7 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Column(
               children: [
                 Expanded(
-                  child: _searchResults.isNotEmpty || _isSearching
+                  child: (_isSearching || _searchQuery != null)
                       ? _buildSearchResults()
                       : _buildSearchContent(),
                 ),
@@ -381,7 +381,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              '「$_searchQuery」の検索結果はありません',
+              '検索に該当するコンテンツはありませんでした。\n検索内容を変えてもう一度検索してみてください',
               style: TextStyle(
                 color: secondaryTextColor,
                 fontSize: 16,

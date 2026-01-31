@@ -1484,9 +1484,17 @@ class _HomeScreenState extends State<HomeScreen>
     _applyDefaultVideoSettings(controller);
 
     controller.seekTo(Duration.zero);
+    controller.setVolume(1.0);
     if (!controller.value.isPlaying) {
       controller.play();
     }
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (_isDisposed) return;
+      if (!controller.value.isInitialized) return;
+      if (_canAutoPlayPost(index)) {
+        controller.setVolume(1.0);
+      }
+    });
 
     _currentPlayingVideo = index;
     _startSeekBarUpdateTimer();
