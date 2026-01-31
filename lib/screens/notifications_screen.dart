@@ -4,6 +4,7 @@ import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/blur_app_bar.dart';
+import 'notification_detail_screen.dart';
 import 'dart:async';
 
 class NotificationsScreen extends StatefulWidget {
@@ -389,178 +390,184 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 
   Widget _buildNotificationItem(NotificationItem notification) {
-    return Container(
-      decoration: BoxDecoration(
-        color: notification.isRead
-            ? Theme.of(context).cardColor
-            : Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF2A2A2A)
-                : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.grey[800]!,
-            width: 0.5,
-          ),
+    return Dismissible(
+      key: ValueKey(notification.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        if (notification.isRead) return false;
+        setState(() {
+          final index = notifications.indexOf(notification);
+          notifications[index] = NotificationItem(
+            id: notification.id,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            username: notification.username,
+            userAvatar: notification.userAvatar,
+            postId: notification.postId,
+            postTitle: notification.postTitle,
+            thumbnailUrl: notification.thumbnailUrl,
+            createdAt: notification.createdAt,
+            isRead: true,
+            commentID: notification.commentID,
+          );
+        });
+        _updateUnreadCount(notifications);
+        return false;
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        color: SpotLightColors.primaryOrange.withOpacity(0.15),
+        child: Icon(
+          Icons.done,
+          color: SpotLightColors.primaryOrange,
         ),
       ),
-      child: InkWell(
-        onTap: () {
-          // 既読にする
-          setState(() {
-            final index = notifications.indexOf(notification);
-            notifications[index] = NotificationItem(
-              id: notification.id,
-              type: notification.type,
-              title: notification.title,
-              message: notification.message,
-              username: notification.username,
-              userAvatar: notification.userAvatar,
-              postId: notification.postId,
-              postTitle: notification.postTitle,
-              thumbnailUrl: notification.thumbnailUrl,
-              createdAt: notification.createdAt,
-              isRead: true,
-              commentID: notification.commentID,
-            );
-          });
-          _updateUnreadCount(notifications);
-
-          // 投稿IDがある場合、ホーム画面に遷移
-          if (notification.postId != null) {
-            final navigationProvider =
-                Provider.of<NavigationProvider>(context, listen: false);
-
-            // コメント通知または返信通知の場合、コメント画面を開く
-            final isCommentNotification =
-                notification.type == NotificationType.comment ||
-                    notification.type == NotificationType.reply;
-
-            navigationProvider.navigateToHome(
-              postId: notification.postId,
-              postTitle: notification.postTitle,
-              commentId: notification.commentID,
-              shouldOpenComments: isCommentNotification,
-            );
-          }
-        },
-        child: Padding(
-          // 左端の余白を半分に減らす（8px）
-          padding: const EdgeInsets.only(
-            left: 8,
-            top: 16,
-            right: 16,
-            bottom: 16,
+      child: Container(
+        decoration: BoxDecoration(
+          color: notification.isRead
+              ? Theme.of(context).cardColor
+              : Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF2A2A2A)
+                  : Colors.white,
+          border: Border(
+            bottom: BorderSide(
+              color: Colors.grey[800]!,
+              width: 0.5,
+            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 左側のアイコン
-              _buildLeadingWidget(notification),
-              const SizedBox(width: 12),
+        ),
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) =>
+                    NotificationDetailScreen(notification: notification),
+              ),
+            );
+          },
+          child: Padding(
+            // 左端の余白を半分に減らす（8px）
+            padding: const EdgeInsets.only(
+              left: 8,
+              top: 16,
+              right: 16,
+              bottom: 16,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 左側のアイコン
+                _buildLeadingWidget(notification),
+                const SizedBox(width: 12),
 
-              // 中央のコンテンツ
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // タイトル
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification.title,
-                            style: TextStyle(
-                              fontWeight: notification.isRead
-                                  ? FontWeight.normal
-                                  : FontWeight.bold,
-                              fontSize: 14,
-                              color: Theme.of(context)
-                                      .textTheme
-                                      .bodyLarge
-                                      ?.color ??
+                // 中央のコンテンツ
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // タイトル
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              notification.title,
+                              style: TextStyle(
+                                fontWeight: notification.isRead
+                                    ? FontWeight.normal
+                                    : FontWeight.bold,
+                                fontSize: 14,
+                                color: Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge
+                                        ?.color ??
+                                    (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : const Color(0xFF2C2C2C)),
+                              ),
+                            ),
+                          ),
+                          if (!notification.isRead)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: SpotLightColors.primaryOrange,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+
+                      // メッセージ
+                      Text(
+                        notification.message,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color:
+                              Theme.of(context).textTheme.bodySmall?.color ??
                                   (Theme.of(context).brightness ==
                                           Brightness.dark
-                                      ? Colors.white
-                                      : const Color(0xFF2C2C2C)),
-                            ),
-                          ),
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600]),
                         ),
-                        if (!notification.isRead)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: SpotLightColors.primaryOrange,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-
-                    // メッセージ
-                    Text(
-                      notification.message,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(context).textTheme.bodySmall?.color ??
-                            (Theme.of(context).brightness == Brightness.dark
-                                ? Colors.grey[300]
-                                : Colors.grey[600]),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-
-                    // 投稿タイトル（ある場合）
-                    if (notification.postTitle != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        notification.postTitle!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[500],
-                        ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
 
-                    // 時刻
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatTime(notification.createdAt),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
+                      // 投稿タイトル（ある場合）
+                      if (notification.postTitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          notification.postTitle!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[500],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+
+                      // 時刻
+                      const SizedBox(height: 6),
+                      Text(
+                        _formatTime(notification.createdAt),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // 右側のサムネイル（ある場合）
-              if (notification.thumbnailUrl != null) ...[
-                const SizedBox(width: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    notification.thumbnailUrl!,
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 80,
-                        height: 80,
-                        color: Colors.grey[800],
-                        child: const Icon(Icons.image, color: Colors.grey),
-                      );
-                    },
+                    ],
                   ),
                 ),
+
+                // 右側のサムネイル（ある場合）
+                if (notification.thumbnailUrl != null) ...[
+                  const SizedBox(width: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      notification.thumbnailUrl!,
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 80,
+                          height: 80,
+                          color: Colors.grey[800],
+                          child: const Icon(Icons.image, color: Colors.grey),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

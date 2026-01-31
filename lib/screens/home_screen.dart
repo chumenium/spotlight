@@ -2228,47 +2228,30 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (context, value, child) {
         final isPlaying = value.isPlaying && value.isInitialized;
 
-        return GestureDetector(
-          onTap: () {
-            if (_suppressVideoTap) {
-              return;
-            }
-            // タップで再生/一時停止を切り替え
-            if (isPlaying) {
-              controller.pause();
-            } else {
-              controller.play();
-            }
-            // UIを更新
-            if (mounted) {
-              setState(() {});
-            }
-          },
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 動画プレイヤー
-              Center(
-                child: AspectRatio(
-                  aspectRatio: _resolveVideoAspectRatio(value),
-                  child: VideoPlayer(controller),
-                ),
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // 動画プレイヤー
+            Center(
+              child: AspectRatio(
+                aspectRatio: _resolveVideoAspectRatio(value),
+                child: VideoPlayer(controller),
               ),
+            ),
 
-              // 停止中のアイコン（オーバーレイ）- 再生中は非表示
-              if (!isPlaying)
-                Container(
-                  color: Colors.black.withOpacity(0.3),
-                  child: Center(
-                    child: Icon(
-                      Icons.pause_rounded,
-                      size: 72,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
+            // 停止中のアイコン（オーバーレイ）- 再生中は非表示
+            if (!isPlaying)
+              Container(
+                color: Colors.black.withOpacity(0.3),
+                child: Center(
+                  child: Icon(
+                    Icons.pause_rounded,
+                    size: 72,
+                    color: Colors.white.withOpacity(0.9),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         );
       },
     );
