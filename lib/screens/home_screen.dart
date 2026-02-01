@@ -1156,6 +1156,7 @@ class _HomeScreenState extends State<HomeScreen>
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: false,
         ),
+        formatHint: VideoFormat.hls,
       );
 
       // 初期化は完了まで待機（タイムアウトで失敗させない）
@@ -2287,11 +2288,8 @@ class _HomeScreenState extends State<HomeScreen>
           fit: StackFit.expand,
           children: [
             // 動画プレイヤー
-            Center(
-              child: AspectRatio(
-                aspectRatio: _resolveVideoAspectRatio(value),
-                child: VideoPlayer(controller),
-              ),
+            Positioned.fill(
+              child: _buildVideoPlayerSurface(controller, value),
             ),
 
             // 停止中のアイコン（オーバーレイ）- 再生中は非表示
@@ -2435,6 +2433,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (filename.isEmpty) return null;
 
     final lower = filename.toLowerCase();
+    if (lower.endsWith('.m3u8')) {
+      return trimmed;
+    }
     if (!lower.endsWith('.mp4')) {
       return null;
     }
@@ -2443,6 +2444,34 @@ class _HomeScreenState extends State<HomeScreen>
     if (videoId.isEmpty) return null;
 
     return '${AppConfig.cloudFrontUrl}/movie_hls/$videoId/$videoId.m3u8';
+  }
+
+  Widget _buildVideoPlayerSurface(
+      VideoPlayerController controller, VideoPlayerValue value) {
+    final rotation = value.rotationCorrection;
+    final rawWidth = value.size.width;
+    final rawHeight = value.size.height;
+    final isRotated = rotation == 90 || rotation == 270;
+    final double displayWidth = (isRotated ? rawHeight : rawWidth).toDouble();
+    final double displayHeight = (isRotated ? rawWidth : rawHeight).toDouble();
+    final double safeWidth = displayWidth > 0 ? displayWidth : 1.0;
+    final double safeHeight = displayHeight > 0 ? displayHeight : 1.0;
+
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.fitWidth,
+        child: SizedBox(
+          width: safeWidth,
+          height: safeHeight,
+          child: rotation == 0
+              ? VideoPlayer(controller)
+              : RotatedBox(
+                  quarterTurns: rotation ~/ 90,
+                  child: VideoPlayer(controller),
+                ),
+        ),
+      ),
+    );
   }
 
   double _resolveVideoAspectRatio(VideoPlayerValue value) {
