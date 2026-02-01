@@ -129,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen>
   final Map<String, int> _videoInitRetryCounts = {};
   static const int _maxVideoInitRetryCount = 2;
   final Set<int> _videoInitInProgress = {};
+  final Set<int> _videoInitFailed = {};
   bool _resumeVideoAfterLongPress = false;
   bool _resumeAudioAfterLongPress = false;
   int? _longPressMediaToken;
@@ -227,6 +228,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _videoControllers.clear();
     _initializedVideos.clear();
+    _videoInitFailed.clear();
 
     // 音声プレイヤーのリソース解放（段階5）
     for (final player in _audioPlayers.values) {
@@ -1038,6 +1040,13 @@ class _HomeScreenState extends State<HomeScreen>
       ..clear()
       ..addAll(shiftedInitializedVideos);
 
+    final shiftedVideoInitFailed = _videoInitFailed
+        .map((index) => index >= insertionIndex ? index + 1 : index)
+        .toSet();
+    _videoInitFailed
+      ..clear()
+      ..addAll(shiftedVideoInitFailed);
+
     final shiftedAudioPlayers = <int, AudioPlayer>{};
     _audioPlayers.forEach((index, player) {
       final newIndex = index >= insertionIndex ? index + 1 : index;
@@ -1104,7 +1113,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    final mediaUrl = post.mediaUrl;
+    final mediaUrl = post.mediaUrl ?? post.contentPath;
     if (mediaUrl == null || mediaUrl.isEmpty) {
       if (kDebugMode) {
         debugPrint('⚠️ 動画URLが空です: postId=${post.id}');
@@ -1123,19 +1132,30 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     try {
+      _videoInitFailed.remove(postIndex);
       _videoInitInProgress.add(postIndex);
+      final hlsUrl = _buildHlsPlaybackUrl(mediaUrl);
+      if (hlsUrl == null || hlsUrl.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('❌ HLS URLの生成に失敗しました: postId=${post.id}, url=$mediaUrl');
+        }
+        if (!isPreload && mounted) {
+          setState(() {
+            _videoInitFailed.add(postIndex);
+          });
+        }
+        return;
+      }
       if (kDebugMode) {
-        debugPrint('🎬 動画を初期化中: postId=${post.id}, url=$mediaUrl');
+        debugPrint('🎬 動画を初期化中: postId=${post.id}, url=$hlsUrl');
+        debugPrint('🔗 HLS再生URL: $hlsUrl');
       }
 
       final controller = VideoPlayerController.networkUrl(
-        Uri.parse(mediaUrl),
+        Uri.parse(hlsUrl),
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: false,
         ),
-        httpHeaders: const {
-          'Range': 'bytes=0-',
-        },
       );
 
       // 初期化は完了まで待機（タイムアウトで失敗させない）
@@ -1157,6 +1177,7 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _videoControllers[postIndex] = controller;
         _initializedVideos.add(postIndex);
+        _videoInitFailed.remove(postIndex);
       });
       _videoInitRetryCounts.remove(post.id);
 
@@ -1181,6 +1202,10 @@ class _HomeScreenState extends State<HomeScreen>
           if (_isDisposed) return;
           if (!_canAutoPlayPost(postIndex)) return;
           _initializeVideoController(postIndex, post);
+        });
+      } else if (!isPreload && mounted) {
+        setState(() {
+          _videoInitFailed.add(postIndex);
         });
       }
 
@@ -1267,6 +1292,7 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (_) {}
     _videoControllers.remove(postIndex);
     _initializedVideos.remove(postIndex);
+    _videoInitFailed.remove(postIndex);
     if (_currentPlayingVideo == postIndex) {
       _currentPlayingVideo = null;
     }
@@ -2235,6 +2261,10 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildVideoContent(Post post, int index) {
     final controller = _videoControllers[index];
 
+    if (_videoInitFailed.contains(index)) {
+      return _buildVideoErrorPlaceholder(post, index, '動画の読み込みに失敗しました');
+    }
+
     // 動画が初期化されていない場合
     if (controller == null) {
       return _buildVideoLoadingPlaceholder(post, '動画を読み込み中...');
@@ -2320,6 +2350,99 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildVideoErrorPlaceholder(Post post, int index, String message) {
+    final thumbnailUrl = post.thumbnailUrl;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+          CachedNetworkImage(
+            imageUrl: thumbnailUrl,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(color: Colors.black),
+            errorWidget: (context, url, error) =>
+                Container(color: Colors.black),
+          )
+        else
+          Container(color: Colors.black),
+        Container(
+          color: Colors.black.withOpacity(0.5),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 56,
+                  color: Colors.white70,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.grey[300],
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => _retryVideoInitialization(post, index),
+                  icon: const Icon(
+                    Icons.refresh,
+                    color: Color(0xFFFF6B35),
+                  ),
+                  label: const Text(
+                    '再試行',
+                    style: TextStyle(color: Color(0xFFFF6B35)),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFFF6B35)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _retryVideoInitialization(Post post, int index) {
+    _videoInitFailed.remove(index);
+    _videoInitRetryCounts.remove(post.id);
+    if (mounted) {
+      setState(() {});
+    }
+    _initializeVideoController(index, post);
+  }
+
+  String? _buildHlsPlaybackUrl(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return null;
+
+    String filename = '';
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.pathSegments.isNotEmpty) {
+      filename = uri.pathSegments.last;
+    } else {
+      final lastSlash = trimmed.lastIndexOf('/');
+      filename = lastSlash >= 0 ? trimmed.substring(lastSlash + 1) : trimmed;
+    }
+
+    filename = filename.split('?').first.split('#').first;
+    if (filename.isEmpty) return null;
+
+    final lower = filename.toLowerCase();
+    if (!lower.endsWith('.mp4')) {
+      return null;
+    }
+
+    final videoId = filename.substring(0, filename.length - 4);
+    if (videoId.isEmpty) return null;
+
+    return '${AppConfig.cloudFrontUrl}/movie_hls/$videoId/$videoId.m3u8';
   }
 
   double _resolveVideoAspectRatio(VideoPlayerValue value) {
