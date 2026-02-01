@@ -426,8 +426,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: notification.isRead
-              ? Theme.of(context).cardColor
+        color: notification.isRead
+            ? Theme.of(context).scaffoldBackgroundColor
               : Theme.of(context).brightness == Brightness.dark
                   ? const Color(0xFF2A2A2A)
                   : Colors.white,

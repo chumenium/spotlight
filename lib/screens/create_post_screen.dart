@@ -1079,29 +1079,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                   right: 16.0,
                                   top: 24.0,
                                   bottom: 16.0 + bottomSafe),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
+                              child: Center(
                                 child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _buildOptionButton(
+                                    _buildSquareIconButton(
                                       icon: Icons.image_outlined,
-                                      label: '写真',
                                       onTap: () => _pickMedia(
                                           ImageSource.gallery,
                                           isVideo: false),
                                     ),
                                     const SizedBox(width: 12),
-                                    _buildOptionButton(
+                                    _buildSquareIconButton(
                                       icon: Icons.videocam_outlined,
-                                      label: '動画',
                                       onTap: () => _pickMedia(
                                           ImageSource.gallery,
                                           isVideo: true),
                                     ),
                                     const SizedBox(width: 12),
-                                    _buildOptionButton(
+                                    _buildSquareIconButton(
                                       icon: Icons.audiotrack_outlined,
-                                      label: '音声',
                                       onTap: _pickAudioFile,
                                     ),
                                   ],
@@ -1255,6 +1252,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSquareIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24, width: 1),
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              color: Colors.white70,
+              size: 24,
+            ),
           ),
         ),
       ),

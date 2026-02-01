@@ -628,8 +628,12 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    // ホーム画面に遷移して投稿IDとタイトルを設定（タイトルは検証用）
-    navigationProvider.navigateToHome(postId: post.id, postTitle: post.title);
+    // ホーム画面に遷移して投稿IDと投稿データを設定
+    navigationProvider.navigateToHome(
+      postId: post.id,
+      postTitle: post.title,
+      post: post,
+    );
 
     if (kDebugMode) {
       debugPrint(

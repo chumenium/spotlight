@@ -126,6 +126,9 @@ class _HomeScreenState extends State<HomeScreen>
   int _mediaResetToken = 0;
   int _pendingTargetRetryCount = 0;
   static const int _maxPendingTargetRetryCount = 25;
+  final Map<String, int> _videoInitRetryCounts = {};
+  static const int _maxVideoInitRetryCount = 2;
+  final Set<int> _videoInitInProgress = {};
   bool _resumeVideoAfterLongPress = false;
   bool _resumeAudioAfterLongPress = false;
   int? _longPressMediaToken;
@@ -491,6 +494,10 @@ class _HomeScreenState extends State<HomeScreen>
   /// PageViewのページ変更処理（段階4: 動画再生制御を追加）
   void _onPageChanged(int index) {
     if (_isDisposed) return;
+
+    _pendingTargetRetryTimer?.cancel();
+    _pendingTargetRetryCount = 0;
+    _pendingTargetPostId = null;
 
     setState(() {
       _currentIndex = index;
@@ -998,6 +1005,8 @@ class _HomeScreenState extends State<HomeScreen>
 
       navigationProvider.clearTargetPostId();
       _pendingTargetPostId = null;
+      _pendingTargetRetryTimer?.cancel();
+      _pendingTargetRetryCount = 0;
       if (kDebugMode) {
         debugPrint(
             '📱 ナビゲーション: targetPostIdを表示しました (postIndex=$targetPostIndex, pageIndex=$targetPageIndex)');
@@ -1071,8 +1080,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// 動画コントローラーを初期化（段階4）
-  Future<void> _initializeVideoController(int postIndex, Post post) async {
+  Future<void> _initializeVideoController(int postIndex, Post post,
+      {bool isPreload = false}) async {
     if (_isDisposed || postIndex < 0 || postIndex >= _posts.length) return;
+    if (_videoInitInProgress.contains(postIndex)) return;
+    if (isPreload && _videoInitInProgress.isNotEmpty) return;
     final token = _mediaResetToken;
 
     // 既に初期化済みの場合は、再生状態を確認して再生
@@ -1111,6 +1123,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     try {
+      _videoInitInProgress.add(postIndex);
       if (kDebugMode) {
         debugPrint('🎬 動画を初期化中: postId=${post.id}, url=$mediaUrl');
       }
@@ -1120,19 +1133,13 @@ class _HomeScreenState extends State<HomeScreen>
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: false,
         ),
-      );
-
-      // 初期化にタイムアウトを設定（30秒）
-      await controller.initialize().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ 動画の初期化がタイムアウトしました: postId=${post.id}');
-          }
-          controller.dispose();
-          throw TimeoutException('動画の初期化がタイムアウトしました');
+        httpHeaders: const {
+          'Range': 'bytes=0-',
         },
       );
+
+      // 初期化は完了まで待機（タイムアウトで失敗させない）
+      await controller.initialize();
 
       if (_isDisposed || !mounted) {
         controller.dispose();
@@ -1151,6 +1158,7 @@ class _HomeScreenState extends State<HomeScreen>
         _videoControllers[postIndex] = controller;
         _initializedVideos.add(postIndex);
       });
+      _videoInitRetryCounts.remove(post.id);
 
       // 現在表示中の動画を再生
       if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
@@ -1165,6 +1173,16 @@ class _HomeScreenState extends State<HomeScreen>
         debugPrint('❌ 動画の初期化に失敗しました: postId=${post.id}, error=$e');
         debugPrint('   - mediaUrl: $mediaUrl');
       }
+      final retryCount = _videoInitRetryCounts[post.id] ?? 0;
+      final maxRetry = isPreload ? 0 : _maxVideoInitRetryCount;
+      if (retryCount < maxRetry) {
+        _videoInitRetryCounts[post.id] = retryCount + 1;
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (_isDisposed) return;
+          if (!_canAutoPlayPost(postIndex)) return;
+          _initializeVideoController(postIndex, post);
+        });
+      }
 
       // エラー時にUIを更新（エラー状態を解除して再試行可能にする）
       if (mounted) {
@@ -1175,6 +1193,8 @@ class _HomeScreenState extends State<HomeScreen>
           _videoControllers.remove(postIndex);
         });
       }
+    } finally {
+      _videoInitInProgress.remove(postIndex);
     }
   }
 
@@ -1318,6 +1338,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (_isDisposed) return;
 
     _scrollStartIndex = _currentIndex;
+    _pendingTargetRetryTimer?.cancel();
+    _pendingTargetRetryCount = 0;
+    _pendingTargetPostId = null;
     _forceStopAndResetMedia();
     if (kDebugMode) {
       debugPrint('🛑 スクロール開始: 再生を停止しました');
@@ -1330,7 +1353,9 @@ class _HomeScreenState extends State<HomeScreen>
     _scrollStartIndex = null;
     if (startIndex != null && startIndex == _currentIndex) {
       _handleMediaPageChange(_currentIndex);
+      return;
     }
+    _handleMediaPageChange(_currentIndex);
   }
 
   void _handlePageScroll() {
@@ -1513,7 +1538,7 @@ class _HomeScreenState extends State<HomeScreen>
       final post = _posts[i];
       if (post.postType == PostType.video && !_initializedVideos.contains(i)) {
         // 動画の事前初期化（段階4）
-        _initializeVideoController(i, post);
+        _initializeVideoController(i, post, isPreload: true);
       }
     }
 

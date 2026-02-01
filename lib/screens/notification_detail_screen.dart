@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
+import '../providers/navigation_provider.dart';
 
 class NotificationDetailScreen extends StatelessWidget {
   final NotificationItem notification;
@@ -67,21 +69,38 @@ class NotificationDetailScreen extends StatelessWidget {
               ),
               if (notification.thumbnailUrl != null) ...[
                 const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    notification.thumbnailUrl!,
-                    width: double.infinity,
-                    height: 180,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        height: 180,
-                        color: Colors.grey[800],
-                        child: const Icon(Icons.image, color: Colors.grey),
-                      );
-                    },
+                GestureDetector(
+                  onTap: () {
+                    if (notification.postId == null) return;
+                    final navigationProvider =
+                        Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.navigateToHome(
+                      postId: notification.postId,
+                      postTitle: notification.postTitle,
+                      commentId: notification.commentID,
+                      shouldOpenComments:
+                          notification.type == NotificationType.comment ||
+                              notification.type == NotificationType.reply,
+                    );
+                    Navigator.of(context).pop();
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Image.network(
+                        notification.thumbnailUrl!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: double.infinity,
+                            height: 180,
+                            color: Colors.grey[800],
+                            child: const Icon(Icons.image, color: Colors.grey),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ],
