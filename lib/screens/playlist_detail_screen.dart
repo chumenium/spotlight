@@ -223,6 +223,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   /// 日付を相対時間に変換
   String _formatRelativeTime(DateTime dateTime) {
+    dateTime = dateTime.toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 

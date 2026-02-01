@@ -417,6 +417,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// 投稿日時を相対表示（視聴履歴画面と同じロジック：.toLocal() 済みのローカル時刻で算出）
   String _formatRelativeTime(DateTime dateTime) {
+    dateTime = dateTime.toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 

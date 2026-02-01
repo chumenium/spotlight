@@ -67,6 +67,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
   /// 日付を相対時間に変換（例: "3日前"）
   String _formatRelativeTime(DateTime dateTime) {
+    dateTime = dateTime.toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 

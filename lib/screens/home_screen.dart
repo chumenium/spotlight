@@ -3280,6 +3280,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 相対時間を取得
   String _getTimeAgo(DateTime dateTime) {
+    dateTime = dateTime.toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 

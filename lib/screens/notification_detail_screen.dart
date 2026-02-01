@@ -112,6 +112,7 @@ class NotificationDetailScreen extends StatelessWidget {
   }
 
   String _formatTime(DateTime dateTime) {
+    dateTime = dateTime.toLocal();
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
