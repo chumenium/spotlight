@@ -49,6 +49,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   VideoPlayerController? _videoPlayerController;
   bool _isVideoPlaying = false;
   VoidCallback? _videoPlayerListener;
+  String? _videoOrientation;
 
   @override
   void initState() {
@@ -79,6 +80,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final controller = _videoPlayerController;
       _videoPlayerController = null; // 先にnullにして、他の処理が参照しないようにする
       _isVideoPlaying = false;
+      _videoOrientation = null;
 
       try {
         if (controller != null) {
@@ -524,12 +526,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       try {
         // タグはオプショナル（nullでも投稿可能）
+        final orientation = _resolveSelectedVideoOrientation(type);
         final result = await PostService.createPost(
           type: type,
           title: titleText,
           fileBase64: fileBase64,
           thumbnailBase64: thumbBase64,
           link: link,
+          orientation: orientation,
           tag: tagValue, // タグが空の場合はnullを送信（バックエンド側のNoneTypeエラーを防ぐため）
         );
 
@@ -1602,6 +1606,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 debugPrint(
                     '   - 長さ: ${_videoPlayerController!.value.duration.inSeconds}秒');
               }
+              _videoOrientation =
+                  _resolveVideoOrientation(_videoPlayerController!);
+              if (kDebugMode) {
+                debugPrint('🧭 動画の向き: $_videoOrientation');
+              }
 
               // 動画プレイヤーの状態変更を監視（リスナーを保存）
               _videoPlayerListener = () {
@@ -2127,14 +2136,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: _videoPlayerController!.value.size.width,
-                height: _videoPlayerController!.value.size.height,
-                child: VideoPlayer(_videoPlayerController!),
-              ),
+          Center(
+            child: AspectRatio(
+              aspectRatio: _videoPlayerController!.value.aspectRatio,
+              child: VideoPlayer(_videoPlayerController!),
             ),
           ),
           // 再生/一時停止ボタン
@@ -2179,6 +2184,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // エラー時はプレイヤーをクリーンアップ
       _cleanupVideoPlayer();
     }
+  }
+
+  String _resolveVideoOrientation(VideoPlayerController controller) {
+    final size = controller.value.size;
+    if (size.width > 0 && size.height > 0) {
+      return size.height >= size.width ? 'portrait' : 'landscape';
+    }
+    final ratio = controller.value.aspectRatio;
+    if (ratio.isFinite && ratio > 0) {
+      return ratio < 1 ? 'portrait' : 'landscape';
+    }
+    return 'landscape';
+  }
+
+  String? _resolveSelectedVideoOrientation(String type) {
+    if (type != 'video') return null;
+    final controller = _videoPlayerController;
+    if (controller != null && controller.value.isInitialized) {
+      return _resolveVideoOrientation(controller);
+    }
+    return _videoOrientation ?? 'landscape';
   }
 
   // コンテンツコンフリクトダイアログ

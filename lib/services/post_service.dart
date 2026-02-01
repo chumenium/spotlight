@@ -1322,6 +1322,7 @@ class PostService {
     String? fileBase64, // 非テキスト投稿の場合のみ（base64）
     String? thumbnailBase64, // 非テキスト投稿の場合のみ（base64）
     String? link,
+    String? orientation,
     String? tag,
   }) async {
     try {
@@ -1360,6 +1361,10 @@ class PostService {
       // バックエンド側でNoneTypeエラーを防ぐため、明示的に含めない
       if (tag != null && tag.trim().isNotEmpty) {
         body['tag'] = tag.trim();
+      }
+
+      if (orientation != null && orientation.trim().isNotEmpty) {
+        body['orientation'] = orientation.trim();
       }
 
       if (kDebugMode) {
