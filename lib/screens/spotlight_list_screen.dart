@@ -10,6 +10,7 @@ import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../services/playlist_service.dart';
 import '../services/share_link_service.dart';
+import '../widgets/center_popup.dart';
 import '../widgets/blur_app_bar.dart';
 
 class SpotlightListScreen extends StatefulWidget {
@@ -457,12 +458,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   }
                 } else {
                   // 削除が成功した
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('投稿を削除しました'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  CenterPopup.show(context, '投稿を削除しました');
                 }
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -699,13 +695,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     final shareUrl = ShareLinkService.buildPostDeepLink(post.id);
     Clipboard.setData(ClipboardData(text: shareUrl));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('リンクをコピーしました'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    CenterPopup.show(context, 'リンクをコピーしました');
   }
 
   void _shareWithSystem(Post post) {
@@ -842,12 +832,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
 
                   if (mounted) {
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('プレイリストに追加しました'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
+                      CenterPopup.show(context, 'プレイリストに追加しました');
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -895,12 +880,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               Navigator.pop(context);
               final success = await PostService.spotlightOff(post.id);
               if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('スポットライトを解除しました'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                CenterPopup.show(context, 'スポットライトを解除しました');
                 _fetchUserContents();
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -937,12 +917,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               Navigator.pop(context);
               final success = await PostService.spotlightOn(post.id);
               if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('スポットライトを付けました'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                CenterPopup.show(context, 'スポットライトを付けました');
                 _fetchUserContents();
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1075,12 +1050,8 @@ class _PlaylistDialog extends StatelessWidget {
 
                         if (context.mounted) {
                           if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('プレイリストに追加しました'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                              CenterPopup.show(
+                                  context, 'プレイリストに追加しました');
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

@@ -7,6 +7,7 @@ import '../services/playlist_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
+import '../widgets/center_popup.dart';
 import '../widgets/blur_app_bar.dart';
 
 class HistoryListScreen extends StatefulWidget {
@@ -589,12 +590,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
 
                   if (mounted) {
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('プレイリストに追加しました'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
+                      CenterPopup.show(context, 'プレイリストに追加しました');
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -666,13 +662,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
         setState(() {
           _historyPosts.removeWhere((item) => item.id == post.id);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('視聴履歴を削除しました'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        CenterPopup.show(context, '視聴履歴を削除しました');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -778,12 +768,8 @@ class _PlaylistDialog extends StatelessWidget {
 
                         if (context.mounted) {
                           if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('プレイリストに追加しました'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                              CenterPopup.show(
+                                  context, 'プレイリストに追加しました');
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

@@ -5,6 +5,7 @@ import '../models/post.dart';
 import '../utils/spotlight_colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/blur_app_bar.dart';
+import '../widgets/center_popup.dart';
 
 /// 投稿管理画面（管理者用）
 class PostManagementScreen extends StatefulWidget {
@@ -160,12 +161,7 @@ class _PostManagementScreenState extends State<PostManagementScreen> {
       Navigator.of(context).pop(); // ローディングを閉じる
 
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('投稿を削除しました'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        CenterPopup.show(context, '投稿を削除しました');
         // リストから削除
         setState(() {
           _posts.removeWhere((p) => p.id == post.id);

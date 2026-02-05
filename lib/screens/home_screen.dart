@@ -24,6 +24,7 @@ import 'user_profile_screen.dart';
 import '../widgets/native_ad_widget.dart';
 import '../services/share_link_service.dart';
 import '../utils/route_observer.dart';
+import '../widgets/center_popup.dart';
 
 /// ホーム画面 - 垂直フィード型ソーシャルメディアアプリのメイン画面
 ///
@@ -3641,12 +3642,7 @@ class _HomeScreenState extends State<HomeScreen>
 
                   if (mounted) {
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('プレイリストに追加しました'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
+                      CenterPopup.show(context, 'プレイリストに追加しました');
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -3757,13 +3753,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     Clipboard.setData(ClipboardData(text: shareUrl));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('リンクをコピーしました'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    CenterPopup.show(context, 'リンクをコピーしました');
   }
 
   /// システム共有機能を使用（段階9）
@@ -4880,12 +4870,7 @@ class _ReportDialogState extends State<_ReportDialog> {
 
                   if (result.success) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('通報が送信されました'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    CenterPopup.show(context, '通報が送信されました');
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -5077,12 +5062,7 @@ class _CommentReportDialogState extends State<_CommentReportDialog> {
 
                   if (result.success) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('通報が送信されました'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    CenterPopup.show(context, '通報が送信されました');
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -5245,12 +5225,7 @@ class _PlaylistDialog extends StatelessWidget {
 
                         if (context.mounted) {
                           if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('プレイリストに追加しました'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                            CenterPopup.show(context, 'プレイリストに追加しました');
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

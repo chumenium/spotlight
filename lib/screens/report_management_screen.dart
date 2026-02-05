@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/admin_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
+import '../widgets/center_popup.dart';
 
 /// 通報管理画面
 class ReportManagementScreen extends StatefulWidget {
@@ -242,12 +243,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('通報を処理済みにしました'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        CenterPopup.show(context, '通報を処理済みにしました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -383,12 +379,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('投稿を削除しました'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        CenterPopup.show(context, '投稿を削除しました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -460,12 +451,7 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('コメントを削除しました'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        CenterPopup.show(context, 'コメントを削除しました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

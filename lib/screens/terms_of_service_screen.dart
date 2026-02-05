@@ -64,7 +64,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '最終更新日: 2024年1月1日',
+                    '最終更新日: 2026年2月1日',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
@@ -227,7 +227,7 @@ class TermsOfServiceScreen extends StatelessWidget {
 【運営者情報】
 運営者: SpotLight運営チーム
 メール: support@spotlight-app.click
-ウェブサイト: https://spotlight-app.click/index.html
+ウェブサイト: https://spotlight-app.click/
 ''',
             ),
 

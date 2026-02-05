@@ -64,7 +64,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '最終更新日: 2024年1月1日',
+                    '最終更新日: 2026年2月1日',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
@@ -233,7 +233,7 @@ SpotLight（以下「本アプリ」）は、ユーザーのプライバシー�
 【運営者情報】
 運営者: SpotLight運営チーム
 メール: support@spotlight-app.click
-ウェブサイト: https://api.spotlight-app.click
+ウェブサイト: https://spotlight-app.click/
 
 【個人情報保護責任者】
 上記連絡先までご連絡ください。

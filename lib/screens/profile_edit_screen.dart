@@ -7,6 +7,7 @@ import '../utils/spotlight_colors.dart';
 import '../auth/auth_provider.dart';
 import '../services/jwt_service.dart';
 import '../config/app_config.dart';
+import '../widgets/center_popup.dart';
 import '../widgets/blur_app_bar.dart';
 
 class ProfileEditScreen extends StatefulWidget {
@@ -170,12 +171,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         final responseData = jsonDecode(response.body);
         if (responseData['status'] == 'success') {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('自己紹介文を保存しました'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            CenterPopup.show(context, '自己紹介文を保存しました');
             Navigator.of(context).pop(true); // 保存成功を通知
           }
         } else {

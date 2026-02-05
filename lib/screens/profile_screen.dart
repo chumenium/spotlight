@@ -20,6 +20,7 @@ import 'blocked_users_screen.dart';
 import 'profile_edit_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
+import '../widgets/center_popup.dart';
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
@@ -100,6 +101,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showSafeSnackBar(String message, {Color? backgroundColor}) {
     if (mounted) {
       try {
+        if (backgroundColor == Colors.green) {
+          CenterPopup.show(context, message);
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -446,20 +451,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
 
-        // 新しいバッジが解放された場合は通知を表示
+        // 新しいバッジが解放された場合はハイライトのみ更新
         if (newlyUnlockedBadges.isNotEmpty && mounted) {
-          final badgeNames = newlyUnlockedBadges.map((b) => b.name).join('、');
-
           // 新しく解放されたバッジのIDを保存（アニメーション用）
           setState(() {
             _newlyUnlockedBadgeIds.clear();
             _newlyUnlockedBadgeIds.addAll(newlyUnlockedBadges.map((b) => b.id));
           });
-
-          _showSafeSnackBar(
-            '🎉 新しいバッジを獲得しました: $badgeNames',
-            backgroundColor: Colors.green,
-          );
 
           // 3秒後にハイライトを解除
           Future.delayed(const Duration(seconds: 3), () {

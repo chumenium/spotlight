@@ -12,6 +12,7 @@ import '../utils/spotlight_colors.dart';
 import '../config/app_config.dart';
 import '../services/share_link_service.dart';
 import '../widgets/blur_app_bar.dart';
+import '../widgets/center_popup.dart';
 
 /// プレイリスト詳細画面
 /// API仕様書（API_ENDPOINTS.md 135-156行目）に基づいて実装
@@ -589,12 +590,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 post.id.toString(),
               );
               if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('プレイリストから削除しました'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                CenterPopup.show(context, 'プレイリストから削除しました');
                 _fetchPlaylistContents();
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
