@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:share_plus/share_plus.dart';
@@ -254,9 +253,6 @@ class _HomeScreenState extends State<HomeScreen>
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         // アプリがバックグラウンドに行った時は動画を一時停止（段階4）
-        if (kDebugMode) {
-          debugPrint('📱 [ライフサイクル] アプリがバックグラウンドに移動');
-        }
         _isAppInForeground = false;
         _forceStopAndResetMedia();
         _lastPlayingVideoBeforeNavigation = null;
@@ -264,9 +260,6 @@ class _HomeScreenState extends State<HomeScreen>
         break;
       case AppLifecycleState.resumed:
         // アプリがフォアグラウンドに戻った時は動画を再開（段階4）
-        if (kDebugMode) {
-          debugPrint('📱 [ライフサイクル] アプリがフォアグラウンドに戻った');
-        }
         _isAppInForeground = true;
         _resumeCurrentMedia();
         break;
@@ -328,11 +321,6 @@ class _HomeScreenState extends State<HomeScreen>
           }
 
           // 429エラー時は待機してから再試行
-          if (kDebugMode) {
-            debugPrint(
-                '⚠️ 429エラー（初期読み込み）: ${e.retryAfterSeconds}秒待機してから再試行します (試行回数: $retryCount/$maxRetries)');
-          }
-
           await Future.delayed(Duration(seconds: e.retryAfterSeconds));
         }
       }
@@ -343,16 +331,8 @@ class _HomeScreenState extends State<HomeScreen>
         // リトライ処理
         if (_initialRetryCount < _maxInitialRetries) {
           _initialRetryCount++;
-          if (kDebugMode) {
-            debugPrint(
-                '⚠️ 投稿が取得できませんでした。リトライします ($_initialRetryCount/$_maxInitialRetries)');
-          }
           await Future.delayed(const Duration(seconds: 2));
           return _loadInitialPosts();
-        }
-
-        if (kDebugMode) {
-          debugPrint('⚠️ 投稿が取得できませんでした（リトライ上限に達しました）');
         }
 
         // エラー時は空のリストを設定
@@ -373,30 +353,16 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() {
           _posts = uniquePosts;
           _isLoading = false;
-          // 初期読み込み時は、取得できた場合は続きがある可能性があると判断
-          _hasMorePosts = uniquePosts.length >= 3; // 3件以上取得できた場合は続きがあると判断
-          if (kDebugMode) {
-            debugPrint(
-                '📄 初期読み込み完了: ${uniquePosts.length}件, _hasMorePosts=$_hasMorePosts');
-          }
+          _hasMorePosts = uniquePosts.length >= 3;
         });
         _schedulePendingTargetCheck();
 
-        if (kDebugMode) {
-          debugPrint(
-              '✅ 投稿を取得しました: ${uniquePosts.length}件（重複除外後: ${fetchedPosts.length - uniquePosts.length}件）');
-        }
-
-        // 初期ロード完了後、最初の投稿の動画を初期化・再生（初期表示時に動画が表示されない問題を修正）
+        // 初期ロード完了後、最初の投稿の動画を初期化・再生
         if (uniquePosts.isNotEmpty && !_isDisposed) {
-          // 次のフレームで動画を初期化（UI更新後に実行）
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_isDisposed && _posts.isNotEmpty && _currentIndex == 0) {
               final firstPost = _posts[0];
               if (firstPost.postType == PostType.video) {
-                if (kDebugMode) {
-                  debugPrint('🎬 初期表示: 最初の動画を初期化します: postId=${firstPost.id}');
-                }
                 _handleMediaPageChange(0);
               }
             }
@@ -404,50 +370,26 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     } on TooManyRequestsException catch (e) {
-      // 429エラー時は一時的なエラーとして扱い、リトライする
-      if (kDebugMode) {
-        debugPrint('⚠️ 429エラー（レート制限）: ${e.message}');
-      }
-
       // リトライ処理
       if (_initialRetryCount < _maxInitialRetries) {
         _initialRetryCount++;
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ エラーが発生しました。リトライします ($_initialRetryCount/$_maxInitialRetries)');
-        }
         await Future.delayed(Duration(seconds: e.retryAfterSeconds));
         return _loadInitialPosts();
       }
 
-      if (kDebugMode) {
-        debugPrint('⚠️ 投稿が取得できませんでした（リトライ上限に達しました）');
-      }
-
-      // エラー時は空のリストを設定
       setState(() {
         _posts = [];
         _isLoading = false;
       });
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 投稿取得エラー: $e');
-      }
-
-      // リトライ処理
       if (_initialRetryCount < _maxInitialRetries) {
         _initialRetryCount++;
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ エラーが発生しました。リトライします ($_initialRetryCount/$_maxInitialRetries)');
-        }
         await Future.delayed(const Duration(seconds: 2));
         return _loadInitialPosts();
       }
 
       if (_isDisposed) return;
 
-      // エラー時は空のリストを設定
       setState(() {
         _posts = [];
         _isLoading = false;
@@ -487,11 +429,6 @@ class _HomeScreenState extends State<HomeScreen>
     final recentIds = idsList.skip(idsList.length - keepRecent).toSet();
     _fetchedContentIds.clear();
     _fetchedContentIds.addAll(recentIds);
-
-    if (kDebugMode) {
-      debugPrint(
-          '📄 取得履歴をクリア: ${idsList.length}件 → ${recentIds.length}件（直近${keepRecent}件のみ保持）');
-    }
   }
 
   /// PageViewのページ変更処理（段階4: 動画再生制御を追加）
@@ -526,18 +463,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 余裕をもって追加コンテンツを読み込む
     if (_shouldTriggerPrefetch(index)) {
-      if (kDebugMode) {
-        debugPrint(
-            '📄 読み込み条件チェック（余裕あり）: index=$index, posts=${_posts.length}, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
-      }
       _scheduleLoadMoreWithGrace();
     } else if (index == _posts.length &&
         !_isLoadingMore &&
         !_noMoreContent) {
       _scheduleLoadMoreWithGrace();
-    } else if (kDebugMode && index >= _posts.length - 3) {
-      debugPrint(
-          '📄 読み込みスキップ: index=$index, _isLoadingMore=$_isLoadingMore, _noMoreContent=$_noMoreContent');
     }
   }
 
@@ -571,9 +501,6 @@ class _HomeScreenState extends State<HomeScreen>
             controller.value.isInitialized &&
             !controller.value.isPlaying) {
           _startVideoPlayback(postIndex);
-          if (kDebugMode) {
-            debugPrint('✅ 逆スクロール時の動画再生: postId=${post.id}, index=$postIndex');
-          }
         }
       }
     }
@@ -618,11 +545,6 @@ class _HomeScreenState extends State<HomeScreen>
     // 画面遷移時のメディア再生制御
     _handleNavigationMediaControl(currentNavIndex);
 
-    if (kDebugMode) {
-      debugPrint(
-          '📱 [didChangeDependencies] targetPostId=$targetPostId, targetPost=${targetPost != null ? "存在(Id: ${targetPost.id})" : "null"}, _pendingTargetPostId=$_pendingTargetPostId');
-    }
-
     if (targetPostId != null) {
       final hasTargetInList = _posts.any((post) => post.id == targetPostId);
       final existingTargetPost = hasTargetInList
@@ -636,22 +558,8 @@ class _HomeScreenState extends State<HomeScreen>
         _pendingTargetPostId = targetPostId;
         // targetPostが挿入された場合は、API呼び出しをスキップ
         final inserted = _insertProviderPostIfNeeded(targetPostId);
-        if (kDebugMode) {
-          debugPrint(
-              '📱 [didChangeDependencies] _insertProviderPostIfNeeded結果: inserted=$inserted');
-        }
         if ((!inserted && !hasTargetInList) || shouldFetchDetail) {
-          // targetPostが未取得、または詳細不足の場合はAPIから取得
-          if (kDebugMode) {
-            debugPrint(
-                '📱 [didChangeDependencies] targetPostをAPIから取得します: postId=$targetPostId');
-          }
           _fetchTargetPost(targetPostId);
-        } else {
-          if (kDebugMode) {
-            debugPrint(
-                '📱 [didChangeDependencies] targetPostが既に存在/十分なため、API呼び出しをスキップします');
-          }
         }
         _schedulePendingTargetCheck();
       } else if (_pendingTargetPostId != null) {
@@ -676,21 +584,12 @@ class _HomeScreenState extends State<HomeScreen>
 
     // ホーム画面（インデックス0）から別画面に遷移した場合
     if (_lastNavigationIndex == 0 && currentNavIndex != 0) {
-      if (kDebugMode) {
-        debugPrint('📱 [画面遷移] ホーム画面から別画面に遷移: currentIndex=$currentNavIndex');
-      }
-
       _forceStopAndResetMedia();
       _lastPlayingVideoBeforeNavigation = null;
       _lastPlayingAudioBeforeNavigation = null;
     }
     // 別画面からホーム画面に戻った場合
     else if (_lastNavigationIndex != 0 && currentNavIndex == 0) {
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [画面遷移] 別画面からホーム画面に戻る: previousIndex=$_lastNavigationIndex');
-      }
-
       _forceStopAndResetMedia();
 
       // 戻ったら現在の投稿を最初から自動再生
@@ -799,34 +698,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// targetPostを挿入または更新（既に存在する場合は更新）
-  /// 戻り値: 挿入または更新された場合はtrue、スキップされた場合はfalse
   bool _insertProviderPostIfNeeded(String postId) {
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
     final providerPost = navigationProvider.targetPost;
 
-    if (kDebugMode) {
-      debugPrint('📱 [insertProviderPost] 開始: postId=$postId');
-      debugPrint(
-          '  - providerPost: ${providerPost != null ? "存在(Id: ${providerPost.id}, username: ${providerPost.username})" : "null"}');
-      debugPrint('  - _posts.length: ${_posts.length}');
-      debugPrint('  - 既存投稿のID: ${_posts.map((p) => p.id).toList()}');
-    }
-
-    if (providerPost == null) {
-      if (kDebugMode) {
-        debugPrint('📱 [insertProviderPost] providerPostがnullのため、スキップします');
-      }
-      return false;
-    }
-
-    if (providerPost.id != postId) {
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [insertProviderPost] providerPost.id(${providerPost.id}) != postId($postId)のため、スキップします');
-      }
-      return false;
-    }
+    if (providerPost == null) return false;
+    if (providerPost.id != postId) return false;
 
     // まずは、usernameやuserIconPathが空でもPostを挿入または更新する
     // これにより、少なくともコンテンツは表示される
@@ -835,17 +713,6 @@ class _HomeScreenState extends State<HomeScreen>
         _posts.indexWhere((existing) => existing.id == postId);
 
     if (existingIndex >= 0) {
-      // 既存の投稿がある場合、targetPostで更新
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [insertProviderPost] 既存の投稿を更新します: postId=$postId, index=$existingIndex');
-        debugPrint(
-            '  - 既存: username=${_posts[existingIndex].username}, userIconPath=${_posts[existingIndex].userIconPath}');
-        debugPrint(
-            '  - 更新後: username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
-      }
-
-      // 既存の投稿の動画コントローラーをクリア（mediaUrlが更新される可能性があるため）
       final oldPost = _posts[existingIndex];
       if (oldPost.postType == PostType.video) {
         final controller = _videoControllers[existingIndex];
@@ -858,54 +725,22 @@ class _HomeScreenState extends State<HomeScreen>
           if (_currentPlayingVideo == existingIndex) {
             _currentPlayingVideo = null;
           }
-          if (kDebugMode) {
-            debugPrint(
-                '📱 [insertProviderPost] 既存の動画コントローラーをクリアしました: index=$existingIndex');
-          }
         }
       }
 
       setState(() {
-        // 既存の投稿をtargetPostで置き換え
         _posts[existingIndex] = providerPost;
-        // 既に存在するので、取得済みIDには追加しない
       });
-
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [insertProviderPost] 既存の投稿を更新しました: postId=$postId, username=${providerPost.username}');
-      }
     } else {
-      // 既存の投稿がない場合、新規に挿入
       _shiftMediaStateForInsertedIndex(0);
       setState(() {
         _posts.insert(0, providerPost);
         _addFetchedContentId(postId);
       });
-
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [insertProviderPost] targetPostを挿入しました: postId=$postId, username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
-      }
     }
 
-    // usernameやuserIconPathが空の場合、バックグラウンドでAPIから取得して更新する
     if (providerPost.username.isEmpty || providerPost.userIconPath.isEmpty) {
-      if (kDebugMode) {
-        debugPrint(
-            '📱 [insertProviderPost] ユーザー情報が不完全なため、バックグラウンドで補完します: username=${providerPost.username}, userIconPath=${providerPost.userIconPath}');
-      }
-      // バックグラウンドでAPIから取得して更新（非同期で実行）
-      _fetchTargetPost(postId).then((_) {
-        if (kDebugMode) {
-          debugPrint('📱 [insertProviderPost] バックグラウンド補完完了: postId=$postId');
-        }
-      }).catchError((e) {
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ [insertProviderPost] バックグラウンド補完エラー: postId=$postId, error=$e');
-        }
-      });
+      _fetchTargetPost(postId).catchError((_) {});
     }
 
     return true;
@@ -931,21 +766,10 @@ class _HomeScreenState extends State<HomeScreen>
           _posts.indexWhere((existing) => existing.id == post.id);
 
       if (existingIndex >= 0) {
-        // 既存の投稿がある場合、APIから取得した完全な情報で更新
-        if (kDebugMode) {
-          debugPrint(
-              '📱 [fetchTargetPost] 既存の投稿を更新します: postId=$postId, index=$existingIndex');
-          debugPrint(
-              '  - 既存: username=${_posts[existingIndex].username}, userIconPath=${_posts[existingIndex].userIconPath}');
-          debugPrint(
-              '  - 更新後: username=${post.username}, userIconPath=${post.userIconPath}');
-        }
-
         setState(() {
           _posts[existingIndex] = post;
         });
       } else {
-        // 既存の投稿がない場合、新規に挿入
         _shiftMediaStateForInsertedIndex(0);
         setState(() {
           _posts.insert(0, post);
@@ -1010,13 +834,6 @@ class _HomeScreenState extends State<HomeScreen>
       _pendingTargetPostId = null;
       _pendingTargetRetryTimer?.cancel();
       _pendingTargetRetryCount = 0;
-      if (kDebugMode) {
-        debugPrint(
-            '📱 ナビゲーション: targetPostIdを表示しました (postIndex=$targetPostIndex, pageIndex=$targetPageIndex)');
-        if (shouldOpenComments) {
-          debugPrint('💬 コメント画面を開きます: commentID=$targetCommentId');
-        }
-      }
     });
     return true;
   }
@@ -1105,9 +922,6 @@ class _HomeScreenState extends State<HomeScreen>
         if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
           if (!controller.value.isPlaying) {
             _startVideoPlayback(postIndex);
-            if (kDebugMode) {
-              debugPrint('✅ 既存動画を再生しました: postId=${post.id}, index=$postIndex');
-            }
           }
         }
       }
@@ -1116,13 +930,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     final mediaUrl = post.mediaUrl ?? post.contentPath;
     if (mediaUrl == null || mediaUrl.isEmpty) {
-      if (kDebugMode) {
-        debugPrint('⚠️ 動画URLが空です: postId=${post.id}');
-        debugPrint('   - link: ${post.link}');
-        debugPrint('   - contentPath: ${post.contentPath}');
-        debugPrint('   - mediaUrl: ${post.mediaUrl}');
-      }
-
       // URLが空の場合でも、UIを更新してエラー状態を解除
       if (mounted) {
         setState(() {
@@ -1137,9 +944,6 @@ class _HomeScreenState extends State<HomeScreen>
       _videoInitInProgress.add(postIndex);
       final hlsUrl = _buildHlsPlaybackUrl(mediaUrl);
       if (hlsUrl == null || hlsUrl.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('❌ HLS URLの生成に失敗しました: postId=${post.id}, url=$mediaUrl');
-        }
         if (!isPreload && mounted) {
           setState(() {
             _videoInitFailed.add(postIndex);
@@ -1147,11 +951,6 @@ class _HomeScreenState extends State<HomeScreen>
         }
         return;
       }
-      if (kDebugMode) {
-        debugPrint('🎬 動画を初期化中: postId=${post.id}, url=$hlsUrl');
-        debugPrint('🔗 HLS再生URL: $hlsUrl');
-      }
-
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(hlsUrl),
         videoPlayerOptions: VideoPlayerOptions(
@@ -1186,16 +985,8 @@ class _HomeScreenState extends State<HomeScreen>
       // 現在表示中の動画を再生
       if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
         _startVideoPlayback(postIndex);
-
-        if (kDebugMode) {
-          debugPrint('✅ 動画を初期化・再生しました: postId=${post.id}, index=$postIndex');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 動画の初期化に失敗しました: postId=${post.id}, error=$e');
-        debugPrint('   - mediaUrl: $mediaUrl');
-      }
       final retryCount = _videoInitRetryCounts[post.id] ?? 0;
       final maxRetry = isPreload ? 0 : _maxVideoInitRetryCount;
       if (retryCount < maxRetry) {
@@ -1272,9 +1063,6 @@ class _HomeScreenState extends State<HomeScreen>
           controller.seekTo(Duration.zero);
         }
       } catch (_) {}
-      if (kDebugMode) {
-        debugPrint('⏸️ すべての動画を停止: index=${entry.key}');
-      }
     }
     _currentPlayingVideo = null;
   }
@@ -1321,9 +1109,6 @@ class _HomeScreenState extends State<HomeScreen>
       try {
         player.seek(Duration.zero);
       } catch (_) {}
-      if (kDebugMode) {
-        debugPrint('⏸️ すべての音声を停止: index=${entry.key}');
-      }
     }
     _currentPlayingAudio = null;
   }
@@ -1370,9 +1155,6 @@ class _HomeScreenState extends State<HomeScreen>
     _pendingTargetRetryCount = 0;
     _pendingTargetPostId = null;
     _forceStopAndResetMedia();
-    if (kDebugMode) {
-      debugPrint('🛑 スクロール開始: 再生を停止しました');
-    }
   }
 
   void _handleScrollEnd() {
@@ -1572,10 +1354,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 前後3件以外の動画コントローラーをクリーンアップ
     _cleanupDistantControllers(currentIndex);
-
-    if (kDebugMode && currentIndex % 5 == 0) {
-      debugPrint('📄 現在のページ: $currentIndex / ${_posts.length}');
-    }
   }
 
   /// 現在のインデックスから一定範囲外のコントローラーをクリーンアップ（段階4）
@@ -1602,9 +1380,6 @@ class _HomeScreenState extends State<HomeScreen>
     if (_isLoadingMore) {
       if (!_hasQueuedLoadMore) {
         _hasQueuedLoadMore = true;
-        if (kDebugMode) {
-          debugPrint('🌀 スポットライト読み込みをキューに追加しました');
-        }
       }
       return;
     }
@@ -1621,9 +1396,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     _hasQueuedLoadMore = false;
-    if (kDebugMode) {
-      debugPrint('🚀 キューから追加の読み込みを開始します');
-    }
 
     Future.microtask(() {
       if (_isDisposed || _isLoadingMore || _noMoreContent) return;
@@ -1633,23 +1405,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 追加コンテンツを読み込む（段階3: 無限スクロール）
   Future<void> _loadMoreContents() async {
-    if (_isDisposed || _isLoadingMore || _noMoreContent) {
-      if (kDebugMode) {
-        debugPrint(
-            '📄 _loadMoreContents: スキップ (_isDisposed=$_isDisposed, _isLoadingMore=$_isLoadingMore, _noMoreContent=$_noMoreContent)');
-      }
-      return;
-    }
+    if (_isDisposed || _isLoadingMore || _noMoreContent) return;
 
     _wasShowingLoadingPlaceholderAtLoadStart = _isShowingLoadingPlaceholder;
 
-    if (kDebugMode) {
-      debugPrint(
-          '📄 _loadMoreContents: 開始 (_hasMorePosts=$_hasMorePosts, posts=${_posts.length})');
-    }
-
-    // 読み込み開始時のインデックスを記録（読み込み完了時の自動遷移判定用）
-    final loadingStartIndex = _currentIndex;
     double? currentPageValue;
     if (_pageController.hasClients) {
       currentPageValue = _pageController.page;
@@ -1668,55 +1427,24 @@ class _HomeScreenState extends State<HomeScreen>
       _isLoadingMore = true;
     });
 
-    if (kDebugMode) {
-      debugPrint(
-          '📄 読み込み開始時のインデックス: _currentIndex=$_currentIndex, PageController.page=$currentPageValue, loadingStartPageIndex=$loadingStartPageIndex');
-    }
-
     try {
-      // 既に取得したコンテンツIDを除外するため、取得済みIDのリストを準備
-      // 高頻度スクロール対応：除外IDを10件に制限（20件→10件に減らして、APIレスポンスと429エラーを改善）
       final excludeIds = _getRecentFetchedContentIds(limit: 10);
       final excludeIdsList = excludeIds.toList();
 
-      if (kDebugMode) {
-        debugPrint(
-            '📄 除外ID数: ${excludeIdsList.length}件 (posts=${_posts.length})');
-      }
-
-      // PostServiceから追加の投稿を取得（既に取得したIDを除外）
       List<Post> fetchedPosts = [];
 
-      // 初回は除外IDをそのまま使用して取得を試みる
       try {
         fetchedPosts =
             await PostService.fetchContents(excludeContentIDs: excludeIdsList);
-
-        if (kDebugMode) {
-          debugPrint('📄 初回取得: ${fetchedPosts.length}件');
-        }
       } on TooManyRequestsException catch (e) {
-        // 429エラー時は、待機せずに次回の読み込みを遅延させる（高頻度スクロール対応）
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ 429エラー（レート制限）: 次回の読み込みを遅延させます（待機時間: ${e.retryAfterSeconds}秒）');
-        }
-
-        // 429エラー時は、次回の読み込みを許可するが、すぐには再試行しない
-        _clearOldFetchedContentIds(keepRecent: 5); // 取得履歴をさらに削減
+        _clearOldFetchedContentIds(keepRecent: 5);
 
         setState(() {
           _isLoadingMore = false;
-          // _noMoreContentはtrueにしない（次回の読み込みを許可するため）
-          // _hasMorePostsもfalseにしない（次回の読み込みを許可するため）
         });
         _scheduleLoadMoreRetry(delaySeconds: e.retryAfterSeconds ?? 2);
-        return; // 429エラー時は待機せずに即座に終了
+        return;
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('❌ 初回取得エラー: $e');
-        }
-        // エラー時も次回の読み込みを許可
         _clearOldFetchedContentIds(keepRecent: 5);
         setState(() {
           _isLoadingMore = false;
@@ -1727,37 +1455,21 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (_isDisposed) return;
 
-      // 空の結果の場合、すぐに除外IDなしで再試行（高頻度スクロール対応：1回のみ）
       if (fetchedPosts.isEmpty && !_isDisposed) {
         try {
           fetchedPosts = await PostService.fetchContents(excludeContentIDs: []);
 
-          if (kDebugMode) {
-            debugPrint('📄 除外IDなしで再取得: ${fetchedPosts.length}件');
-          }
-
-          // 除外IDなしでも空の場合は、取得履歴をクリアして次回の読み込みに備える
           if (fetchedPosts.isEmpty) {
-            _clearOldFetchedContentIds(keepRecent: 5); // 取得履歴をさらに削減
+            _clearOldFetchedContentIds(keepRecent: 5);
 
             setState(() {
               _isLoadingMore = false;
-              // _noMoreContentはtrueにしない（次回の読み込みを許可するため）
-              // _hasMorePostsもfalseにしない（次回の読み込みを許可するため）
             });
 
-            if (kDebugMode) {
-              debugPrint('⚠️ 空の結果: 取得履歴をクリアして、次回の読み込みで再試行します。');
-            }
             _scheduleLoadMoreRetry();
             return;
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ 除外IDなしでの再取得エラー: $e');
-          }
-
-          // エラー時も次回の読み込みを許可
           _clearOldFetchedContentIds(keepRecent: 5);
           setState(() {
             _isLoadingMore = false;
@@ -1767,10 +1479,6 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       if (fetchedPosts.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('📄 取得した投稿数: ${fetchedPosts.length}件');
-        }
-        // 重複除外処理
         final recentIds = _getRecentFetchedContentIds(limit: 50);
         final uniquePosts = <Post>[];
         for (final post in fetchedPosts) {
@@ -1781,12 +1489,6 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         if (uniquePosts.isEmpty) {
-          // 新しいコンテンツがない場合は、ランダム取得を試みる
-          if (kDebugMode) {
-            debugPrint('⚠️ 新しいコンテンツが見つかりませんでした（すべて重複）、ランダム取得を試みます');
-          }
-
-          // ランダム投稿を取得して試みる
           try {
             final randomPosts = await PostService.fetchRandomPosts(limit: 5);
             if (randomPosts.isNotEmpty && !_isDisposed) {
@@ -1801,21 +1503,7 @@ class _HomeScreenState extends State<HomeScreen>
               }
 
               if (randomUniquePosts.isNotEmpty && !_isDisposed) {
-                // 読み込み完了時に、読み込み中のプレースホルダーから新しいコンテンツに自動遷移
                 final previousPostCount = _posts.length;
-
-                // PageControllerの現在のページを確認（実際の表示位置を取得）
-                double? currentPageValue;
-                if (_pageController.hasClients) {
-                  currentPageValue = _pageController.page;
-                }
-                final currentPageIndex =
-                    currentPageValue?.round() ?? _currentIndex;
-
-                // 読み込み中のプレースホルダーを表示しているか確認
-                final wasViewingLoadingPlaceholder =
-                    currentPageIndex == previousPostCount ||
-                        _currentIndex == previousPostCount;
 
                 setState(() {
                   _posts.addAll(randomUniquePosts);
@@ -1827,34 +1515,18 @@ class _HomeScreenState extends State<HomeScreen>
                   _showLoadedContentIfOnPlaceholder(previousPostCount);
                 });
 
-                if (kDebugMode) {
-                  debugPrint(
-                      '✅ ランダム投稿を取得しました: ${randomUniquePosts.length}件（合計: ${_posts.length}件）');
-                  debugPrint(
-                      '📄 読み込み前の投稿数: $previousPostCount, 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex, 読み込み中プレースホルダー表示中: $wasViewingLoadingPlaceholder');
-                }
-
-                // ランダム投稿取得後の自動遷移は行わない（勝手なスクロール防止）
-
                 return;
               }
             }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('❌ ランダム投稿取得エラー: $e');
-            }
+            // エラー時は継続
           }
 
-          // すべてのコンテンツを読み込み済みとして扱う
           setState(() {
             _hasMorePosts = false;
             _noMoreContent = true;
             _isLoadingMore = false;
           });
-
-          if (kDebugMode) {
-            debugPrint('⚠️ すべてのコンテンツを読み込み済みとして扱います');
-          }
         } else {
           // 読み込み完了時に、読み込み中のプレースホルダーから新しいコンテンツに自動遷移
           final previousPostCount = _posts.length;
@@ -1883,31 +1555,12 @@ class _HomeScreenState extends State<HomeScreen>
           final shouldAutoNavigate = wasViewingLoadingPlaceholderAtStart ||
               isCurrentlyViewingLoadingPlaceholder;
 
-          // 新しい投稿を追加
           setState(() {
             _posts.addAll(uniquePosts);
             _isLoadingMore = false;
-            // 取得できた場合は続きがある可能性があると判断（より積極的に読み込む）
-            // ただし、取得件数が少ない場合は、次回の読み込みで終了する可能性が高い
-            _hasMorePosts = uniquePosts.length >= 3; // 3件以上取得できた場合は続きがあると判断
+            _hasMorePosts = uniquePosts.length >= 3;
           });
           _schedulePendingTargetCheck();
-
-          if (kDebugMode) {
-            debugPrint(
-                '✅ 追加コンテンツを取得しました: ${uniquePosts.length}件（合計: ${_posts.length}件）');
-            debugPrint(
-                '📄 状態更新: _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent');
-            debugPrint(
-                '📄 読み込み前の投稿数: $previousPostCount, 読み込み開始時のインデックス: $_loadingStartIndex');
-            debugPrint(
-                '📄 現在のインデックス: $_currentIndex, PageController.page: $currentPageValue, 実際のページ: $currentPageIndex');
-            debugPrint(
-                '📄 読み込み開始時に読み込み中プレースホルダー表示: $wasViewingLoadingPlaceholderAtStart');
-            debugPrint(
-                '📄 現在読み込み中プレースホルダー表示: $isCurrentlyViewingLoadingPlaceholder');
-            debugPrint('📄 自動表示判定: shouldAutoNavigate=$shouldAutoNavigate');
-          }
 
           if (uniquePosts.isNotEmpty && !_isDisposed && shouldAutoNavigate) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1917,26 +1570,13 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     } on TooManyRequestsException catch (e) {
-      // 429エラー時は一時的なエラーとして扱い、次の読み込みを許可する
-      if (kDebugMode) {
-        debugPrint('⚠️ 429エラー（レート制限）: ${e.message}');
-        debugPrint('   - 次回の読み込みで再試行します');
-      }
-
       if (_isDisposed) return;
 
       setState(() {
         _isLoadingMore = false;
-        // 429エラー時は「全てのコンテンツを読み込み済み」と判断しない
-        // 一時的なエラーとして扱い、次回の読み込みを許可
-        // _noMoreContentは変更しない（trueのままでも次回試行可能にする）
       });
       _scheduleLoadMoreRetry(delaySeconds: e.retryAfterSeconds ?? 2);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 追加コンテンツ取得エラー: $e');
-      }
-
       if (_isDisposed) return;
 
       setState(() {
@@ -2012,18 +1652,9 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    // itemCountの計算：投稿数 + 広告数 + 読み込み中のプレースホルダー
-    // _noMoreContentがfalseの場合は、常に1つ余分に追加して読み込みを試みる
-    // (_hasMorePostsがfalseでも、まだ読み込みを試みる必要がある)
     final hasMoreContent = !_noMoreContent || _isLoadingMore;
     final adCount = _calculateAdCount(_posts.length);
     final itemCount = _posts.length + adCount + (hasMoreContent ? 1 : 0);
-
-    if (kDebugMode &&
-        (_currentIndex % 5 == 0 || _currentIndex >= _posts.length - 3)) {
-      debugPrint(
-          '📄 PageView: itemCount=$itemCount, posts=${_posts.length}, hasMoreContent=$hasMoreContent, _hasMorePosts=$_hasMorePosts, _noMoreContent=$_noMoreContent, _isLoadingMore=$_isLoadingMore');
-    }
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
@@ -2629,25 +2260,13 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    // 音声のURLを決定
     String? mediaUrl = post.mediaUrl;
 
-    // Post.fromJson で mediaUrl が設定されなかった場合でも、
-    // contentPath にCloudFrontの完全URLが入っているケースがあるためフォールバックする
     if ((mediaUrl == null || mediaUrl.isEmpty) && post.contentPath.isNotEmpty) {
       mediaUrl = post.contentPath;
-      if (kDebugMode) {
-        debugPrint(
-            '🎧 音声URLフォールバック: postId=${post.id}, contentPath=${post.contentPath} を使用します');
-      }
     }
 
-    if (mediaUrl == null || mediaUrl.isEmpty) {
-      if (kDebugMode) {
-        debugPrint('⚠️ 音声URLが空です: postId=${post.id}');
-      }
-      return;
-    }
+    if (mediaUrl == null || mediaUrl.isEmpty) return;
 
     try {
       final player = AudioPlayer();
@@ -2668,24 +2287,16 @@ class _HomeScreenState extends State<HomeScreen>
         _initializedAudios.add(postIndex);
       });
 
-      // 現在表示中の音声を再生
       if (_canAutoPlayPost(postIndex) && token == _mediaResetToken) {
-        // 他の動画と音声をすべて停止してから再生
         _stopAllVideos();
         _stopAllAudios();
         _currentPlayingAudio = postIndex;
         await player.seek(Duration.zero);
         player.play();
         _startSeekBarUpdateTimerAudio();
-
-        if (kDebugMode) {
-          debugPrint('✅ 音声を初期化・再生しました: postId=${post.id}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 音声の初期化に失敗しました: postId=${post.id}, error=$e');
-      }
+      // エラーは無視
     }
   }
 
@@ -3052,9 +2663,6 @@ class _HomeScreenState extends State<HomeScreen>
               GestureDetector(
                 onTap: () {
                   // リンクを開く（段階12で実装）
-                  if (kDebugMode) {
-                    debugPrint('🔗 リンクを開く: ${post.link}');
-                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -3149,9 +2757,6 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     GestureDetector(
                       onTap: () async {
-                        if (kDebugMode) {
-                          debugPrint('👤 ユーザープロフィール画面に遷移: ${post.username}');
-                        }
                         _captureCurrentMediaForResume();
                         _stopAndResetAllMedia();
                         await Navigator.push(
@@ -3446,17 +3051,8 @@ class _HomeScreenState extends State<HomeScreen>
           if (!isCurrentlySpotlighted) {
             _playSpotlightAnimation();
           }
-
-          if (kDebugMode) {
-            debugPrint(
-                '✅ スポットライト${!isCurrentlySpotlighted ? "ON" : "OFF"}: postId=${post.id}');
-          }
         }
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ スポットライト処理に失敗しました: postId=${post.id}');
-        }
-        // エラーメッセージを表示（オプション）
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -3468,9 +3064,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ スポットライト処理エラー: $e');
-      }
+      // エラーは無視
     } finally {
       if (_isDisposed) return;
       setState(() {
@@ -3524,23 +3118,14 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// プレイリストボタンの処理（段階9）
   Future<void> _handlePlaylistButton(Post post, int index) async {
-    if (kDebugMode) {
-      debugPrint('📂 プレイリストボタン: postId=${post.id}');
-    }
-
     _suppressVideoTapOnce();
     try {
-      // プレイリスト一覧を取得
       final playlists = await PlaylistService.getPlaylists();
 
       if (!mounted) return;
 
-      // プレイリスト選択ダイアログを表示
       _showPlaylistDialog(post, playlists);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ プレイリスト取得エラー: $e');
-      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3676,12 +3261,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// 共有ボタンの処理（段階9）
   Future<void> _handleShareButton(Post post, int index) async {
-    if (kDebugMode) {
-      debugPrint('🔗 共有ボタン: postId=${post.id}');
-    }
-
     _suppressVideoTapOnce();
-    // 共有オプションを表示
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -3782,15 +3362,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// コメントボタンの処理（段階8）
   Future<void> _handleCommentButton(Post post) async {
-    if (kDebugMode) {
-      debugPrint('💬 コメントボタン: postId=${post.id}');
-    }
-    if (_isCommentSheetVisible) {
-      if (kDebugMode) {
-        debugPrint('⚠️ コメントシートは既に開いています');
-      }
-      return;
-    }
+    if (_isCommentSheetVisible) return;
     _suppressVideoTapOnce();
     _isCommentSheetVisible = true;
 
@@ -3802,42 +3374,24 @@ class _HomeScreenState extends State<HomeScreen>
     int? replyingToCommentId;
 
     Future<List<Comment>> refreshComments(StateSetter setModalState) async {
-      if (!isSheetOpen) {
-        return comments;
-      }
+      if (!isSheetOpen) return comments;
       try {
         setModalState(() {
-          if (isSheetOpen) {
-            isLoading = true;
-          }
+          if (isSheetOpen) isLoading = true;
         });
       } catch (e) {
         return comments;
       }
 
-      if (post.id.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('⚠️ refreshComments: 投稿IDが空です');
-        }
-        return comments;
-      }
+      if (post.id.isEmpty) return comments;
 
       final currentPostIndex = _getActualPostIndex(_currentIndex);
       if (currentPostIndex != null) {
         final currentPost = _posts[currentPostIndex];
         if (currentPost.id != post.id) {
-          if (kDebugMode) {
-            debugPrint('⚠️ refreshComments: データの不一致を検出');
-            debugPrint('  - 期待されるpostId: ${post.id}');
-            debugPrint('  - 実際のpostId: ${currentPost.id}');
-            debugPrint('  - 期待されるusername: ${post.username}');
-            debugPrint('  - 実際のusername: ${currentPost.username}');
-          }
           final fetchedComments =
               await CommentService.getComments(currentPost.id);
-          if (!mounted || !isSheetOpen) {
-            return comments;
-          }
+          if (!mounted || !isSheetOpen) return comments;
           try {
             setModalState(() {
               if (isSheetOpen) {
@@ -3853,9 +3407,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       final fetchedComments = await CommentService.getComments(post.id);
-      if (!mounted || !isSheetOpen) {
-        return comments;
-      }
+      if (!mounted || !isSheetOpen) return comments;
       try {
         setModalState(() {
           if (isSheetOpen) {
@@ -3865,12 +3417,6 @@ class _HomeScreenState extends State<HomeScreen>
         });
       } catch (e) {
         return comments;
-      }
-
-      if (kDebugMode) {
-        debugPrint('💬 コメント一覧を更新: ${fetchedComments.length}件の親コメント');
-        final totalCount = _countAllComments(fetchedComments);
-        debugPrint('💬 コメント総数（返信含む）: $totalCount件');
       }
 
       return fetchedComments;
@@ -4205,28 +3751,6 @@ class _HomeScreenState extends State<HomeScreen>
                                       final updatedTotal =
                                           _countAllComments(updatedComments);
 
-                                      if (kDebugMode) {
-                                        debugPrint(
-                                            '💬 ${wasReplying ? "返信" : "コメント"}追加後のコメント数: $updatedTotal件');
-                                        final currentPostIndex =
-                                            _getActualPostIndex(_currentIndex);
-                                        if (currentPostIndex != null) {
-                                          final currentPost =
-                                              _posts[currentPostIndex];
-                                          debugPrint(
-                                              '💬 現在の投稿のコメント数: ${currentPost.comments}件');
-                                          debugPrint(
-                                              '💬 現在の投稿ID: ${currentPost.id}');
-                                          debugPrint(
-                                              '💬 現在の投稿username: ${currentPost.username}');
-                                        }
-                                        debugPrint(
-                                            '💬 更新後のコメント一覧: ${updatedComments.length}件の親コメント');
-                                        if (wasReplying) {
-                                          debugPrint('💬 返信追加後のコメント一覧を更新しました');
-                                        }
-                                      }
-
                                       if (mounted && !_isDisposed) {
                                         final currentPostIndex =
                                             _getActualPostIndex(_currentIndex);
@@ -4266,20 +3790,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                     currentPost.createdAt,
                                               );
                                             });
-                                          } else if (kDebugMode) {
-                                            debugPrint('⚠️ コメント追加: データの不一致を検出');
-                                            debugPrint(
-                                                '  - 期待されるpostId: ${post.id}');
-                                            debugPrint(
-                                                '  - 実際のpostId: ${currentPost.id}');
-                                            debugPrint(
-                                                '  - 期待されるusername: ${post.username}');
-                                            debugPrint(
-                                                '  - 実際のusername: ${currentPost.username}');
                                           }
-                                        } else if (kDebugMode) {
-                                          debugPrint(
-                                              '⚠️ コメント追加: 広告などで表示中の投稿が検出できません (ページindex=$_currentIndex, posts=${_posts.length})');
                                         }
                                       }
                                     } else {
@@ -4322,13 +3833,10 @@ class _HomeScreenState extends State<HomeScreen>
   int _countAllComments(List<Comment> commentList) {
     var total = 0;
     for (final comment in commentList) {
-      total++; // 親コメントをカウント
+      total++;
       if (comment.replies.isNotEmpty) {
         total += _countAllComments(comment.replies);
       }
-    }
-    if (kDebugMode) {
-      debugPrint('💬 コメント数カウント: 親コメント=${commentList.length}件, 合計=$total件');
     }
     return total;
   }

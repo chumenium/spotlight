@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -114,9 +113,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 自己紹介文取得エラー: $e');
-      }
       setState(() {
         _errorMessage = '自己紹介文の取得に失敗しました';
         _isLoading = false;
@@ -187,9 +183,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 自己紹介文保存エラー: $e');
-      }
       setState(() {
         _errorMessage = '保存に失敗しました: $e';
         _isSaving = false;

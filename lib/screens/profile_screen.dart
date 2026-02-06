@@ -78,22 +78,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // 古いアイコンURLのキャッシュをクリア
       if (oldIconUrl != null && oldIconUrl.isNotEmpty) {
         await CachedNetworkImage.evictFromCache(oldIconUrl);
-        if (kDebugMode) {
-          debugPrint('🗑️ 古いアイコンキャッシュをクリア: $oldIconUrl');
-        }
       }
 
       // デフォルトアイコンのキャッシュもクリア
       await CachedNetworkImage.evictFromCache(
           '${AppConfig.backendUrl}/icon/default_icon.png');
 
-      if (kDebugMode) {
-        debugPrint('🗑️ アイコンキャッシュをクリアしました');
-      }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ キャッシュクリアエラー: $e');
-      }
     }
   }
 
@@ -111,11 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             backgroundColor: backgroundColor ?? Colors.red,
           ),
         );
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ SnackBar表示に失敗: $e - メッセージ: $message');
-        }
-      }
+      } catch (e) {}
     }
   }
 
@@ -130,9 +117,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context) => dialog,
       );
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ ダイアログ表示に失敗: $e');
-      }
       return null;
     }
   }
@@ -157,9 +141,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       } catch (e) {
         _isLoadingDialogShown = false;
-        if (kDebugMode) {
-          debugPrint('⚠️ ローディングダイアログ表示に失敗: $e');
-        }
       }
     }
   }
@@ -170,11 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       try {
         _isLoadingDialogShown = false;
         Navigator.of(context).pop();
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ ローディングダイアログのクローズに失敗: $e');
-        }
-      }
+      } catch (e) {}
     }
   }
 
@@ -211,10 +188,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// プロフィールデータをリフレッシュ（プルリフレッシュ用）
   Future<void> _refreshProfileData() async {
-    if (kDebugMode) {
-      debugPrint('🔄 プロフィールデータをリフレッシュ中...');
-    }
-
     // すべてのデータを並列で取得
     await Future.wait([
       _fetchSpotlightCount(),
@@ -223,10 +196,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _fetchPlaylists(),
       _fetchBio(),
     ]);
-
-    if (kDebugMode) {
-      debugPrint('✅ プロフィールデータのリフレッシュ完了');
-    }
   }
 
   /// 自己紹介文を取得
@@ -265,11 +234,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
       }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 自己紹介文取得エラー: $e');
-      }
-    }
+    } catch (e) {}
   }
 
   /// 視聴履歴を取得（最前の5件まで）
@@ -281,10 +246,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final posts = await PostService.getPlayHistory();
 
-      if (kDebugMode) {
-        debugPrint('📝 プロフィール: 視聴履歴取得完了: ${posts.length}件');
-      }
-
       if (mounted) {
         setState(() {
           // 最前の5件までを表示
@@ -293,10 +254,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ プロフィール: 視聴履歴取得エラー: $e');
-      }
-
       if (mounted) {
         setState(() {
           _isLoadingHistory = false;
@@ -314,10 +271,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final posts = await PostService.getUserContents();
 
-      if (kDebugMode) {
-        debugPrint('📝 プロフィール: 自分の投稿取得完了: ${posts.length}件');
-      }
-
       if (mounted) {
         setState(() {
           // 最前の5件までを表示
@@ -326,10 +279,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ プロフィール: 自分の投稿取得エラー: $e');
-      }
-
       if (mounted) {
         setState(() {
           _isLoadingPosts = false;
@@ -346,10 +295,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final playlists = await PlaylistService.getPlaylists();
-
-      if (kDebugMode) {
-        debugPrint('📝 プロフィール: 再生リスト取得完了: ${playlists.length}件');
-      }
 
       if (mounted) {
         final sortedPlaylists = List<Playlist>.from(playlists);
@@ -368,10 +313,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ プロフィール: 再生リスト取得エラー: $e');
-      }
-
       if (mounted) {
         setState(() {
           _isLoadingPlaylists = false;
@@ -381,22 +322,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchSpotlightCount() async {
-    if (kDebugMode) {
-      debugPrint('🌟 バッジシステム: スポットライト数取得開始');
-    }
-
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ JWTトークンが取得できません');
-        }
         return;
-      }
-
-      if (kDebugMode) {
-        debugPrint(
-            '📡 リクエスト送信: ${AppConfig.backendUrl}/api/users/getspotlightnum');
       }
 
       final response = await http.post(
@@ -407,19 +336,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
       );
 
-      if (kDebugMode) {
-        debugPrint('📥 レスポンス受信: ${response.statusCode}');
-        debugPrint('📄 レスポンス内容: ${response.body}');
-      }
-
       if (mounted && response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
         // レスポンス形式: {"status": "success", "num": num}
         if (data['status'] != 'success' || data['num'] == null) {
-          if (kDebugMode) {
-            debugPrint('⚠️ レスポンス形式が不正です: $data');
-          }
           return;
         }
 
@@ -441,16 +362,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _spotlightCount = newSpotlightCount;
         });
 
-        if (kDebugMode) {
-          debugPrint('✅ スポットライト数取得成功: $_spotlightCount');
-          debugPrint(
-              '🎖️ 解放バッジ数: ${newUnlockedBadges.length}/${BadgeManager.allBadges.length}');
-          if (newlyUnlockedBadges.isNotEmpty) {
-            debugPrint(
-                '🎉 新しいバッジが解放されました: ${newlyUnlockedBadges.map((b) => b.name).join(', ')}');
-          }
-        }
-
         // 新しいバッジが解放された場合はハイライトのみ更新
         if (newlyUnlockedBadges.isNotEmpty && mounted) {
           // 新しく解放されたバッジのIDを保存（アニメーション用）
@@ -471,15 +382,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         // 前回のspotlight数を更新
         _previousSpotlightCount = newSpotlightCount;
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ HTTPエラー: ${response.statusCode}');
-        }
-      }
+      } else {}
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ スポットライト数取得エラー: $e');
-      }
       // エラー時の処理（特に状態更新は不要）
     }
   }
@@ -496,11 +400,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (currentIndex == profileIndex &&
             _lastNavigationIndex != profileIndex) {
           _lastNavigationIndex = profileIndex;
-
-          if (kDebugMode) {
-            debugPrint('🔄 プロフィール画面が表示されました。データを再取得します...');
-          }
-
           // 次のフレームでデータを再取得（build中にsetStateを呼ばないように）
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && navigationProvider.currentIndex == profileIndex) {
@@ -617,10 +516,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // iconPathを明示的に監視して、変更時に確実に再構築されるようにする
           final iconPath = user?.iconPath ?? '';
 
-          if (kDebugMode) {
-            debugPrint('🖼️ _buildProfileHeader: iconPath = $iconPath');
-          }
-
           // アイコンURLを生成（iconPathを優先、常に最新のキャッシュキーを使用）
           String? iconUrl;
           String? baseIconUrl;
@@ -633,52 +528,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 iconPath.endsWith('/default_icon.png')) {
               baseIconUrl =
                   '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
-              if (kDebugMode) {
-                debugPrint(
-                    '🖼️ プロフィール: S3のデフォルトアイコンを使用: $baseIconUrl (iconPath: $iconPath)');
-              }
             }
             // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
             else if (iconPath.startsWith('http://') ||
                 iconPath.startsWith('https://')) {
               baseIconUrl = iconPath;
-              if (kDebugMode) {
-                debugPrint(
-                    '🖼️ プロフィール: 完全なURLを使用: $baseIconUrl (iconPath: $iconPath)');
-              }
             }
             // 相対パス（/icon/で始まる）の場合はbackendUrlを追加
             else if (iconPath.startsWith('/icon/')) {
               baseIconUrl = '${AppConfig.backendUrl}$iconPath';
-              if (kDebugMode) {
-                debugPrint(
-                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
-              }
             }
             // 相対パス（/で始まるが/icon/でない）の場合もbackendUrlを追加
             else if (iconPath.startsWith('/')) {
               baseIconUrl = '${AppConfig.backendUrl}$iconPath';
-              if (kDebugMode) {
-                debugPrint(
-                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
-              }
             }
             // ファイル名のみの場合は/icon/を追加
             else {
               baseIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
-              if (kDebugMode) {
-                debugPrint(
-                    '🖼️ プロフィール: iconPathから生成: $baseIconUrl (iconPath: $iconPath)');
-              }
             }
           } else {
             // iconPathがない場合はS3のデフォルトアイコンを使用
             baseIconUrl =
                 '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
-            if (kDebugMode) {
-              debugPrint('🖼️ プロフィール: S3のデフォルトアイコンを使用 (iconPath: $iconPath)');
-            }
           }
 
           // アイコン変更時に即座に反映されるように、iconPathとタイムスタンプをキーに含める
@@ -687,13 +559,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final iconKey =
               '${user?.id ?? 'unknown'}_${iconPath}_${now.millisecondsSinceEpoch}';
 
-          if (kDebugMode) {
-            debugPrint('🖼️ プロフィール: アイコンキー生成');
-            debugPrint('  - user.id: ${user?.id}');
-            debugPrint('  - iconPath: $iconPath');
-            debugPrint('  - iconKey: $iconKey');
-          }
-
           // 1時間ごとのキャッシュキーを追加（YYYYMMDDHH形式）
           final cacheKey =
               '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}';
@@ -701,14 +566,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // URLにキャッシュキーを追加
           final separator = baseIconUrl.contains('?') ? '&' : '?';
           iconUrl = '$baseIconUrl$separator cache=$cacheKey';
-
-          if (kDebugMode) {
-            debugPrint('🖼️ プロフィール: アイコンURL生成');
-            debugPrint('  - baseIconUrl: $baseIconUrl');
-            debugPrint('  - iconPath: ${user?.iconPath}');
-            debugPrint('  - iconUrl: $iconUrl');
-            debugPrint('  - iconKey: $iconKey');
-          }
 
           return Row(
             children: [
@@ -740,14 +597,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       errorWidget: (context, url, error) {
-                        if (kDebugMode) {
-                          debugPrint('⚠️ アイコン読み込みエラー:');
-                          debugPrint('  - iconUrl: $iconUrl');
-                          debugPrint('  - baseIconUrl: $baseIconUrl');
-                          debugPrint('  - iconPath: $iconPath');
-                          debugPrint('  - error: $error');
-                          debugPrint('  - S3のdefault_icon.pngをフォールバックとして使用');
-                        }
                         // エラー時はS3のdefault_icon.pngを表示
                         return CachedNetworkImage(
                           imageUrl:

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../models/post.dart';
@@ -42,10 +41,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
     try {
       final posts = await PostService.getUserContents();
 
-      if (kDebugMode) {
-        debugPrint('📝 自分の投稿取得完了: ${posts.length}件');
-      }
-
       if (mounted) {
         setState(() {
           _posts = posts;
@@ -53,10 +48,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 自分の投稿取得エラー: $e');
-      }
-
       if (mounted) {
         setState(() {
           _errorMessage = '投稿の取得に失敗しました';
@@ -210,14 +201,8 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
             // 現在の画面を閉じてホーム画面に戻る
             Navigator.of(context).popUntil((route) => route.isFirst);
 
-            if (kDebugMode) {
-              debugPrint('📱 投稿をタップ: ID=$postId, タイトル=${post.title}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 投稿タップエラー: $e');
-          }
         }
       },
       child: Container(
@@ -635,10 +620,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   }
 
   Future<void> _handleShareButton(Post post) async {
-    if (kDebugMode) {
-      debugPrint('🔗 [自分の投稿] 共有ボタン: postId=${post.id}');
-    }
-
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -723,18 +704,11 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   }
 
   Future<void> _handlePlaylistAdd(Post post) async {
-    if (kDebugMode) {
-      debugPrint('📂 [自分の投稿] 再生リスト追加: postId=${post.id}');
-    }
-
     try {
       final playlists = await PlaylistService.getPlaylists();
       if (!mounted) return;
       _showPlaylistDialog(post, playlists);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [自分の投稿] プレイリスト取得エラー: $e');
-      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

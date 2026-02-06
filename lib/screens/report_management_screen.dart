@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/admin_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
@@ -46,27 +45,14 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
           _reports = reports;
           _isLoading = false;
           _errorMessage = null;
-          
-          if (kDebugMode) {
-            debugPrint('📋 通報取得完了: ${reports.length}件');
-            if (reports.isEmpty) {
-              debugPrint('⚠️ 通報データが空です');
-            }
-          }
         });
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ 通報取得失敗: reportsがnullです');
-        }
         setState(() {
           _errorMessage = '通報情報の取得に失敗しました。APIエンドポイントが実装されていない可能性があります。';
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 通報取得エラー: $e');
-      }
       setState(() {
         _errorMessage = 'エラーが発生しました: $e';
         _isLoading = false;
@@ -875,12 +861,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
       ? detailValue.toString()
       : '';
     
-    if (kDebugMode) {
-      debugPrint('📋 通報カード構築: reportID=$reportID');
-      debugPrint('  reasonValue=$reasonValue (type: ${reasonValue.runtimeType}), reason=$reason');
-      debugPrint('  detailValue=$detailValue (type: ${detailValue.runtimeType}), detail=$detail');
-    }
-    
     final reporterUsername = (report['username'] ?? '不明').toString();
     final processflag = _getProcessFlag(report);
     final statusColor = _getStatusColor(processflag);
@@ -1015,11 +995,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
   /// 通報の詳細を表示
   void _showReportDetail(Map<String, dynamic> report) {
-    if (kDebugMode) {
-      debugPrint('📋 通報詳細表示: フィールド一覧: ${report.keys.toList()}');
-      debugPrint('📋 通報詳細表示: 全データ: $report');
-    }
-    
     final reportID = report['reportID']?.toString() ?? '不明';
     final type = _getTypeLabel((report['reporttype'] ?? report['type'] ?? '').toString());
     
@@ -1037,10 +1012,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
       ? detailValue.toString()
       : '';
     
-    if (kDebugMode) {
-      debugPrint('📋 通報詳細: reasonValue=$reasonValue, reason=$reason');
-      debugPrint('📋 通報詳細: detailValue=$detailValue, detail=$detail');
-    }
     final processflag = _getProcessFlag(report);
     final statusLabel = _getStatusLabel(processflag);
     final statusColor = _getStatusColor(processflag);
