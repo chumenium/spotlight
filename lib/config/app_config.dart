@@ -3,7 +3,7 @@
 class AppConfig {
   // 開発モード: true = スキップ可能, false = スキップ不可
   // 本番デプロイ時は必ずfalseに変更すること
-  static const bool isDevelopment = true;
+  static const bool isDevelopment = false;
   
   // スキップボタンの表示制御
   static bool get canSkipAuth => isDevelopment;
@@ -44,6 +44,6 @@ class AppConfig {
 
   // TestFlightなど審査前の環境でテスト広告を強制する
   // 本番審査後はfalseに変更すること
-  static const bool forceTestAds = true;
+  static const bool forceTestAds = false;
 }
 
