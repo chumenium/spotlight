@@ -1,7 +1,7 @@
 name: spotlight
 description: SpotLight - 隠れた才能発見プラットフォーム
 publish_to: 'none'
-version: 0.5.4+1
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
