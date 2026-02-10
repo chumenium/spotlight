@@ -20,7 +20,7 @@ import 'blocked_users_screen.dart';
 import 'profile_edit_screen.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
-import '../widgets/center_popup.dart';
+
 import '../auth/auth_provider.dart';
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
@@ -93,8 +93,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       try {
         if (backgroundColor == Colors.green) {
-          CenterPopup.show(context, message);
-          return;
+          return; // 成功系ポップアップは表示しない
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -9,7 +9,7 @@ import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../services/playlist_service.dart';
 import '../services/share_link_service.dart';
-import '../widgets/center_popup.dart';
+
 import '../widgets/blur_app_bar.dart';
 
 class SpotlightListScreen extends StatefulWidget {
@@ -443,7 +443,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   }
                 } else {
                   // 削除が成功した
-                  CenterPopup.show(context, '投稿を削除しました');
                 }
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -675,8 +674,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
   void _copyLinkToClipboard(Post post) {
     final shareUrl = ShareLinkService.buildPostDeepLink(post.id);
     Clipboard.setData(ClipboardData(text: shareUrl));
-
-    CenterPopup.show(context, 'リンクをコピーしました');
   }
 
   void _shareWithSystem(Post post) {
@@ -805,9 +802,7 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
                   );
 
                   if (mounted) {
-                    if (success) {
-                      CenterPopup.show(context, 'プレイリストに追加しました');
-                    } else {
+                    if (!success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('プレイリストへの追加に失敗しました'),
@@ -854,7 +849,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               Navigator.pop(context);
               final success = await PostService.spotlightOff(post.id);
               if (success && mounted) {
-                CenterPopup.show(context, 'スポットライトを解除しました');
                 _fetchUserContents();
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -891,7 +885,6 @@ class _SpotlightListScreenState extends State<SpotlightListScreen> {
               Navigator.pop(context);
               final success = await PostService.spotlightOn(post.id);
               if (success && mounted) {
-                CenterPopup.show(context, 'スポットライトを付けました');
                 _fetchUserContents();
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1022,17 +1015,12 @@ class _PlaylistDialog extends StatelessWidget {
                           post.id,
                         );
 
-                        if (context.mounted) {
-                          if (success) {
-                              CenterPopup.show(
-                                  context, 'プレイリストに追加しました');
-                          } else {
+                        if (context.mounted && !success) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('プレイリストへの追加に失敗しました'),
                                 backgroundColor: Colors.red),
                             );
-                          }
                         }
                       } catch (e) {
                         if (context.mounted) {

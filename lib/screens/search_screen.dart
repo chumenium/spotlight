@@ -3,10 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/search_history.dart';
 import '../models/post.dart';
 import '../services/search_service.dart';
+import '../services/ad_service.dart';
 import '../utils/spotlight_colors.dart';
+import '../config/ad_config.dart';
 import '../providers/navigation_provider.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -33,6 +36,13 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isDisposed = false;
   int? _lastNavigationIndex; // 最後に処理したナビゲーションインデックス
 
+  // 検索履歴内ネイティブ広告
+  NativeAd? _searchNativeAd;
+  bool _isSearchAdLoaded = false;
+
+  /// 検索履歴リスト内で広告を挿入する位置（0始まり、3番目のアイテムの後）
+  static const int _adInsertIndex = 3;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +51,37 @@ class _SearchScreenState extends State<SearchScreen> {
 
     // バックエンドから検索履歴を取得
     _fetchSearchHistory();
+    // 検索履歴内ネイティブ広告を読み込み
+    _loadSearchNativeAd();
+  }
+
+  /// 検索履歴内ネイティブ広告を読み込む
+  Future<void> _loadSearchNativeAd() async {
+    await AdService.ensureInitialized();
+    _searchNativeAd = NativeAd(
+      adUnitId: AdConfig.getSearchNativeAdUnitId(),
+      request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.small,
+      ),
+      listener: NativeAdListener(
+        onAdLoaded: (ad) {
+          if (!_isDisposed && mounted) {
+            setState(() {
+              _isSearchAdLoaded = true;
+            });
+          }
+        },
+        onAdFailedToLoad: (ad, error) {
+          if (kDebugMode) {
+            debugPrint('❌ 検索履歴広告の読み込み失敗: ${error.message}');
+          }
+          ad.dispose();
+          _searchNativeAd = null;
+        },
+      ),
+    );
+    _searchNativeAd!.load();
   }
 
   /// バックエンドから検索履歴を取得
@@ -77,6 +118,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _isDisposed = true;
+    _searchNativeAd?.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -317,11 +359,21 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
+    // 広告を挿入するかどうか
+    final showAd = _isSearchAdLoaded && _searchHistory.length > _adInsertIndex;
+    final totalCount = _searchHistory.length + (showAd ? 1 : 0);
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      itemCount: _searchHistory.length,
+      itemCount: totalCount,
       itemBuilder: (context, index) {
-        final history = _searchHistory[index];
+        // 広告の位置
+        if (showAd && index == _adInsertIndex) {
+          return _buildSearchAdItem();
+        }
+        // 広告の後はインデックスをずらす
+        final historyIndex = (showAd && index > _adInsertIndex) ? index - 1 : index;
+        final history = _searchHistory[historyIndex];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: _buildSearchHistoryRow(history),
@@ -658,6 +710,17 @@ class _SearchScreenState extends State<SearchScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+      ),
+    );
+  }
+
+  /// 検索履歴内に表示するネイティブ広告アイテム
+  Widget _buildSearchAdItem() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: SizedBox(
+        height: 72, // 検索履歴と同程度の高さ
+        child: AdWidget(ad: _searchNativeAd!),
       ),
     );
   }

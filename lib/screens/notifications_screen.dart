@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/notification.dart';
 import '../utils/spotlight_colors.dart';
+import '../config/ad_config.dart';
+import '../services/ad_service.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/blur_app_bar.dart';
 import 'notification_detail_screen.dart';
@@ -25,11 +28,46 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   // タブの定義
   final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'システム'];
 
+  // 通知リスト内ネイティブ広告
+  NativeAd? _notificationNativeAd;
+  bool _isNotificationAdLoaded = false;
+
+  /// 通知リスト内で広告を挿入する位置（0始まり、3番目のアイテムの後）
+  static const int _adInsertIndex = 3;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _loadNotifications();
+    _loadNotificationNativeAd();
+  }
+
+  /// 通知リスト内ネイティブ広告を読み込む
+  Future<void> _loadNotificationNativeAd() async {
+    await AdService.ensureInitialized();
+    _notificationNativeAd = NativeAd(
+      adUnitId: AdConfig.getSearchNativeAdUnitId(),
+      request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.small,
+      ),
+      listener: NativeAdListener(
+        onAdLoaded: (ad) {
+          if (mounted) {
+            setState(() {
+              _isNotificationAdLoaded = true;
+            });
+          }
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('❌ 通知広告の読み込み失敗: ${error.message}');
+          ad.dispose();
+          _notificationNativeAd = null;
+        },
+      ),
+    );
+    _notificationNativeAd!.load();
   }
 
   Future<void> _loadNotifications() async {
@@ -63,6 +101,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   void dispose() {
+    _notificationNativeAd?.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -237,13 +276,21 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       return _buildEmptyState(tabName);
     }
 
+    final showAd = _isNotificationAdLoaded && filteredNotifications.length > _adInsertIndex;
+    final totalCount = filteredNotifications.length + (showAd ? 1 : 0);
+
     return RefreshIndicator(
       onRefresh: _loadNotifications,
       color: SpotLightColors.primaryOrange,
       child: ListView.builder(
-        itemCount: filteredNotifications.length,
+        itemCount: totalCount,
         itemBuilder: (context, index) {
-          final notification = filteredNotifications[index];
+          // 広告の位置
+          if (showAd && index == _adInsertIndex) {
+            return _buildNotificationAdItem();
+          }
+          final notifIndex = (showAd && index > _adInsertIndex) ? index - 1 : index;
+          final notification = filteredNotifications[notifIndex];
           return _buildNotificationItem(notification);
         },
       ),
@@ -385,6 +432,24 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 通知リスト内に表示するネイティブ広告アイテム
+  Widget _buildNotificationAdItem() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey[800]!,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: SizedBox(
+        height: 100, // 通知アイテムと同程度の高さ
+        child: AdWidget(ad: _notificationNativeAd!),
       ),
     );
   }

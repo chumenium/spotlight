@@ -7,7 +7,7 @@ import '../config/app_config.dart';
 import '../widgets/robust_network_image.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
-import '../widgets/center_popup.dart';
+
 import 'playlist_detail_screen.dart';
 
 class PlaylistListScreen extends StatefulWidget {
@@ -517,7 +517,6 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
               final success =
                   await PlaylistService.deletePlaylist(playlist.playlistid);
               if (success && mounted) {
-                CenterPopup.show(context, 'プレイリストを削除しました');
                 // プレイリスト一覧を再取得
                 _fetchPlaylists();
               } else if (mounted) {

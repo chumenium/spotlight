@@ -7,7 +7,7 @@ import '../services/playlist_service.dart';
 import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../utils/spotlight_colors.dart';
-import '../widgets/center_popup.dart';
+
 import '../widgets/blur_app_bar.dart';
 
 class HistoryListScreen extends StatefulWidget {
@@ -589,9 +589,7 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
                   );
 
                   if (mounted) {
-                    if (success) {
-                      CenterPopup.show(context, 'プレイリストに追加しました');
-                    } else {
+                    if (!success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('プレイリストへの追加に失敗しました'),
@@ -662,7 +660,6 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
         setState(() {
           _historyPosts.removeWhere((item) => item.id == post.id);
         });
-        CenterPopup.show(context, '視聴履歴を削除しました');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -766,18 +763,13 @@ class _PlaylistDialog extends StatelessWidget {
                           post.id,
                         );
 
-                        if (context.mounted) {
-                          if (success) {
-                              CenterPopup.show(
-                                  context, 'プレイリストに追加しました');
-                          } else {
+                        if (context.mounted && !success) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('プレイリストへの追加に失敗しました'),
                                 backgroundColor: Colors.red,
                               ),
                             );
-                          }
                         }
                       } catch (e) {
                         if (context.mounted) {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/admin_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
-import '../widgets/center_popup.dart';
+
 
 /// 通報管理画面
 class ReportManagementScreen extends StatefulWidget {
@@ -229,7 +229,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        CenterPopup.show(context, '通報を処理済みにしました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -365,7 +364,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        CenterPopup.show(context, '投稿を削除しました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -437,7 +435,6 @@ class _ReportManagementScreenState extends State<ReportManagementScreen> {
 
     if (mounted) {
       if (success) {
-        CenterPopup.show(context, 'コメントを削除しました');
         _fetchReports();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

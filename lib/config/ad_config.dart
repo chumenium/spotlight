@@ -20,6 +20,7 @@ class AdConfig {
   static const String interstitialAdUnitIdAndroid = 'ca-app-pub-6754131556002286/4338235560';
   static const String rewardedAdUnitIdAndroid = 'ca-app-pub-6754131556002286/4338235560';
   static const String nativeAdUnitIdAndroid = 'ca-app-pub-6754131556002286/4338235560';
+  static const String searchNativeAdUnitIdAndroid = 'ca-app-pub-6754131556002286/5540564571';
 
   // ============================================
   // iOS用 広告ユニットID
@@ -28,6 +29,7 @@ class AdConfig {
   static const String interstitialAdUnitIdIOS = 'ca-app-pub-6754131556002286/4700185880';
   static const String rewardedAdUnitIdIOS = 'ca-app-pub-6754131556002286/4700185880';
   static const String nativeAdUnitIdIOS = 'ca-app-pub-6754131556002286/4700185880';
+  static const String searchNativeAdUnitIdIOS = 'ca-app-pub-6754131556002286/5540564571';
 
   // ============================================
   // 広告ユニットID取得メソッド
@@ -51,5 +53,10 @@ class AdConfig {
   /// ネイティブ広告ユニットIDを取得
   static String getNativeAdUnitId() {
     return Platform.isIOS ? nativeAdUnitIdIOS : nativeAdUnitIdAndroid;
+  }
+
+  /// 検索履歴用ネイティブ広告ユニットIDを取得
+  static String getSearchNativeAdUnitId() {
+    return Platform.isIOS ? searchNativeAdUnitIdIOS : searchNativeAdUnitIdAndroid;
   }
 }
