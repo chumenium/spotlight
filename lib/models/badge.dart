@@ -107,3 +107,79 @@ class BadgeManager {
   }
 }
 
+/// 広告視聴バッジモデル
+class RewardAdBadge {
+  final int id;
+  final String name;
+  final IconData icon;
+  final int requiredViews;
+  final Color badgeColor;
+
+  const RewardAdBadge({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.requiredViews,
+    required this.badgeColor,
+  });
+}
+
+/// 広告視聴バッジ管理
+class RewardAdBadgeManager {
+  static List<RewardAdBadge> get allBadges => const [
+        RewardAdBadge(
+          id: 1001,
+          name: '広告ルーキー',
+          icon: Icons.ondemand_video,
+          requiredViews: 1,
+          badgeColor: Color(0xFF4FC3F7),
+        ),
+        RewardAdBadge(
+          id: 1002,
+          name: '広告ビギナー',
+          icon: Icons.play_circle_fill,
+          requiredViews: 3,
+          badgeColor: Color(0xFF4DD0E1),
+        ),
+        RewardAdBadge(
+          id: 1003,
+          name: '広告サポーター',
+          icon: Icons.volunteer_activism,
+          requiredViews: 5,
+          badgeColor: Color(0xFF26A69A),
+        ),
+        RewardAdBadge(
+          id: 1004,
+          name: '広告ブースター',
+          icon: Icons.flash_on,
+          requiredViews: 10,
+          badgeColor: Color(0xFF66BB6A),
+        ),
+        RewardAdBadge(
+          id: 1005,
+          name: '広告エキスパート',
+          icon: Icons.stars,
+          requiredViews: 25,
+          badgeColor: Color(0xFFFFB74D),
+        ),
+        RewardAdBadge(
+          id: 1006,
+          name: '広告マスター',
+          icon: Icons.workspace_premium,
+          requiredViews: 50,
+          badgeColor: Color(0xFFFF8A65),
+        ),
+        RewardAdBadge(
+          id: 1007,
+          name: '広告レジェンド',
+          icon: Icons.military_tech,
+          requiredViews: 100,
+          badgeColor: Color(0xFFBA68C8),
+        ),
+      ];
+
+  static List<RewardAdBadge> getUnlockedBadges(int watchCount) {
+    return allBadges.where((b) => b.requiredViews <= watchCount).toList();
+  }
+}
+

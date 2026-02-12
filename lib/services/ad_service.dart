@@ -100,9 +100,10 @@ class AdService {
   /// リワード広告を読み込む
   RewardedAd? loadRewardedAd({
     required RewardedAdLoadCallback listener,
+    String? adUnitId,
   }) {
     RewardedAd.load(
-      adUnitId: AdConfig.getRewardedAdUnitId(),
+      adUnitId: adUnitId ?? AdConfig.getRewardedAdUnitId(),
       request: const AdRequest(),
       rewardedAdLoadCallback: listener,
     );

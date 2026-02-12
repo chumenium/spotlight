@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'history_list_screen.dart';
 import 'playlist_list_screen.dart';
 import 'playlist_detail_screen.dart';
@@ -37,6 +38,10 @@ import '../widgets/robust_network_image.dart';
 import '../providers/navigation_provider.dart';
 import '../services/playlist_service.dart';
 import '../auth/social_login_screen.dart';
+import '../services/ad_service.dart';
+import '../services/rewarded_badge_service.dart';
+import '../config/ad_config.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -49,6 +54,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _spotlightCount = 0;
   int _previousSpotlightCount = 0; // 前回のspotlight数を保存
   final Set<int> _newlyUnlockedBadgeIds = {}; // 新しく解放されたバッジのID
+  int _rewardAdWatchCount = 0;
+  int _previousRewardAdWatchCount = 0;
+  final Set<int> _newlyUnlockedRewardBadgeIds = {};
+  RewardedAd? _rewardedBadgeAd;
+  bool _isRewardedBadgeAdReady = false;
+  bool _isRewardedBadgeAdLoading = false;
+  bool _isRewardedBadgeSubmitting = false;
   final ImagePicker _imagePicker = ImagePicker();
   // 自分の投稿リスト
   List<Post> _myPosts = [];
@@ -162,14 +174,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchHistory();
     _fetchPlaylists();
     _fetchBio();
+    _fetchRewardAdWatchCount();
+    _loadRewardedBadgeAd();
 
-    // 初期化時に前回のspotlight数を設定（初回は0）
+    // 初期化時に前回のカウントを設定（初回は0）
     _previousSpotlightCount = 0;
+    _previousRewardAdWatchCount = 0;
   }
 
   @override
   void dispose() {
     _hideBadgeOverlay();
+    _rewardedBadgeAd?.dispose();
     super.dispose();
   }
 
@@ -194,6 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _fetchHistory(),
       _fetchPlaylists(),
       _fetchBio(),
+      _fetchRewardAdWatchCount(),
     ]);
   }
 
@@ -387,6 +404,138 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _fetchRewardAdWatchCount() async {
+    final count = await RewardedBadgeService.fetchRewardAdCount();
+    if (!mounted || count == null) return;
+
+    final previousUnlocked =
+        RewardAdBadgeManager.getUnlockedBadges(_previousRewardAdWatchCount);
+    final currentUnlocked = RewardAdBadgeManager.getUnlockedBadges(count);
+    final newlyUnlocked = currentUnlocked
+        .where((badge) => !previousUnlocked.any((b) => b.id == badge.id))
+        .toList();
+
+    setState(() {
+      _rewardAdWatchCount = count;
+      _newlyUnlockedRewardBadgeIds
+        ..clear()
+        ..addAll(newlyUnlocked.map((b) => b.id));
+    });
+
+    if (newlyUnlocked.isNotEmpty) {
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() {
+          _newlyUnlockedRewardBadgeIds.clear();
+        });
+      });
+    }
+    _previousRewardAdWatchCount = count;
+  }
+
+  void _loadRewardedBadgeAd() {
+    if (!Platform.isIOS) {
+      _isRewardedBadgeAdReady = false;
+      _isRewardedBadgeAdLoading = false;
+      _rewardedBadgeAd?.dispose();
+      _rewardedBadgeAd = null;
+      if (mounted) setState(() {});
+      return;
+    }
+    if (_isRewardedBadgeAdLoading) return;
+    _isRewardedBadgeAdLoading = true;
+
+    _rewardedBadgeAd?.dispose();
+    _rewardedBadgeAd = null;
+    _isRewardedBadgeAdReady = false;
+
+    AdService.instance.loadRewardedAd(
+      adUnitId: AdConfig.getRewardBadgeAdUnitId(),
+      listener: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _isRewardedBadgeAdLoading = false;
+          _rewardedBadgeAd = ad;
+          _isRewardedBadgeAdReady = true;
+          ad.fullScreenContentCallback = FullScreenContentCallback(
+            onAdDismissedFullScreenContent: (ad) {
+              ad.dispose();
+              _rewardedBadgeAd = null;
+              _isRewardedBadgeAdReady = false;
+              _loadRewardedBadgeAd();
+            },
+            onAdFailedToShowFullScreenContent: (ad, error) {
+              ad.dispose();
+              _rewardedBadgeAd = null;
+              _isRewardedBadgeAdReady = false;
+              _loadRewardedBadgeAd();
+            },
+          );
+          if (mounted) setState(() {});
+        },
+        onAdFailedToLoad: (_) {
+          _isRewardedBadgeAdLoading = false;
+          _isRewardedBadgeAdReady = false;
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
+  Future<void> _watchRewardedAdForBadge() async {
+    if (!Platform.isIOS) {
+      _showSafeSnackBar('広告バッジはiOSのみ対応です', backgroundColor: Colors.orange);
+      return;
+    }
+    if (_isRewardedBadgeSubmitting) return;
+    if (!_isRewardedBadgeAdReady || _rewardedBadgeAd == null) {
+      _showSafeSnackBar('広告を読み込み中です。少し待ってからお試しください', backgroundColor: Colors.orange);
+      _loadRewardedBadgeAd();
+      return;
+    }
+
+    _isRewardedBadgeSubmitting = true;
+    final beforeCount = _rewardAdWatchCount;
+    _rewardedBadgeAd!.show(
+      onUserEarnedReward: (ad, reward) async {
+        final result = await RewardedBadgeService.incrementRewardAdCount();
+        if (!mounted) return;
+
+        if (result.count != null) {
+          setState(() {
+            _rewardAdWatchCount = result.count!;
+          });
+        }
+
+        final latestCount = await RewardedBadgeService.fetchRewardAdCount();
+        if (!mounted) return;
+
+        if (latestCount != null) {
+          setState(() {
+            _rewardAdWatchCount = latestCount;
+          });
+        }
+
+        final actuallyIncremented =
+            latestCount != null ? latestCount > beforeCount : false;
+
+        if (result.success || actuallyIncremented) {
+          await _fetchRewardAdWatchCount();
+        } else if (result.rateLimited) {
+          _showSafeSnackBar(
+            result.message ?? 'リクエストが頻繁すぎます',
+            backgroundColor: Colors.orange,
+          );
+        } else {
+          _showSafeSnackBar(
+            result.message ?? '報酬の反映に失敗しました',
+            backgroundColor: Colors.red,
+          );
+        }
+      },
+    );
+    _isRewardedBadgeSubmitting = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     // NavigationProviderを監視して、プロフィール画面が表示されたときにデータを再取得
@@ -407,6 +556,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _fetchHistory();
               _fetchPlaylists();
               _fetchBio();
+              _fetchRewardAdWatchCount();
+              _loadRewardedBadgeAd();
             }
           });
         } else if (currentIndex != profileIndex) {
@@ -483,6 +634,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 // バッジセクション
                 _buildBadgeSection(),
+
+                const SizedBox(height: 20),
+
+                // 広告バッジセクション
+                _buildRewardBadgeSection(),
 
                 const SizedBox(height: 20),
 
@@ -1852,6 +2008,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Text(
+                        '総スポットライト数: $_spotlightCount',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Divider(
                     height: 1,
@@ -1966,6 +2134,351 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  Widget _buildRewardBadgeSection() {
+    final allBadges = RewardAdBadgeManager.allBadges;
+    final unlockedBadges =
+        RewardAdBadgeManager.getUnlockedBadges(_rewardAdWatchCount);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '広告バッジ',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color ??
+                          const Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  Text(
+                    '${unlockedBadges.length}/${allBadges.length}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text(
+                    '視聴回数: $_rewardAdWatchCount回',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[800]
+                    : Colors.grey[300],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 108,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: allBadges.length,
+            itemBuilder: (context, index) {
+              final badge = allBadges[index];
+              final isUnlocked =
+                  unlockedBadges.any((b) => b.id == badge.id);
+              final isNewlyUnlocked =
+                  _newlyUnlockedRewardBadgeIds.contains(badge.id);
+              return GestureDetector(
+                onTapDown: isUnlocked
+                    ? (_) => _showRewardBadgeOverlay(context, badge)
+                    : null,
+                onTapUp: isUnlocked ? (_) => _hideBadgeOverlay() : null,
+                onTapCancel: isUnlocked ? () => _hideBadgeOverlay() : null,
+                child: Container(
+                  width: 84,
+                  margin: const EdgeInsets.only(right: 12),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          gradient: isUnlocked
+                              ? LinearGradient(
+                                  colors: [
+                                    badge.badgeColor.withValues(alpha: 0.85),
+                                    badge.badgeColor,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: isUnlocked ? null : Colors.grey[800],
+                          borderRadius: BorderRadius.circular(31),
+                          border: isNewlyUnlocked
+                              ? Border.all(color: badge.badgeColor, width: 2)
+                              : null,
+                          boxShadow: isUnlocked
+                              ? [
+                                  BoxShadow(
+                                    color:
+                                        badge.badgeColor.withValues(alpha: 0.35),
+                                    blurRadius: isNewlyUnlocked ? 14 : 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Icon(
+                          isUnlocked ? badge.icon : Icons.lock,
+                          color: isUnlocked ? Colors.white : Colors.grey[600],
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        badge.name,
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                          fontSize: 11,
+                          fontWeight:
+                              isUnlocked ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${badge.requiredViews}回',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text(
+            '広告を視聴すると、視聴回数に応じて広告バッジが解放されます',
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).textTheme.bodyMedium?.color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: !Platform.isIOS
+                ? null
+                : _isRewardedBadgeAdReady
+                    ? _watchRewardedAdForBadge
+                    : _loadRewardedBadgeAd,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFFFB347),
+                    Color(0xFFFF6B35),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF6B35).withValues(alpha: 0.55),
+                    blurRadius: 16,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: const Color(0xFFFFB347).withValues(alpha: 0.35),
+                    blurRadius: 26,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    !Platform.isIOS
+                        ? Icons.block
+                        : _isRewardedBadgeAdReady
+                            ? Icons.auto_awesome
+                            : Icons.refresh,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    !Platform.isIOS
+                        ? 'iOSのみ対応'
+                        : (_isRewardedBadgeAdReady
+                            ? '広告視聴でバッジを解放する'
+                            : '広告を準備する'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 広告バッジの詳細オーバーレイを表示（タップ中のみ）
+  void _showRewardBadgeOverlay(BuildContext context, RewardAdBadge badge) {
+    _hideBadgeOverlay();
+
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.of(context).size;
+    const popupWidth = 280.0;
+    const popupHeight = 400.0;
+    final left = (screenSize.width - popupWidth) / 2;
+    final top = (screenSize.height - popupHeight) / 2;
+
+    _badgeOverlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: left,
+        top: top,
+        child: Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              width: popupWidth,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          badge.badgeColor.withValues(alpha: 0.75),
+                          badge.badgeColor,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(60),
+                      boxShadow: [
+                        BoxShadow(
+                          color: badge.badgeColor.withValues(alpha: 0.5),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      badge.icon,
+                      color: Colors.white,
+                      size: 60,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    badge.name,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.titleLarge?.color,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[800]
+                          : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          '獲得条件',
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodySmall?.color,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${badge.requiredViews}回の広告視聴で獲得',
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(_badgeOverlayEntry!);
   }
 
   /// バッジの詳細オーバーレイを表示（タップ中のみ）

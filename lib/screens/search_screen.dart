@@ -19,6 +19,20 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
+class _SearchMixedItem {
+  const _SearchMixedItem.history(this.historyIndex)
+      : isAd = false,
+        adIndex = null;
+
+  const _SearchMixedItem.ad(this.adIndex)
+      : isAd = true,
+        historyIndex = null;
+
+  final bool isAd;
+  final int? historyIndex;
+  final int? adIndex;
+}
+
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -37,51 +51,101 @@ class _SearchScreenState extends State<SearchScreen> {
   int? _lastNavigationIndex; // 最後に処理したナビゲーションインデックス
 
   // 検索履歴内ネイティブ広告
-  NativeAd? _searchNativeAd;
-  bool _isSearchAdLoaded = false;
+  final List<NativeAd> _searchNativeAds = [];
+  final Set<NativeAd> _loadedSearchNativeAds = <NativeAd>{};
+  bool _isSyncingSearchAds = false;
+  final ScrollController _historyScrollController = ScrollController();
+  double _lastSearchAdReloadOffset = 0;
 
-  /// 検索履歴リスト内で広告を挿入する位置（0始まり、3番目のアイテムの後）
-  static const int _adInsertIndex = 3;
+  static const int _adInterval = 4;
+  static const double _adReloadScrollThreshold = 800;
 
   @override
   void initState() {
     super.initState();
     _filteredSuggestions = _allSuggestions;
     _searchController.addListener(_onSearchChanged);
+    _historyScrollController.addListener(_onHistoryScroll);
 
     // バックエンドから検索履歴を取得
     _fetchSearchHistory();
-    // 検索履歴内ネイティブ広告を読み込み
-    _loadSearchNativeAd();
+    _syncSearchNativeAds(forceReload: true);
   }
 
-  /// 検索履歴内ネイティブ広告を読み込む
-  Future<void> _loadSearchNativeAd() async {
-    await AdService.ensureInitialized();
-    _searchNativeAd = NativeAd(
-      adUnitId: AdConfig.getSearchNativeAdUnitId(),
-      request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.small,
-      ),
-      listener: NativeAdListener(
-        onAdLoaded: (ad) {
-          if (!_isDisposed && mounted) {
-            setState(() {
-              _isSearchAdLoaded = true;
-            });
-          }
-        },
-        onAdFailedToLoad: (ad, error) {
-          if (kDebugMode) {
-            debugPrint('❌ 検索履歴広告の読み込み失敗: ${error.message}');
-          }
+  int _requiredSearchAdCount(int historyCount) {
+    if (historyCount <= 0) return 1;
+    return (historyCount / _adInterval).ceil();
+  }
+
+  void _onHistoryScroll() {
+    if (!_historyScrollController.hasClients) return;
+    final currentOffset = _historyScrollController.offset;
+    if ((currentOffset - _lastSearchAdReloadOffset).abs() >=
+        _adReloadScrollThreshold) {
+      _lastSearchAdReloadOffset = currentOffset;
+      _syncSearchNativeAds();
+    }
+  }
+
+  Future<void> _syncSearchNativeAds({bool forceReload = false}) async {
+    if (_isSyncingSearchAds) return;
+    _isSyncingSearchAds = true;
+    try {
+      await AdService.ensureInitialized();
+      final requiredCount = _requiredSearchAdCount(_searchHistory.length);
+
+      if (forceReload) {
+        for (final ad in _searchNativeAds) {
           ad.dispose();
-          _searchNativeAd = null;
-        },
-      ),
-    );
-    _searchNativeAd!.load();
+        }
+        _searchNativeAds.clear();
+        _loadedSearchNativeAds.clear();
+      }
+
+      while (_searchNativeAds.length > requiredCount) {
+        final removed = _searchNativeAds.removeLast();
+        _loadedSearchNativeAds.remove(removed);
+        removed.dispose();
+      }
+
+      while (_searchNativeAds.length < requiredCount) {
+        late final NativeAd ad;
+        ad = NativeAd(
+          adUnitId: AdConfig.getSearchNativeAdUnitId(),
+          request: const AdRequest(),
+          nativeTemplateStyle: NativeTemplateStyle(
+            templateType: TemplateType.small,
+          ),
+          listener: NativeAdListener(
+            onAdLoaded: (loadedAd) {
+              _loadedSearchNativeAds.add(loadedAd as NativeAd);
+              if (mounted && !_isDisposed) {
+                setState(() {});
+              }
+            },
+            onAdFailedToLoad: (failedAd, error) {
+              if (kDebugMode) {
+                debugPrint('❌ 検索履歴広告の読み込み失敗: ${error.message}');
+              }
+              failedAd.dispose();
+              _loadedSearchNativeAds.remove(ad);
+              _searchNativeAds.remove(ad);
+              if (mounted && !_isDisposed) {
+                setState(() {});
+              }
+            },
+          ),
+        );
+        _searchNativeAds.add(ad);
+        ad.load();
+      }
+
+      if (mounted && !_isDisposed) {
+        setState(() {});
+      }
+    } finally {
+      _isSyncingSearchAds = false;
+    }
   }
 
   /// バックエンドから検索履歴を取得
@@ -102,6 +166,7 @@ class _SearchScreenState extends State<SearchScreen> {
           _isLoadingHistory = false;
         });
       }
+      _syncSearchNativeAds();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('🔍 検索履歴取得エラー: $e');
@@ -112,13 +177,20 @@ class _SearchScreenState extends State<SearchScreen> {
           _isLoadingHistory = false;
         });
       }
+      _syncSearchNativeAds();
     }
   }
 
   @override
   void dispose() {
     _isDisposed = true;
-    _searchNativeAd?.dispose();
+    _historyScrollController.removeListener(_onHistoryScroll);
+    _historyScrollController.dispose();
+    for (final ad in _searchNativeAds) {
+      ad.dispose();
+    }
+    _searchNativeAds.clear();
+    _loadedSearchNativeAds.clear();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -224,6 +296,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 _lastNavigationIndex = 1;
               });
               _fetchSearchHistory();
+              _syncSearchNativeAds();
             }
           });
         } else if (currentIndex != 1) {
@@ -346,8 +419,8 @@ class _SearchScreenState extends State<SearchScreen> {
       return _buildSearchSuggestions();
     }
 
-    // 直近の検索を一列リスト表示（サムネイルなし）
-    if (_searchHistory.isEmpty) {
+    final mixedItems = _buildSearchMixedItems();
+    if (mixedItems.isEmpty) {
       return Center(
         child: Text(
           '最近の検索はありません',
@@ -359,21 +432,16 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    // 広告を挿入するかどうか
-    final showAd = _isSearchAdLoaded && _searchHistory.length > _adInsertIndex;
-    final totalCount = _searchHistory.length + (showAd ? 1 : 0);
-
     return ListView.builder(
+      controller: _historyScrollController,
       padding: const EdgeInsets.symmetric(vertical: 12),
-      itemCount: totalCount,
+      itemCount: mixedItems.length,
       itemBuilder: (context, index) {
-        // 広告の位置
-        if (showAd && index == _adInsertIndex) {
-          return _buildSearchAdItem();
+        final item = mixedItems[index];
+        if (item.isAd) {
+          return _buildSearchAdItem(item.adIndex!);
         }
-        // 広告の後はインデックスをずらす
-        final historyIndex = (showAd && index > _adInsertIndex) ? index - 1 : index;
-        final history = _searchHistory[historyIndex];
+        final history = _searchHistory[item.historyIndex!];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: _buildSearchHistoryRow(history),
@@ -714,13 +782,66 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  List<_SearchMixedItem> _buildSearchMixedItems() {
+    final result = <_SearchMixedItem>[];
+    if (_searchNativeAds.isEmpty) {
+      return result;
+    }
+
+    if (_searchHistory.isEmpty) {
+      result.add(_SearchMixedItem.ad(0));
+      return result;
+    }
+
+    int historyIndex = 0;
+    int adIndex = 0;
+
+    while (historyIndex < _searchHistory.length) {
+      final sectionEnd = (historyIndex + _adInterval < _searchHistory.length)
+          ? historyIndex + _adInterval
+          : _searchHistory.length;
+
+      while (historyIndex < sectionEnd) {
+        result.add(_SearchMixedItem.history(historyIndex));
+        historyIndex++;
+      }
+
+      if (adIndex < _searchNativeAds.length) {
+        result.add(_SearchMixedItem.ad(adIndex));
+        adIndex++;
+      }
+    }
+
+    return result;
+  }
+
   /// 検索履歴内に表示するネイティブ広告アイテム
-  Widget _buildSearchAdItem() {
+  Widget _buildSearchAdItem(int adIndex) {
+    if (adIndex < 0 || adIndex >= _searchNativeAds.length) {
+      return const SizedBox.shrink();
+    }
+
+    final ad = _searchNativeAds[adIndex];
+    if (!_loadedSearchNativeAds.contains(ad)) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: SizedBox(
+          height: 84,
+          child: Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFFFF6B35),
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: SizedBox(
-        height: 72, // 検索履歴と同程度の高さ
-        child: AdWidget(ad: _searchNativeAd!),
+        height: 84,
+        child: AdWidget(ad: ad),
       ),
     );
   }
@@ -764,6 +885,7 @@ class _SearchScreenState extends State<SearchScreen> {
           setState(() {
             _searchHistory.remove(history);
           });
+          _syncSearchNativeAds();
         }
       },
     );

@@ -17,6 +17,20 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
+class _NotificationMixedItem {
+  const _NotificationMixedItem.item(this.notificationIndex)
+      : isAd = false,
+        adIndex = null;
+
+  const _NotificationMixedItem.ad(this.adIndex)
+      : isAd = true,
+        notificationIndex = null;
+
+  final bool isAd;
+  final int? notificationIndex;
+  final int? adIndex;
+}
+
 class _NotificationsScreenState extends State<NotificationsScreen>
     with SingleTickerProviderStateMixin {
   List<NotificationItem> notifications = [];
@@ -28,46 +42,132 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   // タブの定義
   final List<String> _tabs = ['すべて', 'スポットライト', 'コメント', 'システム'];
 
-  // 通知リスト内ネイティブ広告
-  NativeAd? _notificationNativeAd;
-  bool _isNotificationAdLoaded = false;
+  // 通知リスト内ネイティブ広告（タブ別）
+  final Map<String, List<NativeAd>> _tabNativeAds = {};
+  final Map<String, Set<NativeAd>> _tabLoadedNativeAds = {};
+  final Map<String, ScrollController> _tabScrollControllers = {};
+  final Map<String, double> _lastTabAdReloadOffset = {};
+  final Set<String> _syncingTabs = <String>{};
+  int? _lastNavigationIndex;
 
-  /// 通知リスト内で広告を挿入する位置（0始まり、3番目のアイテムの後）
-  static const int _adInsertIndex = 3;
+  static const int _adInterval = 4;
+  static const double _adReloadScrollThreshold = 900;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController.addListener(_handleTabChanged);
+    for (final tab in _tabs) {
+      final controller = ScrollController();
+      controller.addListener(() => _onTabScroll(tab));
+      _tabScrollControllers[tab] = controller;
+      _tabNativeAds[tab] = <NativeAd>[];
+      _tabLoadedNativeAds[tab] = <NativeAd>{};
+      _lastTabAdReloadOffset[tab] = 0;
+    }
     _loadNotifications();
-    _loadNotificationNativeAd();
+    _syncAllNotificationTabAds(forceReload: true);
   }
 
-  /// 通知リスト内ネイティブ広告を読み込む
-  Future<void> _loadNotificationNativeAd() async {
-    await AdService.ensureInitialized();
-    _notificationNativeAd = NativeAd(
-      adUnitId: AdConfig.getSearchNativeAdUnitId(),
-      request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.small,
-      ),
-      listener: NativeAdListener(
-        onAdLoaded: (ad) {
-          if (mounted) {
-            setState(() {
-              _isNotificationAdLoaded = true;
-            });
-          }
-        },
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('❌ 通知広告の読み込み失敗: ${error.message}');
-          ad.dispose();
-          _notificationNativeAd = null;
-        },
-      ),
+  int _requiredNotificationAdCount(int itemCount) {
+    if (itemCount <= 0) return 1;
+    return (itemCount / _adInterval).ceil();
+  }
+
+  void _handleTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    final tab = _tabs[_tabController.index];
+    _syncNotificationAdsForTab(
+      tab,
+      _getFilteredNotifications(tab).length,
+      forceReload: false,
     );
-    _notificationNativeAd!.load();
+  }
+
+  void _onTabScroll(String tabName) {
+    final controller = _tabScrollControllers[tabName];
+    if (controller == null || !controller.hasClients) return;
+
+    final currentOffset = controller.offset;
+    final lastOffset = _lastTabAdReloadOffset[tabName] ?? 0;
+    if ((currentOffset - lastOffset).abs() >= _adReloadScrollThreshold) {
+      _lastTabAdReloadOffset[tabName] = currentOffset;
+      _syncNotificationAdsForTab(
+        tabName,
+        _getFilteredNotifications(tabName).length,
+        forceReload: false,
+      );
+    }
+  }
+
+  Future<void> _syncAllNotificationTabAds({bool forceReload = false}) async {
+    for (final tab in _tabs) {
+      await _syncNotificationAdsForTab(
+        tab,
+        _getFilteredNotifications(tab).length,
+        forceReload: forceReload,
+      );
+    }
+  }
+
+  Future<void> _syncNotificationAdsForTab(
+    String tabName,
+    int itemCount, {
+    bool forceReload = false,
+  }) async {
+    if (_syncingTabs.contains(tabName)) return;
+    _syncingTabs.add(tabName);
+    try {
+      await AdService.ensureInitialized();
+      final ads = _tabNativeAds.putIfAbsent(tabName, () => <NativeAd>[]);
+      final loadedAds =
+          _tabLoadedNativeAds.putIfAbsent(tabName, () => <NativeAd>{});
+      final requiredCount = _requiredNotificationAdCount(itemCount);
+
+      if (forceReload) {
+        for (final ad in ads) {
+          ad.dispose();
+        }
+        ads.clear();
+        loadedAds.clear();
+      }
+
+      while (ads.length > requiredCount) {
+        final removed = ads.removeLast();
+        loadedAds.remove(removed);
+        removed.dispose();
+      }
+
+      while (ads.length < requiredCount) {
+        late final NativeAd ad;
+        ad = NativeAd(
+          adUnitId: AdConfig.getSearchNativeAdUnitId(),
+          request: const AdRequest(),
+          nativeTemplateStyle: NativeTemplateStyle(
+            templateType: TemplateType.small,
+          ),
+          listener: NativeAdListener(
+            onAdLoaded: (loadedAd) {
+              loadedAds.add(loadedAd as NativeAd);
+              if (mounted) setState(() {});
+            },
+            onAdFailedToLoad: (failedAd, error) {
+              debugPrint('❌ 通知広告の読み込み失敗: ${error.message}');
+              failedAd.dispose();
+              loadedAds.remove(ad);
+              ads.remove(ad);
+              if (mounted) setState(() {});
+            },
+          ),
+        );
+        ads.add(ad);
+        ad.load();
+      }
+      if (mounted) setState(() {});
+    } finally {
+      _syncingTabs.remove(tabName);
+    }
   }
 
   Future<void> _loadNotifications() async {
@@ -87,6 +187,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           _isLoading = false;
         });
         _updateUnreadCount(fetched);
+        _syncAllNotificationTabAds(forceReload: true);
       }
     } catch (e) {
       if (mounted) {
@@ -101,7 +202,16 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   void dispose() {
-    _notificationNativeAd?.dispose();
+    _tabController.removeListener(_handleTabChanged);
+    for (final controller in _tabScrollControllers.values) {
+      controller.dispose();
+    }
+    for (final ads in _tabNativeAds.values) {
+      for (final ad in ads) {
+        ad.dispose();
+      }
+    }
+    _tabLoadedNativeAds.clear();
     _tabController.dispose();
     super.dispose();
   }
@@ -125,6 +235,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             }
           });
         }
+        if (currentIndex == 3 && _lastNavigationIndex != 3) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _syncAllNotificationTabAds(forceReload: false);
+            }
+          });
+        }
+        _lastNavigationIndex = currentIndex;
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -271,26 +389,24 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
     List<NotificationItem> filteredNotifications =
         _getFilteredNotifications(tabName);
-
-    if (filteredNotifications.isEmpty) {
+    final tabAds = _tabNativeAds[tabName] ?? const <NativeAd>[];
+    final mixedItems = _buildNotificationMixedItems(filteredNotifications, tabAds);
+    if (filteredNotifications.isEmpty && mixedItems.isEmpty) {
       return _buildEmptyState(tabName);
     }
-
-    final showAd = _isNotificationAdLoaded && filteredNotifications.length > _adInsertIndex;
-    final totalCount = filteredNotifications.length + (showAd ? 1 : 0);
 
     return RefreshIndicator(
       onRefresh: _loadNotifications,
       color: SpotLightColors.primaryOrange,
       child: ListView.builder(
-        itemCount: totalCount,
+        controller: _tabScrollControllers[tabName],
+        itemCount: mixedItems.length,
         itemBuilder: (context, index) {
-          // 広告の位置
-          if (showAd && index == _adInsertIndex) {
-            return _buildNotificationAdItem();
+          final item = mixedItems[index];
+          if (item.isAd) {
+            return _buildNotificationAdItem(tabName, item.adIndex!);
           }
-          final notifIndex = (showAd && index > _adInsertIndex) ? index - 1 : index;
-          final notification = filteredNotifications[notifIndex];
+          final notification = filteredNotifications[item.notificationIndex!];
           return _buildNotificationItem(notification);
         },
       ),
@@ -436,8 +552,56 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
   }
 
+  List<_NotificationMixedItem> _buildNotificationMixedItems(
+    List<NotificationItem> items,
+    List<NativeAd> ads,
+  ) {
+    final result = <_NotificationMixedItem>[];
+    if (ads.isEmpty) return result;
+
+    if (items.isEmpty) {
+      result.add(_NotificationMixedItem.ad(0));
+      return result;
+    }
+
+    int itemIndex = 0;
+    int adIndex = 0;
+
+    while (itemIndex < items.length) {
+      final sectionEnd =
+          (itemIndex + _adInterval < items.length) ? itemIndex + _adInterval : items.length;
+      while (itemIndex < sectionEnd) {
+        result.add(_NotificationMixedItem.item(itemIndex));
+        itemIndex++;
+      }
+      if (adIndex < ads.length) {
+        result.add(_NotificationMixedItem.ad(adIndex));
+        adIndex++;
+      }
+    }
+
+    return result;
+  }
+
   /// 通知リスト内に表示するネイティブ広告アイテム
-  Widget _buildNotificationAdItem() {
+  Widget _buildNotificationAdItem(String tabName, int adIndex) {
+    final ads = _tabNativeAds[tabName];
+    final loadedAds = _tabLoadedNativeAds[tabName];
+    if (ads == null || adIndex < 0 || adIndex >= ads.length) {
+      return const SizedBox.shrink();
+    }
+    final ad = ads[adIndex];
+    if (loadedAds == null || !loadedAds.contains(ad)) {
+      return const SizedBox(
+        height: 120,
+        child: Center(
+          child: CircularProgressIndicator(
+            color: SpotLightColors.primaryOrange,
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -448,8 +612,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         ),
       ),
       child: SizedBox(
-        height: 100, // 通知アイテムと同程度の高さ
-        child: AdWidget(ad: _notificationNativeAd!),
+        height: 120,
+        child: AdWidget(ad: ad),
       ),
     );
   }

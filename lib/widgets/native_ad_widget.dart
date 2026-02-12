@@ -8,7 +8,12 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 /// Instagramのリール広告のような形式で、投稿と同じスタイルで表示される広告です。
 /// スワイプでスキップ可能です。
 class NativeAdWidget extends StatefulWidget {
-  const NativeAdWidget({super.key});
+  const NativeAdWidget({
+    super.key,
+    required this.reloadToken,
+  });
+
+  final int reloadToken;
 
   @override
   State<NativeAdWidget> createState() => _NativeAdWidgetState();
@@ -30,6 +35,14 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
         _loadNativeAd(_selectTemplateType(MediaQuery.of(context).size));
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant NativeAdWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reloadToken != widget.reloadToken && !_isLoadingAd) {
+      _loadNativeAd(_selectTemplateType(MediaQuery.of(context).size));
+    }
   }
 
   /// ネイティブ広告を読み込む
@@ -101,6 +114,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom + 12;
     final templateType = _selectTemplateType(screenSize);
     if (_currentTemplateType != templateType && !_isLoadingAd) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -154,136 +168,32 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
       );
     }
 
-    // Instagramのような全画面広告を表示
-    // 投稿と同じスタイルで、下部に「広告」ラベルを表示
+    // 投稿と完全に同じStack構造：全画面コンテンツ + 下部Positionedオーバーレイ
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
-        image: DecorationImage(
-          image: AssetImage('doc/pic/ad_back.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
+      color: Colors.black,
       width: screenSize.width,
       height: screenSize.height,
       child: Stack(
         children: [
-          // 広告コンテンツ（画面の中心に配置）
-          Positioned.fill(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final adTemplateSize = _templateSizeFor(templateType);
-                final needsScaleDown = constraints.maxWidth < adTemplateSize.width ||
-                    constraints.maxHeight < adTemplateSize.height;
-                Widget adContent = SizedBox(
-                  width: adTemplateSize.width,
-                  height: adTemplateSize.height,
-                  child: AdWidget(ad: _nativeAd!),
-                );
-                if (needsScaleDown) {
-                  adContent = FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.center,
-                    child: adContent,
-                  );
-                }
-                return Center(
-                  child: ClipRect(
-                    child: adContent,
-                  ),
-                );
-              },
+          // 広告本体：通常投稿と同じように画面中央付近に配置
+          // AdWidgetは上から描画するため、サイズを絞ってCenterで中央寄せ
+          Center(
+            child: SizedBox(
+              width: screenSize.width * 0.94,
+              height: screenSize.height * 0.65,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AdWidget(ad: _nativeAd!),
+              ),
             ),
           ),
-          
-          // 下部コントロール（広告ラベル）
+          // 下部オーバーレイ：home_screen.dartの_buildBottomControlsと同一構造
           Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: AnimatedPadding(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 12,
-                    bottom: 12,
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.8),
-                        ],
-                      ),
-                    ),
-                        child: SafeArea(
-                      top: false,
-                      bottom: true,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isWide = constraints.maxWidth >= 420;
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  CircleAvatar(
-                                    radius: isWide ? 22 : 18,
-                                    backgroundColor: const Color(0xFFFF6B35),
-                                    child: const Icon(
-                                      Icons.ads_click,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                '広告',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'スポンサー広告',
-                                          style: TextStyle(
-                                            color: Colors.grey[100],
-                                            fontSize: isWide ? 16 : 14,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildAdBottomControls(bottomPadding),
+          ),
         ],
       ),
     );
@@ -304,5 +214,80 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
       default:
         return const Size(300, 250);
     }
+  }
+
+  /// 下部コントロール - home_screen.dart の _buildBottomControls と同一構造
+  Widget _buildAdBottomControls(double bottomPadding) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 200),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: bottomPadding,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black.withOpacity(0.8),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 420;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: isWide ? 22 : 18,
+                    backgroundColor: const Color(0xFFFF6B35),
+                    child: const Icon(
+                      Icons.ads_click,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '広告',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'スポンサー広告',
+                          style: TextStyle(
+                            color: Colors.grey[100],
+                            fontSize: isWide ? 16 : 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 }

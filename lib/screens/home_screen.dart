@@ -1675,7 +1675,7 @@ class _HomeScreenState extends State<HomeScreen>
             final adIndex = _getAdIndex(index);
             if (adIndex != null) {
               // 広告を表示
-              return const NativeAdWidget();
+              return NativeAdWidget(reloadToken: _currentIndex);
             }
 
             // 投稿のインデックスを計算（広告を考慮）
