@@ -1,5 +1,4 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// ホーム画面の投稿の並び順
 enum SortOrder {
@@ -33,9 +32,6 @@ class SortOrderService {
           return SortOrder.random;
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [SortOrderService] 並び順取得エラー: $e');
-      }
       return SortOrder.random; // エラー時はデフォルト値を返す
     }
   }
@@ -59,16 +55,9 @@ class SortOrderService {
       }
 
       final success = await prefs.setString(_key, value);
-      
-      if (kDebugMode) {
-        debugPrint('📝 [SortOrderService] 並び順を保存: $value, 成功: $success');
-      }
-      
+
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [SortOrderService] 並び順保存エラー: $e');
-      }
       return false;
     }
   }

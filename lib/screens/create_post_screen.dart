@@ -16,7 +16,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:flutter/rendering.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb;
 // Web版で使用するHTML API（モバイルビルドでは使用しないためコメントアウト）
 // import 'dart:html' as html
 //     show VideoElement, CanvasElement, Blob, Url, FileReader;
@@ -113,15 +113,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           try {
             controller.dispose();
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ 動画プレイヤーdisposeエラー: $e');
-            }
+            // ignore
           }
         }
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 動画プレイヤークリーンアップエラー: $e');
-        }
+        // ignore
       }
     }
   }
@@ -176,17 +172,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           final originalImageBytes = await _selectedMedia!.readAsBytes();
           final originalImageSize = originalImageBytes.length;
 
-          if (kDebugMode) {
-            debugPrint(
-                '🖼️ 元の画像ファイルサイズ: ${(originalImageSize / 1024 / 1024).toStringAsFixed(2)} MB');
-          }
-
           try {
             // 画像を圧縮
-            if (kDebugMode) {
-              debugPrint('🖼️ 画像を圧縮中...');
-            }
-
             // 一時ファイルとして保存
             final tempDir = Directory.systemTemp;
             final tempFile = File(
@@ -210,42 +197,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             imageBytes = await compressedFile.readAsBytes();
             imageFileSize = imageBytes.length;
 
-            if (kDebugMode) {
-              final compressionRatio =
-                  (1 - imageFileSize / originalImageSize) * 100;
-              debugPrint(
-                  '🖼️ 圧縮後の画像ファイルサイズ: ${(imageFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-              debugPrint('🖼️ 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
-            }
-
             // 一時ファイルを削除
             try {
               await tempFile.delete();
               // XFileをFileに変換して削除
               final compressedFileObj = File(compressedFile.path);
               await compressedFileObj.delete();
-              if (kDebugMode) {
-                debugPrint('🖼️ 一時ファイルを削除しました');
-              }
             } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ 一時ファイル削除エラー: $e');
-              }
+              // ignore
             }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('❌ 画像圧縮エラー: $e');
-              debugPrint('   元の画像ファイルを使用します');
-            }
             // 圧縮に失敗した場合は元のファイルを使用
             imageFileSize = originalImageSize;
             imageBytes = originalImageBytes;
           }
-        }
-
-        if (kDebugMode) {
-          debugPrint(
-              '🖼️ 最終画像ファイルサイズ: ${(imageFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
         }
 
         // 50MB以上の画像をブロック
@@ -282,17 +247,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           final originalVideoFile = File(_selectedMedia!.path);
           final originalVideoSize = await originalVideoFile.length();
 
-          if (kDebugMode) {
-            debugPrint(
-                '📹 元の動画ファイルサイズ: ${(originalVideoSize / 1024 / 1024).toStringAsFixed(2)} MB');
-          }
-
           try {
             // 動画を圧縮（ビットレートを2Mbpsに設定）
-            if (kDebugMode) {
-              debugPrint('📹 動画を圧縮中...');
-            }
-
             final compressedVideo = await VideoCompress.compressVideo(
               _selectedMedia!.path,
               quality: VideoQuality.MediumQuality, // 中品質（ビットレート約2Mbps）
@@ -308,30 +264,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             final compressedVideoFile = File(videoPath);
             videoFileSize = await compressedVideoFile.length();
 
-            if (kDebugMode) {
-              final compressionRatio =
-                  (1 - videoFileSize / originalVideoSize) * 100;
-              debugPrint(
-                  '📹 圧縮後の動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-              debugPrint('📹 圧縮率: ${compressionRatio.toStringAsFixed(1)}%');
-            }
-
             // 圧縮後のファイルを読み込む（サムネイル生成前に読み込む）
             bytes = await compressedVideoFile.readAsBytes();
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('❌ 動画圧縮エラー: $e');
-              debugPrint('   元の動画ファイルを使用します');
-            }
             // 圧縮に失敗した場合は元のファイルを使用
             videoFileSize = originalVideoSize;
             bytes = await originalVideoFile.readAsBytes();
           }
-        }
-
-        if (kDebugMode) {
-          debugPrint(
-              '📹 最終動画ファイルサイズ: ${(videoFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
         }
 
         // 120MB以上の動画をブロック
@@ -354,45 +293,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // ファイルを読み込んでbase64エンコード
         fileBase64 = base64Encode(bytes);
 
-        if (kDebugMode) {
-          debugPrint(
-              '📹 最終ファイルサイズ: ${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
-          debugPrint(
-              '📹 最終base64サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
-
         // 動画から最初のフレームをサムネイルとして抽出
         // サムネイル生成は圧縮後のファイルが存在する間に行う必要がある
         if (kIsWeb) {
           // Web版: HTML5 Video API + Canvas APIを使用
           try {
-            if (kDebugMode) {
-              debugPrint('🎬 Web版: 動画からサムネイルを生成中...');
-            }
             final thumbnailBytes = await _generateVideoThumbnailWeb(bytes);
             if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
               thumbBase64 = base64Encode(thumbnailBytes);
-              if (kDebugMode) {
-                debugPrint('✅ Web版: 動画から最初のフレームをサムネイルとして抽出成功');
-                debugPrint(
-                    '   - サムネイルサイズ: ${thumbnailBytes.length} bytes (${(thumbnailBytes.length / 1024).toStringAsFixed(2)} KB)');
-                debugPrint(
-                    '   - base64サイズ: ${thumbBase64.length} bytes (${(thumbBase64.length / 1024).toStringAsFixed(2)} KB)');
-              }
             } else {
               // サムネイル抽出に失敗した場合はプレースホルダーを使用
-              if (kDebugMode) {
-                debugPrint('⚠️ Web版: 動画サムネイル抽出失敗、プレースホルダーを使用');
-              }
               thumbBase64 = base64Encode(
                   _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
             }
           } catch (e) {
             // エラーが発生した場合はプレースホルダーを使用
-            if (kDebugMode) {
-              debugPrint('❌ Web版: 動画サムネイル抽出エラー: $e');
-              debugPrint('   プレースホルダーを使用します');
-            }
             thumbBase64 = base64Encode(
                 _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
           }
@@ -406,50 +321,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               final compressedFile = File(videoPath);
               if (await compressedFile.exists()) {
                 thumbnailPath = videoPath;
-                if (kDebugMode) {
-                  debugPrint('📹 圧縮後の動画からサムネイルを生成: $thumbnailPath');
-                }
               } else {
                 // 圧縮後のファイルが存在しない場合は元の動画から
                 thumbnailPath = _selectedMedia!.path;
-                if (kDebugMode) {
-                  debugPrint(
-                      '⚠️ 圧縮後のファイルが存在しないため、元の動画からサムネイルを生成: $thumbnailPath');
-                }
               }
             } else {
               // 圧縮に失敗した場合やWeb版の場合は元の動画から
               thumbnailPath = _selectedMedia!.path;
-              if (kDebugMode) {
-                debugPrint('📹 元の動画からサムネイルを生成: $thumbnailPath');
-              }
             }
 
             final thumbnailBytes = await _generateVideoThumbnail(thumbnailPath);
             if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
               thumbBase64 = base64Encode(thumbnailBytes);
-              if (kDebugMode) {
-                debugPrint('✅ 動画から最初のフレームをサムネイルとして抽出成功');
-                debugPrint(
-                    '   - サムネイルサイズ: ${thumbnailBytes.length} bytes (${(thumbnailBytes.length / 1024).toStringAsFixed(2)} KB)');
-                debugPrint(
-                    '   - base64サイズ: ${thumbBase64.length} bytes (${(thumbBase64.length / 1024).toStringAsFixed(2)} KB)');
-              }
             } else {
               // サムネイル抽出に失敗した場合はプレースホルダーを使用
-              if (kDebugMode) {
-                debugPrint('⚠️ 動画サムネイル抽出失敗、プレースホルダーを使用');
-                debugPrint('   - 動画パス: $thumbnailPath');
-              }
               thumbBase64 = base64Encode(
                   _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
             }
           } catch (e) {
             // エラーが発生した場合はプレースホルダーを使用
-            if (kDebugMode) {
-              debugPrint('❌ 動画サムネイル抽出エラー: $e');
-              debugPrint('   プレースホルダーを使用します');
-            }
             thumbBase64 = base64Encode(
                 _generatePlaceholderThumbnail(320, 180, label: 'VIDEO'));
           }
@@ -461,14 +351,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             final compressedFile = File(videoPath);
             if (await compressedFile.exists()) {
               await compressedFile.delete();
-              if (kDebugMode) {
-                debugPrint('📹 圧縮後の一時ファイルを削除しました: $videoPath');
-              }
             }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ 圧縮後の一時ファイル削除エラー: $e');
-            }
+            // ignore
           }
         }
       } else if (type == 'audio') {
@@ -496,17 +381,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           bytes = await audioFile.readAsBytes();
         }
 
-        if (kDebugMode) {
-          debugPrint(
-              '🎵 音声ファイルサイズ: ${(audioFileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
-
         fileBase64 = base64Encode(bytes);
-
-        if (kDebugMode) {
-          debugPrint(
-              '🎵 base64エンコード後サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
 
         thumbBase64 = base64Encode(
             _generatePlaceholderThumbnail(320, 320, label: 'AUDIO'));
@@ -568,18 +443,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } catch (e) {
         // その他の予期しないエラー
         if (mounted) {
-          if (kDebugMode) {
-            debugPrint('❌ 予期しないエラー: $e');
-          }
           final errorMessage = _getPostCreationErrorMessage(type);
           _showSnackBar(errorMessage, Colors.red);
         }
       }
     } catch (e) {
       if (mounted) {
-        if (kDebugMode) {
-          debugPrint('❌ 投稿処理中のエラー: $e');
-        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('投稿処理中にエラーが発生しました: $e'),
@@ -629,10 +498,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     try {
-      if (kDebugMode) {
-        debugPrint('🎬 Web版: 動画サムネイル抽出開始');
-      }
-
       // Blobを作成
       final blob = html.Blob([videoBytes]);
       final url = html.Url.createObjectUrlFromBlob(blob);
@@ -727,10 +592,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // URLを解放
         html.Url.revokeObjectUrl(url);
 
-        if (kDebugMode) {
-          debugPrint('✅ Web版: 動画サムネイル抽出成功: ${thumbnailBytes.length} bytes');
-        }
-
         return thumbnailBytes;
       } catch (e) {
         // URLを解放
@@ -738,10 +599,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         rethrow;
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ Web版: 動画サムネイル抽出エラー: $e');
-        debugPrint('   スタックトレース: $stackTrace');
-      }
       return null;
     }
   }
@@ -756,10 +613,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     try {
-      if (kDebugMode) {
-        debugPrint('🎬 動画サムネイル抽出開始: $videoPath');
-      }
-
       // 動画から最初のフレーム（timeMs: 0）を抽出
       // タイムアウトを設定してバッファエラーを防ぐ
       // サムネイル用に適切な解像度と品質を設定
@@ -775,61 +628,33 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           timeMs: 0, // 最初のフレーム（0ミリ秒）
         ).timeout(
           const Duration(seconds: 15), // 15秒でタイムアウト
-          onTimeout: () {
-            if (kDebugMode) {
-              debugPrint('⚠️ 動画サムネイル抽出タイムアウト');
-            }
-            return null;
-          },
+          onTimeout: () => null,
         );
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 動画サムネイル抽出中にエラーが発生: $e');
-        }
         thumbnailPath = null;
       }
 
       if (thumbnailPath == null || thumbnailPath.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 動画サムネイル抽出失敗: パスが空');
-        }
         return null;
       }
 
       // 抽出したサムネイル画像を読み込む
       final thumbnailFile = File(thumbnailPath);
       if (!await thumbnailFile.exists()) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 動画サムネイル抽出失敗: ファイルが存在しない');
-        }
         return null;
       }
 
       final thumbnailBytes = await thumbnailFile.readAsBytes();
 
-      if (kDebugMode) {
-        debugPrint('✅ 動画サムネイル抽出成功: ${thumbnailBytes.length} bytes');
-      }
-
       // 一時ファイルを削除
       try {
         await thumbnailFile.delete();
-        if (kDebugMode) {
-          debugPrint('🗑️ 一時サムネイルファイルを削除: $thumbnailPath');
-        }
       } catch (e) {
-        // 削除エラーは無視
-        if (kDebugMode) {
-          debugPrint('⚠️ 一時ファイル削除エラー（無視）: $e');
-        }
+        // ignore
       }
 
       return thumbnailBytes;
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ 動画サムネイル抽出例外: $e');
-        debugPrint('   スタックトレース: $stackTrace');
-      }
       return null;
     }
   }
@@ -1547,13 +1372,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             return;
           }
 
-          if (kDebugMode) {
-            debugPrint('📹 動画ファイル確認:');
-            debugPrint('   - パス: ${pickedFile.path}');
-            debugPrint(
-                '   - サイズ: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-          }
-
           // 少し待ってから新しいプレイヤーを初期化（バッファ解放の時間を確保）
           await Future.delayed(const Duration(milliseconds: 300));
 
@@ -1564,10 +1382,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
           while (!initialized && retryCount < maxRetries) {
             try {
-              if (kDebugMode) {
-                debugPrint('📹 動画プレイヤー初期化試行 ${retryCount + 1}/$maxRetries');
-              }
-
               // 以前のプレイヤーが残っている場合はクリーンアップ
               if (_videoPlayerController != null) {
                 _cleanupVideoPlayer();
@@ -1576,9 +1390,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
               // Web版では動画プレイヤーをスキップ（video_playerはWebで制限があるため）
               if (kIsWeb) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ Web版では動画プレイヤーの初期化をスキップ');
-                }
                 return;
               }
 
@@ -1599,18 +1410,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               // 初期化成功
               initialized = true;
 
-              if (kDebugMode) {
-                debugPrint('✅ 動画プレイヤー初期化成功');
-                debugPrint(
-                    '   - 解像度: ${_videoPlayerController!.value.size.width}x${_videoPlayerController!.value.size.height}');
-                debugPrint(
-                    '   - 長さ: ${_videoPlayerController!.value.duration.inSeconds}秒');
-              }
               _videoOrientation =
                   _resolveVideoOrientation(_videoPlayerController!);
-              if (kDebugMode) {
-                debugPrint('🧭 動画の向き: $_videoOrientation');
-              }
 
               // 動画プレイヤーの状態変更を監視（リスナーを保存）
               _videoPlayerListener = () {
@@ -1634,24 +1435,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               setState(() {});
             } catch (e) {
               retryCount++;
-              if (kDebugMode) {
-                debugPrint('❌ 動画プレイヤー初期化エラー（試行 $retryCount/$maxRetries）: $e');
-              }
 
               // エラー時はプレイヤーをクリーンアップ
               _cleanupVideoPlayer();
 
               if (retryCount < maxRetries) {
                 // リトライ前に待機
-                if (kDebugMode) {
-                  debugPrint('⏳ リトライ前に待機中...');
-                }
                 await Future.delayed(Duration(milliseconds: 500 * retryCount));
               } else {
                 // すべてのリトライが失敗した場合
-                if (kDebugMode) {
-                  debugPrint('❌ 動画プレイヤー初期化に失敗しました（全試行失敗）');
-                }
                 if (mounted) {
                   // エラーメッセージを簡潔に表示
                   final errorMessage = e.toString();
@@ -1700,10 +1492,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     try {
-      if (kDebugMode) {
-        debugPrint('🎵 音声ファイル選択を開始...');
-      }
-
       // iOSではFileType.customを使用してファイルアプリを起動
       // AndroidとWebではFileType.audioを使用
       // Web版ではwithData: trueが必要（ファイルパスが取得できないため）
@@ -1719,36 +1507,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       );
 
       if (result == null) {
-        if (kDebugMode) {
-          debugPrint('⚠️ ファイル選択がキャンセルされました');
-        }
         return;
       }
 
       if (result.files.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 選択されたファイルがありません');
-        }
         _showSnackBar('ファイルが選択されませんでした', Colors.orange);
         return;
       }
 
       final selectedFile = result.files.single;
 
-      if (kDebugMode) {
-        debugPrint('📁 選択されたファイル:');
-        debugPrint('   名前: ${selectedFile.name}');
-        debugPrint('   パス: ${selectedFile.path}');
-        debugPrint('   サイズ: ${selectedFile.size} bytes');
-        debugPrint('   拡張子: ${selectedFile.extension}');
-      }
-
       // ファイルパスの確認（Web版ではスキップ）
       if (!kIsWeb) {
         if (selectedFile.path == null || selectedFile.path!.isEmpty) {
-          if (kDebugMode) {
-            debugPrint('❌ ファイルパスが取得できませんでした');
-          }
           _showSnackBar('ファイルパスを取得できませんでした', Colors.red);
           return;
         }
@@ -1756,9 +1527,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // ファイルの存在確認（モバイル版のみ）
         final file = File(selectedFile.path!);
         if (!await file.exists()) {
-          if (kDebugMode) {
-            debugPrint('❌ ファイルが存在しません: ${selectedFile.path}');
-          }
           _showSnackBar('選択されたファイルが見つかりません', Colors.red);
           return;
         }
@@ -1778,9 +1546,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ];
 
       if (!validExtensions.contains(fileExtension)) {
-        if (kDebugMode) {
-          debugPrint('❌ 無効な拡張子: $fileExtension');
-        }
         _showSnackBar(
           '音声ファイルのみ選択できます（対応形式: MP3, M4A, AAC, WAV, OGG, FLAC, OPUS）',
           Colors.red,
@@ -1793,10 +1558,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ? (selectedFile.bytes?.length ?? 0)
           : await File(selectedFile.path!).length();
       if (fileSize > 50 * 1024 * 1024) {
-        if (kDebugMode) {
-          debugPrint(
-              '❌ ファイルサイズが大きすぎます: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
         _showSnackBar(
           '音声ファイルが大きすぎます（50MB以下にしてください）',
           Colors.red,
@@ -1807,11 +1568,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // ファイルパス（Web版では使用しない）
       final filePath = kIsWeb ? null : selectedFile.path;
 
-      if (kDebugMode) {
-        debugPrint(
-            '✅ ファイル検証成功: ${filePath ?? selectedFile.name} (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)');
-      }
-
       setState(() {
         _selectedAudio = selectedFile;
       });
@@ -1821,9 +1577,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _audioPlayer = AudioPlayer();
 
       try {
-        if (kDebugMode) {
-          debugPrint('🎵 音声プレイヤーを初期化中...');
-        }
         if (kIsWeb) {
           // Web版: データURLを作成してsetUrlを使用
           if (selectedFile.bytes == null) {
@@ -1838,14 +1591,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           // モバイル版: setFilePathを使用
           await _audioPlayer!.setFilePath(filePath!);
         }
-        if (kDebugMode) {
-          debugPrint('✅ 音声プレイヤー初期化成功');
-        }
       } catch (e, stackTrace) {
-        if (kDebugMode) {
-          debugPrint('❌ 音声ファイルの読み込みに失敗: $e');
-          debugPrint('   StackTrace: $stackTrace');
-        }
         if (mounted) {
           _showSnackBar('音声ファイルの読み込みに失敗しました: $e', Colors.red);
         }
@@ -1857,10 +1603,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         });
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ 音声ファイル選択エラー: $e');
-        debugPrint('   StackTrace: $stackTrace');
-      }
       if (mounted) {
         _showSnackBar('音声ファイルの選択に失敗しました: $e', Colors.red);
       }
@@ -2178,9 +1920,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
       // 状態はリスナーで自動更新される
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ 動画再生切り替えエラー: $e');
-      }
       // エラー時はプレイヤーをクリーンアップ
       _cleanupVideoPlayer();
     }

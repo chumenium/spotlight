@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/admin_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
@@ -83,9 +82,6 @@ class _AdminNotificationScreenState extends State<AdminNotificationScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 管理者通知送信エラー: $e');
-      }
       if (mounted) {
         setState(() {
           _errorMessage = 'エラーが発生しました: $e';

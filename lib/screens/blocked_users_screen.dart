@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../services/user_service.dart';
 import '../utils/spotlight_colors.dart';
 import '../widgets/blur_app_bar.dart';
@@ -43,9 +42,6 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         _isRefreshing = false;
       });
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ブロック一覧取得エラー: $e');
-      }
       if (!mounted) return;
       setState(() {
         _errorMessage = 'エラーが発生しました';

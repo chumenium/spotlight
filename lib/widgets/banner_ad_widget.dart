@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ad_service.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
-
 /// バナー広告ウィジェット
 /// 
 /// iOS/Android両方で動作するバナー広告を表示します。
@@ -50,28 +48,13 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
             setState(() {
               _isAdLoaded = true;
             });
-            if (kDebugMode) {
-              debugPrint('📢 バナー広告の読み込み完了');
-            }
           }
         },
         onAdFailedToLoad: (ad, error) {
-          if (kDebugMode) {
-            debugPrint('❌ バナー広告の読み込み失敗: $error');
-          }
-          // エラー時は広告を破棄
           ad.dispose();
         },
-        onAdOpened: (_) {
-          if (kDebugMode) {
-            debugPrint('📢 バナー広告が開かれました');
-          }
-        },
-        onAdClosed: (_) {
-          if (kDebugMode) {
-            debugPrint('📢 バナー広告が閉じられました');
-          }
-        },
+        onAdOpened: (_) {},
+        onAdClosed: (_) {},
       ),
     );
   }

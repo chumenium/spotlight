@@ -10,7 +10,6 @@ import '../services/search_service.dart';
 import 'profile_edit_screen.dart';
 import 'tutorial_screen.dart';
 import '../widgets/blur_app_bar.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -375,9 +374,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       hasFailure = true;
-      if (kDebugMode) {
-        debugPrint('❌ 投稿全削除エラー: $e');
-      }
     } finally {
       _closeProcessingDialog(context);
     }
@@ -459,9 +455,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       hasFailure = true;
-      if (kDebugMode) {
-        debugPrint('❌ 検索履歴全削除エラー: $e');
-      }
     } finally {
       _closeProcessingDialog(context);
     }

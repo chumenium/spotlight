@@ -1,6 +1,5 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'ad_service.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// インタースティシャル広告マネージャー
 /// 
@@ -26,9 +25,6 @@ class InterstitialAdManager {
     if (_isLoading || _isReady) return;
 
     _isLoading = true;
-    if (kDebugMode) {
-      debugPrint('📢 インタースティシャル広告を読み込み中...');
-    }
 
     AdService.instance.loadInterstitialAd(
       listener: InterstitialAdLoadCallback(
@@ -47,25 +43,15 @@ class InterstitialAdManager {
               loadAd();
             },
             onAdFailedToShowFullScreenContent: (InterstitialAd ad, AdError error) {
-              if (kDebugMode) {
-                debugPrint('❌ インタースティシャル広告の表示失敗: $error');
-              }
               ad.dispose();
               _interstitialAd = null;
               _isReady = false;
             },
           );
-
-          if (kDebugMode) {
-            debugPrint('✅ インタースティシャル広告の読み込み完了');
-          }
         },
         onAdFailedToLoad: (LoadAdError error) {
           _isLoading = false;
           _isReady = false;
-          if (kDebugMode) {
-            debugPrint('❌ インタースティシャル広告の読み込み失敗: $error');
-          }
         },
       ),
     );
@@ -79,10 +65,6 @@ class InterstitialAdManager {
     if (_interstitialAd != null && _isReady) {
       _interstitialAd!.show();
       _isReady = false;
-    } else {
-      if (kDebugMode) {
-        debugPrint('⚠️ インタースティシャル広告が読み込まれていません');
-      }
     }
   }
 

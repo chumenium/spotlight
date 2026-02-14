@@ -153,7 +153,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               if (mounted) setState(() {});
             },
             onAdFailedToLoad: (failedAd, error) {
-              debugPrint('❌ 通知広告の読み込み失敗: ${error.message}');
               failedAd.dispose();
               loadedAds.remove(ad);
               ads.remove(ad);
@@ -196,7 +195,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           _isLoading = false;
         });
       }
-      debugPrint("通知取得エラー: $e");
     }
   }
 

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
-
 /// ネットワークエラーに強い画像ウィジェット
 ///
 /// CachedNetworkImageを使用して確実にキャッシュ
@@ -56,9 +54,6 @@ class RobustNetworkImage extends StatelessWidget {
   static void _recordFailedUrl(String url) {
     _failedUrls[url] = DateTime.now();
     _loadingUrls.remove(url); // 読み込み中から削除
-    if (kDebugMode) {
-      debugPrint('📝 404エラーを記録: $url (1時間以内はリトライしない)');
-    }
   }
 
   /// 読み込み成功を記録（1時間に1回の読み込み制限）
@@ -80,28 +75,6 @@ class RobustNetworkImage extends StatelessWidget {
     _recordLoadedUrl(url);
   }
 
-  /// ログを出力するかチェック（同じURLの場合は一定時間内は出力しない）
-  static bool _shouldLog(String url,
-      {Duration minInterval = const Duration(seconds: 30)}) {
-    if (!kDebugMode) return false;
-
-    if (!_lastLogTime.containsKey(url)) {
-      _lastLogTime[url] = DateTime.now();
-      return true;
-    }
-
-    final lastLogTime = _lastLogTime[url]!;
-    final now = DateTime.now();
-    final difference = now.difference(lastLogTime);
-
-    if (difference >= minInterval) {
-      _lastLogTime[url] = now;
-      return true;
-    }
-
-    return false;
-  }
-
   /// 読み込み開始を記録
   static void _recordLoadingStart(String url) {
     _loadingUrls[url] = DateTime.now();
@@ -117,9 +90,6 @@ class RobustNetworkImage extends StatelessWidget {
 
     // 404エラーが発生したURLの場合は、エラーウィジェットを表示（1時間に1回の読み込み制限）
     if (_isFailedUrl(imageUrl)) {
-      if (_shouldLog(imageUrl)) {
-        debugPrint('⏭️ RobustNetworkImage: 404エラーが記録されているためスキップ: $imageUrl');
-      }
       if (errorWidget != null) return errorWidget!;
       if (placeholder != null) return placeholder!;
       return const SizedBox(
@@ -156,10 +126,6 @@ class RobustNetworkImage extends StatelessWidget {
     // ただし、既に読み込み成功している場合は記録しない
     if (!_loadedUrls.containsKey(imageUrl)) {
       _recordLoadingStart(imageUrl);
-    }
-
-    if (_shouldLog(imageUrl)) {
-      debugPrint('🖼️ RobustNetworkImage: 画像読み込み開始: $imageUrl');
     }
 
     // NOTE:
@@ -208,9 +174,6 @@ class RobustNetworkImage extends StatelessWidget {
       imageBuilder: (context, imageProvider) {
         if (!_loadedUrls.containsKey(imageUrl)) {
           _recordLoadedUrl(imageUrl);
-          if (_shouldLog(imageUrl)) {
-            debugPrint('✅ RobustNetworkImage: 画像読み込み完了: $imageUrl');
-          }
         }
         return Image(image: imageProvider, fit: fit);
       },
@@ -223,31 +186,12 @@ class RobustNetworkImage extends StatelessWidget {
         // 404エラーの場合は記録（1時間に1回の読み込み制限）
         if (errorString.contains('404') || errorString.contains('Not Found')) {
           _recordFailedUrl(url);
-          if (_shouldLog(url)) {
-            debugPrint('❌ 画像読み込み404エラー: $error');
-            debugPrint('   URL: $imageUrl');
-            debugPrint('   エラーURL: $url');
-            debugPrint('   1時間以内はリトライしません（AWS使用量削減）');
-          }
         }
         // デコードエラーの場合も記録（破損した画像の再試行を防ぐ）
         else if (errorString.contains('EncodingError') ||
             errorString.contains('cannot be decoded') ||
             errorString.contains('decode')) {
           _recordFailedUrl(url);
-          if (_shouldLog(url)) {
-            debugPrint('❌ 画像デコードエラー: $error');
-            debugPrint('   URL: $imageUrl');
-            debugPrint('   エラーURL: $url');
-            debugPrint('   画像ファイルが破損している可能性があります');
-            debugPrint('   1時間以内はリトライしません');
-          }
-        } else {
-          if (_shouldLog(url)) {
-            debugPrint('❌ 画像読み込みエラー: $error');
-            debugPrint('   URL: $imageUrl');
-            debugPrint('   エラーURL: $url');
-          }
         }
 
         if (errorWidget != null) return errorWidget!;

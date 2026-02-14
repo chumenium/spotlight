@@ -1,5 +1,4 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/ad_config.dart';
 
 /// Google AdMob広告サービス
@@ -28,14 +27,8 @@ class AdService {
     try {
       await MobileAds.instance.initialize();
       _isInitialized = true;
-      if (kDebugMode) {
-        debugPrint('📢 AdMob初期化完了');
-      }
     } catch (e) {
       _isInitialized = false;
-      if (kDebugMode) {
-        debugPrint('❌ AdMob初期化エラー: $e');
-      }
       rethrow;
     }
   }
@@ -59,9 +52,6 @@ class AdService {
           _isInitialized = true;
           return;
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ AdMob初期化の再試行に失敗: $e');
-          }
           // 初期化に失敗しても続行（広告は表示されないがアプリは動作する）
           return;
         }

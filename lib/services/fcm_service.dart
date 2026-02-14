@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -29,9 +28,6 @@ class FcmService {
   static Future<String?> getFcmToken() async {
     // 初期化されていない場合はスキップ
     if (!_isInitialized) {
-      if (kDebugMode) {
-        debugPrint('🔔 FCMサービスが初期化されていません（スキップ）');
-      }
       return null;
     }
 
@@ -48,26 +44,14 @@ class FcmService {
           sound: true,
         );
       } catch (permissionError) {
-        if (kDebugMode) {
-          debugPrint('🔔 通知許可リクエストエラー（続行）: $permissionError');
-        }
+        // ignore
       }
 
       // FCMトークンを取得
       final token = await _messaging.getToken();
 
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン取得: ${token != null ? '成功' : '失敗'}');
-        if (token != null) {
-          debugPrint('🔔 FCMトークン: $token');
-        }
-      }
-
       return token;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン取得エラー: $e');
-      }
       return null;
     }
   }
@@ -84,15 +68,8 @@ class FcmService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.setString(_fcmTokenKey, token);
 
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン保存: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン保存エラー: $e');
-      }
       return false;
     }
   }
@@ -107,15 +84,8 @@ class FcmService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(_fcmTokenKey);
 
-      if (kDebugMode) {
-        debugPrint('🔔 保存されたFCMトークン取得: ${token != null ? '成功' : 'なし'}');
-      }
-
       return token;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔔 保存されたFCMトークン取得エラー: $e');
-      }
       return null;
     }
   }
@@ -129,15 +99,8 @@ class FcmService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.remove(_fcmTokenKey);
 
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン削除: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン削除エラー: $e');
-      }
       return false;
     }
   }
@@ -150,10 +113,6 @@ class FcmService {
   /// - onTokenRefresh: トークン更新時のコールバック
   static void listenToTokenRefresh(Function(String) onTokenRefresh) {
     _messaging.onTokenRefresh.listen((String token) {
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン更新: $token');
-      }
-
       // 新しいトークンを保存
       saveFcmToken(token);
 
@@ -177,18 +136,11 @@ class FcmService {
         await saveFcmToken(token);
 
         // トークン更新の監視を開始
-        listenToTokenRefresh((newToken) {
-          if (kDebugMode) {
-            debugPrint('🔔 FCMトークンが更新されました: $newToken');
-          }
-        });
+        listenToTokenRefresh((newToken) {});
       }
 
       return token;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔔 通知初期化エラー: $e');
-      }
       _isInitialized = false;
       return null;
     }
@@ -199,9 +151,6 @@ class FcmService {
   /// FCMトークンの取得をスキップするように設定します
   static void disableFcm() {
     _isInitialized = false;
-    if (kDebugMode) {
-      debugPrint('🔔 FCMサービスを無効化しました');
-    }
   }
 
   /// FCMトークンをサーバーに送信
@@ -219,16 +168,7 @@ class FcmService {
       String? token = await getFcmToken();
 
       if (token == null) {
-        if (kDebugMode) {
-          debugPrint('🔔 FCMトークンが取得できません。サーバーへの送信をスキップします。');
-        }
         return false;
-      }
-
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン更新開始:');
-        debugPrint('   - トークン: ${token.substring(0, 50)}...');
-        debugPrint('   - エンドポイント: ${AppConfig.backendUrl}/api/auth/update_token');
       }
 
       // バックエンドサーバーにFCMトークンを送信
@@ -241,28 +181,12 @@ class FcmService {
         body: jsonEncode({'token': token}),
       );
 
-      if (kDebugMode) {
-        debugPrint('🔔 FCMトークン更新レスポンス: ${response.statusCode}');
-        debugPrint('🔔 レスポンス内容: ${response.body}');
-      }
-
       if (response.statusCode == 200) {
-        if (kDebugMode) {
-          debugPrint('✅ FCMトークンの更新に成功しました');
-        }
         return true;
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ FCMトークンの更新に失敗しました: ${response.statusCode}');
-          debugPrint('   レスポンス: ${response.body}');
-        }
         return false;
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ FCMトークン更新エラー: $e');
-        debugPrint('   スタックトレース: $stackTrace');
-      }
       return false;
     }
   }

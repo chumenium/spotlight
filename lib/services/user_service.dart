@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../config/app_config.dart';
 import '../services/jwt_service.dart';
 
@@ -49,9 +49,6 @@ class UserService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ JWTトークンが取得できません');
-        }
         return null;
       }
 
@@ -93,47 +90,13 @@ class UserService {
 
       final url = '${AppConfig.backendUrl}/api/users/changeicon';
 
-      if (kDebugMode) {
-        debugPrint('📤 アイコン変更URL: $url');
-        debugPrint('📤 username: $username');
-        debugPrint('📤 base64画像サイズ: ${base64Image.length} 文字');
-        debugPrint(
-            '📤 base64画像プレビュー: ${base64Image.substring(0, base64Image.length > 50 ? 50 : base64Image.length)}...');
-      }
-
       // リクエストボディを構築
       final requestData = <String, dynamic>{
         'username': username,
         'iconimg': base64Image,
       };
 
-      if (kDebugMode) {
-        debugPrint('📤 送信データ確認:');
-        debugPrint('  - username: ${requestData['username']}');
-        debugPrint('  - iconimg存在: ${requestData['iconimg'] != null}');
-        debugPrint('  - iconimgサイズ: ${requestData['iconimg']?.length ?? 0}');
-        debugPrint(
-            '  - iconimg先頭50文字: ${requestData['iconimg']?.substring(0, 50) ?? 'null'}...');
-      }
-
       final jsonBody = jsonEncode(requestData);
-
-      if (kDebugMode) {
-        debugPrint('📤 JSON化後のbodyサイズ: ${jsonBody.length}');
-        debugPrint(
-            '📤 JSON化後のbody（最初の300文字）: ${jsonBody.substring(0, jsonBody.length > 300 ? 300 : jsonBody.length)}...');
-
-        // JSONが正しく構築されているかチェック
-        try {
-          final decoded = jsonDecode(jsonBody);
-          debugPrint('📤 JSON検証: デコード成功');
-          debugPrint('  - デコード後username: ${decoded['username']}');
-          debugPrint('  - デコード後iconimg存在: ${decoded['iconimg'] != null}');
-          debugPrint('  - デコード後iconimgサイズ: ${decoded['iconimg']?.length ?? 0}');
-        } catch (e) {
-          debugPrint('❌ JSON検証エラー: $e');
-        }
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -146,10 +109,6 @@ class UserService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-
-        if (kDebugMode) {
-          debugPrint('📥 アイコンアップロードレスポンス: ${responseData.toString()}');
-        }
 
         if (responseData['status'] == 'success') {
           // レスポンス構造: dataオブジェクト内、または直接iconimgpathが返される
@@ -167,9 +126,6 @@ class UserService {
             // 完全なURL（http://またはhttps://で始まる）の場合はそのまま使用
             if (iconPath.startsWith('http://') ||
                 iconPath.startsWith('https://')) {
-              if (kDebugMode) {
-                debugPrint('✅ アイコンパス取得（完全なURL）: $iconPath');
-              }
               // 完全なURLの場合はそのまま返す（CloudFront URLなど）
               return iconPath;
             }
@@ -179,26 +135,15 @@ class UserService {
             }
           }
 
-          if (kDebugMode) {
-            debugPrint('✅ アイコンパス取得: $iconPath');
-          }
-
           // アイコン変更後はキャッシュをクリア（次回取得時に最新情報を取得するため）
           // 注意: firebaseUidは取得できないため、すべてのキャッシュをクリア
           clearAllUserInfoCache();
 
           return iconPath;
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ アイコン変更エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ アイコン変更例外: $e');
-      }
+      // ignore
     }
 
     return null;
@@ -223,18 +168,10 @@ class UserService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ JWTトークンが取得できません');
-        }
         return false;
       }
 
       final url = '${AppConfig.backendUrl}/api/users/changeicon';
-
-      if (kDebugMode) {
-        debugPrint('🗑️ アイコン削除URL: $url');
-        debugPrint('🗑️ username: $username');
-      }
 
       // 削除時はiconimgを送信しない
       final response = await http.post(
@@ -251,10 +188,6 @@ class UserService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📥 アイコン削除レスポンス: ${responseData.toString()}');
-        }
-
         final success = responseData['status'] == 'success';
 
         // アイコン削除後はキャッシュをクリア（次回取得時に最新情報を取得するため）
@@ -263,16 +196,9 @@ class UserService {
         }
 
         return success;
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ アイコン削除エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ アイコン削除例外: $e');
-      }
+      // ignore
     }
 
     return false;
@@ -299,17 +225,8 @@ class UserService {
       if (!forceRefresh && _userInfoCache.containsKey(firebaseUid)) {
         final cached = _userInfoCache[firebaseUid]!;
         if (!cached.isExpired) {
-          if (kDebugMode) {
-            debugPrint('📥 ユーザー情報をキャッシュから取得: $firebaseUid');
-            debugPrint('   - キャッシュ時刻: ${cached.timestamp}');
-            debugPrint(
-                '   - 経過時間: ${DateTime.now().difference(cached.timestamp).inMinutes}分');
-          }
           return cached.data;
         } else {
-          if (kDebugMode) {
-            debugPrint('📥 ユーザー情報のキャッシュが期限切れ: $firebaseUid');
-          }
           _userInfoCache.remove(firebaseUid);
         }
       }
@@ -317,14 +234,7 @@ class UserService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ JWTトークンが取得できません');
-        }
         return null;
-      }
-
-      if (kDebugMode) {
-        debugPrint('📥 ユーザー情報をAPIから取得: $firebaseUid');
       }
 
       final response = await http.post(
@@ -338,27 +248,12 @@ class UserService {
         }),
       );
 
-      if (kDebugMode) {
-        debugPrint('📥 ユーザー情報APIレスポンス: statusCode=${response.statusCode}');
-      }
-
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-
-        if (kDebugMode) {
-          debugPrint('📥 ユーザー情報再取得レスポンス: ${responseData.toString()}');
-        }
 
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final userInfo = responseData['data'] as Map<String, dynamic>;
-          
-          if (kDebugMode) {
-            debugPrint('📥 ユーザー情報抽出:');
-            debugPrint('  username: ${userInfo['username']}');
-            debugPrint('  iconimgpath: ${userInfo['iconimgpath']}');
-            debugPrint('  admin: ${userInfo['admin']}');
-          }
 
           // キャッシュに保存
           _userInfoCache[firebaseUid] = _CachedUserInfo(
@@ -366,28 +261,11 @@ class UserService {
             DateTime.now(),
           );
 
-          if (kDebugMode) {
-            debugPrint('📥 ユーザー情報をキャッシュに保存: $firebaseUid');
-          }
-
           return userInfo;
-        } else {
-          if (kDebugMode) {
-            debugPrint('❌ ユーザー情報レスポンス形式が不正:');
-            debugPrint('  status: ${responseData['status']}');
-            debugPrint('  data: ${responseData['data']}');
-          }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ ユーザー情報取得失敗: statusCode=${response.statusCode}');
-          debugPrint('  レスポンス本文: ${response.body}');
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ユーザー情報再取得例外: $e');
-      }
+      // ignore
     }
 
     return null;
@@ -398,17 +276,11 @@ class UserService {
   /// アイコン変更後など、キャッシュを無効化する必要がある場合に呼び出す
   static void clearUserInfoCache(String firebaseUid) {
     _userInfoCache.remove(firebaseUid);
-    if (kDebugMode) {
-      debugPrint('🗑️ ユーザー情報のキャッシュをクリア: $firebaseUid');
-    }
   }
 
   /// すべてのユーザー情報キャッシュをクリア
   static void clearAllUserInfoCache() {
     _userInfoCache.clear();
-    if (kDebugMode) {
-      debugPrint('🗑️ すべてのユーザー情報キャッシュをクリア');
-    }
   }
 
   /// ユーザーをブロック
@@ -418,17 +290,10 @@ class UserService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ ブロックAPI: JWTトークンが取得できません');
-        }
         return false;
       }
 
       final url = '${AppConfig.backendUrl}/api/users/block';
-      if (kDebugMode) {
-        debugPrint('🚫 ブロックAPI: $url');
-        debugPrint('🚫 target_uid: $targetUid');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -442,19 +307,12 @@ class UserService {
         }),
       );
 
-      if (kDebugMode) {
-        debugPrint('🚫 ブロックAPI statusCode=${response.statusCode}');
-        debugPrint('🚫 ブロックAPI body=${response.body}');
-      }
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['status'] == 'success';
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ブロックAPI例外: $e');
-      }
+      // ignore
     }
 
     return false;
@@ -467,17 +325,10 @@ class UserService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ ブロック解除API: JWTトークンが取得できません');
-        }
         return false;
       }
 
       final url = '${AppConfig.backendUrl}/api/users/unblock';
-      if (kDebugMode) {
-        debugPrint('🚫 ブロック解除API: $url');
-        debugPrint('🚫 target_uid: $targetUid');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -490,19 +341,12 @@ class UserService {
         }),
       );
 
-      if (kDebugMode) {
-        debugPrint('🚫 ブロック解除API statusCode=${response.statusCode}');
-        debugPrint('🚫 ブロック解除API body=${response.body}');
-      }
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['status'] == 'success';
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ブロック解除API例外: $e');
-      }
+      // ignore
     }
 
     return false;
@@ -515,16 +359,10 @@ class UserService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ ブロック一覧API: JWTトークンが取得できません');
-        }
         return null;
       }
 
       final url = '${AppConfig.backendUrl}/api/users/blockedusers';
-      if (kDebugMode) {
-        debugPrint('🚫 ブロック一覧API: $url');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -533,11 +371,6 @@ class UserService {
           'Content-Type': 'application/json',
         },
       );
-
-      if (kDebugMode) {
-        debugPrint('🚫 ブロック一覧API statusCode=${response.statusCode}');
-        debugPrint('🚫 ブロック一覧API body=${response.body}');
-      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -548,9 +381,7 @@ class UserService {
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ブロック一覧API例外: $e');
-      }
+      // ignore
     }
 
     return null;
@@ -567,16 +398,10 @@ class UserService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ アカウント削除API: JWTトークンが取得できません');
-        }
         return false;
       }
 
       final url = '${AppConfig.backendUrl}/api/users/deleteaccount';
-      if (kDebugMode) {
-        debugPrint('🗑️ アカウント削除API: $url');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -585,11 +410,6 @@ class UserService {
           'Content-Type': 'application/json',
         },
       );
-
-      if (kDebugMode) {
-        debugPrint('🗑️ アカウント削除API statusCode=${response.statusCode}');
-        debugPrint('🗑️ アカウント削除API body=${response.body}');
-      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -601,16 +421,9 @@ class UserService {
         }
         
         return success;
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ アカウント削除エラー: statusCode=${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ アカウント削除例外: $e');
-      }
+      // ignore
     }
 
     return false;

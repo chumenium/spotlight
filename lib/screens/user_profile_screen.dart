@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart' hide Badge;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/post.dart';
 import '../models/badge.dart';
@@ -59,14 +58,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _iconUrl = widget.userIconUrl;
     _iconPath = widget.userIconPath;
 
-    if (kDebugMode) {
-      debugPrint('👤 UserProfileScreen初期化:');
-      debugPrint('  userId: ${widget.userId}');
-      debugPrint('  username: ${widget.username}');
-      debugPrint('  userIconUrl: ${widget.userIconUrl}');
-      debugPrint('  userIconPath: ${widget.userIconPath}');
-    }
-
     _loadMyUid();
     _fetchUserProfile();
     // 新しいAPIではプロフィール情報と投稿一覧を同時に取得するため、_fetchUserPostsは不要
@@ -117,12 +108,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // usericonパスを取得
       final usericon = widget.userIconPath ?? widget.userIconUrl ?? '';
 
-      if (kDebugMode) {
-        debugPrint('👤 ユーザープロフィール取得開始:');
-        debugPrint('  username: $username');
-        debugPrint('  usericon: $usericon');
-      }
-
       final response = await http.post(
         Uri.parse('${AppConfig.backendUrl}/api/users/userhome'),
         headers: {
@@ -137,12 +122,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-
-        if (kDebugMode) {
-          debugPrint('👤 ユーザープロフィール取得レスポンス:');
-          debugPrint('  status: ${responseData['status']}');
-          debugPrint('  data: ${responseData.toString()}');
-        }
 
         // レスポンス形式: {"status": "success", "data": {...}}
         if (responseData['status'] != 'success' ||
@@ -159,14 +138,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
         final userData = responseData['data'] as Map<String, dynamic>;
 
-        if (kDebugMode) {
-          debugPrint('👤 取得したユーザーデータ:');
-          debugPrint('  username: ${userData['username']}');
-          debugPrint('  usericon: ${userData['usericon']}');
-          debugPrint('  spotlightnum: ${userData['spotlightnum']}');
-          debugPrint('  contents: ${userData['contents']}');
-        }
-
         // ユーザー情報を設定
         final resolvedUsername =
             userData['username'] as String? ?? widget.username ?? '';
@@ -174,13 +145,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final spotlightNum = userData['spotlightnum'] as int? ?? 0;
         final bio = userData['bio'] as String?;
         final contents = userData['contents'] as List<dynamic>? ?? [];
-
-        if (kDebugMode) {
-          debugPrint('👤 投稿データ数: ${contents.length}');
-          if (contents.isNotEmpty) {
-            debugPrint('👤 最初の投稿データ: ${contents.first}');
-          }
-        }
 
         // 投稿を取得（APIレスポンスをPost.fromJsonが期待する形式に変換）
         final posts = contents.map((json) {
@@ -210,26 +174,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             'commentnum': 0, // デフォルト値
           };
 
-          if (kDebugMode) {
-            debugPrint('📦 投稿データ変換:');
-            debugPrint('  contentID: ${postJson['contentID']}');
-            debugPrint('  title: ${postJson['title']}');
-            debugPrint('  thumbnailurl: $thumbnailUrl');
-            debugPrint('  link: ${json['link']}');
-            debugPrint('  spotlightnum: ${postJson['spotlightnum']}');
-            debugPrint('  playnum: ${postJson['playnum']}');
-          }
-
           final post =
               Post.fromJson(postJson, backendUrl: AppConfig.backendUrl);
-
-          if (kDebugMode) {
-            debugPrint('📦 Post.fromJson完了:');
-            debugPrint('  id: ${post.id}');
-            debugPrint('  title: ${post.title}');
-            debugPrint('  thumbnailUrl: ${post.thumbnailUrl}');
-            debugPrint('  mediaUrl: ${post.mediaUrl}');
-          }
 
           return post;
         }).toList();
@@ -257,13 +203,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
             _isLoadingProfile = false;
             _isLoadingPosts = false;
-          });
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ ユーザープロフィール取得エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
+        });
+      }
+    } else {
         if (mounted) {
           setState(() {
             _errorMessage = 'ユーザー情報の取得に失敗しました';
@@ -273,9 +215,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ユーザープロフィール取得エラー: $e');
-      }
       if (mounted) {
         setState(() {
           _errorMessage = 'エラーが発生しました';
@@ -671,9 +610,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return GestureDetector(
       onTap: () {
         // ホーム画面に遷移して、その投稿を表示
-        if (kDebugMode) {
-          debugPrint('👤 投稿タップ: ${post.id} - ${post.title}');
-        }
         final navigationProvider =
             Provider.of<NavigationProvider>(context, listen: false);
         navigationProvider.navigateToHome(

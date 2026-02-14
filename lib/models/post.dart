@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/app_config.dart';
 
 /// 投稿タイプ
@@ -80,9 +79,6 @@ String? _normalizeContentUrl(String? path) {
 
   // ローカルファイルパスの場合は無効としてnullを返す
   if (_isLocalFilePath(rawPath)) {
-    if (kDebugMode) {
-      debugPrint('⚠️ ローカルファイルパスを検出しました（無効として扱います）: $rawPath');
-    }
     return null;
   }
 
@@ -120,9 +116,6 @@ String? _buildFullUrl(String? baseUrl, dynamic path) {
 
   // ローカルファイルパスの場合は無効としてnullを返す
   if (_isLocalFilePath(rawPath)) {
-    if (kDebugMode) {
-      debugPrint('⚠️ _buildFullUrl: ローカルファイルパスを検出しました（無効として扱います）: $rawPath');
-    }
     return null;
   }
 
@@ -155,27 +148,14 @@ String? _buildFullUrl(String? baseUrl, dynamic path) {
       final fullPath = '$basePath$rawPath';
       final resolvedUri = baseUri.replace(path: fullPath);
 
-      if (kDebugMode) {
-        debugPrint(
-            '🔗 URL結合（絶対パス）: baseUrl=$baseUrl, rawPath=$rawPath, result=${resolvedUri.toString()}');
-      }
-
       return resolvedUri.toString();
     } else {
       // 相対パスの場合は通常のresolveUriを使用
       final resolvedUri = baseUri.resolveUri(targetUri);
 
-      if (kDebugMode) {
-        debugPrint(
-            '🔗 URL結合（相対パス）: baseUrl=$baseUrl, rawPath=$rawPath, result=${resolvedUri.toString()}');
-      }
-
       return resolvedUri.toString();
     }
-  } on FormatException catch (e) {
-    if (kDebugMode) {
-      debugPrint('❌ URL解析エラー: $e, rawPath=$rawPath');
-    }
+  } on FormatException catch (_) {
     return rawPath;
   }
 }
@@ -271,31 +251,18 @@ class Post {
         // linkが完全なURL（http/httpsで始まる）の場合、そのまま使用
         if (link.startsWith('http://') || link.startsWith('https://')) {
           mediaUrl = link;
-          if (kDebugMode) {
-            debugPrint('✅ linkフィールド（完全URL）からmediaUrlを取得: $mediaUrl');
-          }
         } else {
           // linkが相対パスの場合、正規化してからURLを構築
           final normalizedLink = _normalizeContentUrl(link);
           if (normalizedLink != null && !_isLocalFilePath(normalizedLink)) {
             mediaUrl = normalizedLink;
-            if (kDebugMode) {
-              debugPrint('✅ linkフィールド（相対パス）からmediaUrlを取得: $mediaUrl');
-            }
           } else {
             // 正規化できない場合、mediaBaseUrlと結合
             final builtUrl = _buildFullUrl(AppConfig.mediaBaseUrl, link);
             if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
               mediaUrl = builtUrl;
-              if (kDebugMode) {
-                debugPrint('✅ linkフィールドからmediaUrlを構築: $mediaUrl');
-              }
             }
           }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('⚠️ linkフィールドがローカルファイルパスです: $link');
         }
       }
     }
@@ -310,33 +277,20 @@ class Post {
           if (contentPath.startsWith('http://') ||
               contentPath.startsWith('https://')) {
             mediaUrl = contentPath;
-            if (kDebugMode) {
-              debugPrint('✅ contentpath（完全URL）からmediaUrlを取得: $mediaUrl');
-            }
           } else {
             // 相対パスの場合は正規化
             final normalizedContentPath = _normalizeContentUrl(contentPath);
             if (normalizedContentPath != null &&
                 !_isLocalFilePath(normalizedContentPath)) {
               mediaUrl = normalizedContentPath;
-              if (kDebugMode) {
-                debugPrint('✅ contentpath（相対パス）からmediaUrlを生成: $mediaUrl');
-              }
             } else {
               // 正規化できない場合、mediaBaseUrlと結合
               final builtUrl =
                   _buildFullUrl(AppConfig.mediaBaseUrl, contentPath);
               if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
                 mediaUrl = builtUrl;
-                if (kDebugMode) {
-                  debugPrint('✅ contentpathからmediaUrlを構築: $mediaUrl');
-                }
               }
             }
-          }
-        } else {
-          if (kDebugMode) {
-            debugPrint('⚠️ contentpathがローカルファイルパスです: $contentPath');
           }
         }
       }
@@ -344,9 +298,6 @@ class Post {
 
     // mediaUrlがローカルパスの場合、nullにして警告を出す
     if (mediaUrl != null && _isLocalFilePath(mediaUrl)) {
-      if (kDebugMode) {
-        debugPrint('⚠️ mediaUrlがローカルファイルパスになっています（無効として扱います）: $mediaUrl');
-      }
       mediaUrl = null;
     }
 
@@ -363,35 +314,20 @@ class Post {
         if (thumbnailPath.startsWith('http://') ||
             thumbnailPath.startsWith('https://')) {
           thumbnailUrl = thumbnailPath;
-          if (kDebugMode) {
-            debugPrint(
-                '✅ thumbnailpath（完全URL）からthumbnailUrlを取得: $thumbnailUrl');
-          }
         } else {
           // 相対パスの場合、正規化してからURLを構築
           final normalizedThumbnailPath = _normalizeContentUrl(thumbnailPath);
           if (normalizedThumbnailPath != null &&
               !_isLocalFilePath(normalizedThumbnailPath)) {
             thumbnailUrl = normalizedThumbnailPath;
-            if (kDebugMode) {
-              debugPrint(
-                  '✅ thumbnailpath（相対パス）からthumbnailUrlを生成: $thumbnailUrl');
-            }
           } else {
             // 正規化できない場合、mediaBaseUrlと結合
             final builtUrl =
                 _buildFullUrl(AppConfig.mediaBaseUrl, thumbnailPath);
             if (builtUrl != null && !_isLocalFilePath(builtUrl)) {
               thumbnailUrl = builtUrl;
-              if (kDebugMode) {
-                debugPrint('✅ thumbnailpathからthumbnailUrlを構築: $thumbnailUrl');
-              }
             }
           }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('⚠️ thumbnailpathがローカルファイルパスです: $thumbnailPath');
         }
       }
     }
@@ -401,26 +337,6 @@ class Post {
     final iconPath = json['iconimgpath'] as String? ?? '';
     final baseIconUrl = _buildFullUrl(AppConfig.backendUrl, iconPath);
     final userIconUrl = _addIconCacheKey(baseIconUrl);
-
-    // デバッグログ出力
-    if (kDebugMode) {
-      debugPrint('📦 Post.fromJson:');
-      debugPrint('  link: $link');
-      debugPrint('  contentPath: $contentPath');
-      debugPrint('  mediaUrl: $mediaUrl (CloudFront経由)');
-      debugPrint('  thumbnailPath: $thumbnailPath');
-      debugPrint('  thumbnailUrl: $thumbnailUrl (CloudFront経由)');
-      debugPrint('  iconPath: $iconPath');
-      debugPrint('  userIconUrl: $userIconUrl (バックエンドサーバー経由)');
-      debugPrint('  mediaBaseUrl: ${AppConfig.mediaBaseUrl}');
-      debugPrint('  backendUrl: ${AppConfig.backendUrl}');
-      // mediaUrlがnullの場合、警告を出力
-      if (mediaUrl == null || mediaUrl.isEmpty) {
-        debugPrint('⚠️ mediaUrlがnullまたは空です。コンテンツが表示されない可能性があります。');
-        debugPrint('   link: $link');
-        debugPrint('   contentPath: $contentPath');
-      }
-    }
 
     // typeフィールドがない場合、contentpathまたはlinkから推測
     String postType = json['type'] as String? ?? '';
@@ -458,26 +374,6 @@ class Post {
     // user_idまたはfirebase_uidを取得
     final userId =
         json['user_id'] as String? ?? json['firebase_uid'] as String? ?? '';
-
-    // usernameを安全に取得（デバッグ用）
-    String debugUsername = '';
-    final debugUsernameValue = json['username'];
-    if (debugUsernameValue != null) {
-      if (debugUsernameValue is String) {
-        debugUsername = debugUsernameValue;
-      } else if (debugUsernameValue is int) {
-        debugUsername = debugUsernameValue.toString();
-      } else {
-        debugUsername = debugUsernameValue.toString();
-      }
-    }
-
-    if (kDebugMode && userId.isEmpty && debugUsername.isNotEmpty) {
-      debugPrint('⚠️ 警告: 投稿データにuser_id/firebase_uidが含まれていません');
-      debugPrint('  contentID: $contentIdStr');
-      debugPrint('  username: $debugUsername');
-      debugPrint('  利用可能なフィールド: ${json.keys.toList()}');
-    }
 
     // usernameを安全に取得（数値型の場合は文字列に変換）
     String usernameStr = '';

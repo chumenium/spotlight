@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -23,15 +22,8 @@ class JwtService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(_jwtTokenKey);
 
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン取得: ${token != null ? '成功' : 'なし'}');
-      }
-
       return token;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン取得エラー: $e');
-      }
       return null;
     }
   }
@@ -50,15 +42,8 @@ class JwtService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.setString(_jwtTokenKey, token);
 
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン保存: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン保存エラー: $e');
-      }
       return false;
     }
   }
@@ -78,15 +63,8 @@ class JwtService {
       final userInfoJson = jsonEncode(userInfo);
       final success = await prefs.setString(_userInfoKey, userInfoJson);
 
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報保存: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報保存エラー: $e');
-      }
       return false;
     }
   }
@@ -106,22 +84,11 @@ class JwtService {
       if (userInfoJson != null) {
         final userInfo = jsonDecode(userInfoJson) as Map<String, dynamic>;
 
-        if (kDebugMode) {
-          debugPrint('🔐 ユーザー情報取得: 成功');
-        }
-
         return userInfo;
-      }
-
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報取得: なし');
       }
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報取得エラー: $e');
-      }
       return null;
     }
   }
@@ -137,15 +104,8 @@ class JwtService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.remove(_jwtTokenKey);
 
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン削除: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 JWTトークン削除エラー: $e');
-      }
       return false;
     }
   }
@@ -161,15 +121,8 @@ class JwtService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.remove(_userInfoKey);
 
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報削除: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報削除エラー: $e');
-      }
       return false;
     }
   }
@@ -188,15 +141,8 @@ class JwtService {
 
       final success = tokenCleared && userInfoCleared && lastAccessCleared;
 
-      if (kDebugMode) {
-        debugPrint('🔐 認証情報クリア: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 認証情報クリアエラー: $e');
-      }
       return false;
     }
   }
@@ -224,15 +170,8 @@ class JwtService {
       final now = DateTime.now().toIso8601String();
       final success = await prefs.setString(_lastAccessTimeKey, now);
 
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時保存: ${success ? '成功' : '失敗'} ($now)');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時保存エラー: $e');
-      }
       return false;
     }
   }
@@ -252,22 +191,11 @@ class JwtService {
       if (timeString != null) {
         final time = DateTime.parse(timeString);
 
-        if (kDebugMode) {
-          debugPrint('🔐 最後の利用日時取得: $time');
-        }
-
         return time;
-      }
-
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時取得: なし');
       }
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時取得エラー: $e');
-      }
       return null;
     }
   }
@@ -283,15 +211,8 @@ class JwtService {
       final prefs = await SharedPreferences.getInstance();
       final success = await prefs.remove(_lastAccessTimeKey);
 
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時削除: ${success ? '成功' : '失敗'}');
-      }
-
       return success;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時削除エラー: $e');
-      }
       return false;
     }
   }
@@ -308,9 +229,6 @@ class JwtService {
 
       if (lastAccessTime == null) {
         // 利用日時が保存されていない場合は、期限切れとみなす
-        if (kDebugMode) {
-          debugPrint('🔐 最後の利用日時が保存されていません。期限切れとみなします。');
-        }
         return true;
       }
 
@@ -320,19 +238,8 @@ class JwtService {
 
       final isExpired = difference >= sixMonths;
 
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時チェック:');
-        debugPrint('  - 最後の利用: $lastAccessTime');
-        debugPrint('  - 現在: $now');
-        debugPrint('  - 経過日数: ${difference.inDays}日');
-        debugPrint('  - 期限切れ: ${isExpired ? 'はい' : 'いいえ'}');
-      }
-
       return isExpired;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 最後の利用日時チェックエラー: $e');
-      }
       // エラーが発生した場合は、安全のため期限切れとみなす
       return true;
     }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:provider/provider.dart';
 
 import '../auth/auth_provider.dart';
@@ -206,10 +205,6 @@ Future<void> _deleteAccount(
     Navigator.of(context).pop();
 
     if (success) {
-      if (kDebugMode) {
-        debugPrint('✅ アカウント削除成功');
-      }
-
       await authProvider.logout();
 
       if (!context.mounted) return;
@@ -237,10 +232,6 @@ Future<void> _deleteAccount(
         (route) => false,
       );
     } else {
-      if (kDebugMode) {
-        debugPrint('❌ アカウント削除失敗');
-      }
-
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -252,10 +243,6 @@ Future<void> _deleteAccount(
       }
     }
   } catch (e) {
-    if (kDebugMode) {
-      debugPrint('❌ アカウント削除例外: $e');
-    }
-
     if (!context.mounted) return;
 
     Navigator.of(context).pop();

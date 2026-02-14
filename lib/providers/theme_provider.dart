@@ -35,7 +35,7 @@ class ThemeProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('テーマモードの読み込みエラー: $e');
+      // ignore
     }
   }
 
@@ -47,7 +47,7 @@ class ThemeProvider with ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_themeModeKey, mode.toString());
       } catch (e) {
-        debugPrint('テーマモードの保存エラー: $e');
+        // ignore
       }
     }
   }

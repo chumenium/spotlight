@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/app_config.dart';
 import '../models/comment.dart';
 import '../services/jwt_service.dart';
@@ -12,17 +11,10 @@ class CommentService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('💬 JWTトークンが取得できません');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/getcomments';
-
-      if (kDebugMode) {
-        debugPrint('💬 コメント取得URL: $url, contentID: $contentId');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -36,38 +28,18 @@ class CommentService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('💬 コメント取得レスポンス: ${responseData.toString()}');
-        }
-
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final List<dynamic> commentsJson = responseData['data'];
-
-          // デバッグ: 最初のコメントのフィールドを確認
-          if (kDebugMode && commentsJson.isNotEmpty) {
-            final firstComment = commentsJson[0] as Map<String, dynamic>;
-            debugPrint('💬 コメントデータのフィールド: ${firstComment.keys.toList()}');
-            debugPrint('💬 user_id: ${firstComment['user_id']}');
-            debugPrint('💬 userId: ${firstComment['userId']}');
-            debugPrint('💬 uid: ${firstComment['uid']}');
-            debugPrint('💬 firebase_uid: ${firstComment['firebase_uid']}');
-          }
 
           return commentsJson
               .map((commentJson) => Comment.fromJson(
                   commentJson as Map<String, dynamic>, AppConfig.backendUrl))
               .toList();
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('💬 コメント取得エラー: ${response.statusCode}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('💬 コメント取得例外: $e');
-      }
+      // ignore
     }
 
     return [];
@@ -79,17 +51,10 @@ class CommentService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('💬 JWTトークンが取得できません');
-        }
         return false;
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/addcomment';
-
-      if (kDebugMode) {
-        debugPrint('💬 コメント追加URL: $url, contentID: $contentId');
-      }
 
       final parsedContentId = int.tryParse(contentId);
 
@@ -114,22 +79,12 @@ class CommentService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('💬 コメント追加レスポンス: ${responseData.toString()}');
-        }
-
         if (responseData['status'] == 'success') {
           return true;
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('💬 コメント追加エラー: ${response.statusCode}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('💬 コメント追加例外: $e');
-      }
+      // ignore
     }
 
     return false;

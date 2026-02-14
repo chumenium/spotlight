@@ -16,8 +16,6 @@ import 'playlist_detail_screen.dart';
 import '../auth/social_login_screen.dart';
 import '../services/fcm_service.dart';
 import '../services/jwt_service.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
-
 /// 静止画スプラッシュスクリーン
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,20 +47,13 @@ class _SplashScreenState extends State<SplashScreen> {
           try {
             final imageProvider = AssetImage('assets/splash/splash.png');
             await precacheImage(imageProvider, context);
-            if (kDebugMode) {
-              debugPrint('✅ スプラッシュ画像を事前読み込みしました');
-            }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ スプラッシュ画像の事前読み込みエラー: $e');
-            }
+            // ignore
           }
         }
       });
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ スプラッシュ画像の事前読み込み初期化エラー: $e');
-      }
+      // ignore
     }
   }
 
@@ -101,9 +92,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // 既にcurrentUserが存在する場合は即座に返す
       if (auth.currentUser != null) {
-        if (kDebugMode) {
-          debugPrint('🔐 Firebase Authenticationのセッションが既に復元されています。');
-        }
         return;
       }
 
@@ -113,24 +101,10 @@ class _SplashScreenState extends State<SplashScreen> {
               const Duration(seconds: 2),
             );
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('⚠️ Firebase Authenticationのセッション復元待機がタイムアウトしました。');
-        }
-      }
-
-      if (kDebugMode) {
-        final currentUser = auth.currentUser;
-        if (currentUser != null) {
-          debugPrint(
-              '🔐 Firebase Authenticationのセッションが復元されました: ${currentUser.uid}');
-        } else {
-          debugPrint('⚠️ Firebase Authenticationのセッションが復元されませんでした。');
-        }
+        // ignore
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ Firebase Authenticationのセッション復元待機エラー: $e');
-      }
+      // ignore
     }
   }
 
@@ -142,9 +116,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
       if (_isExpired) {
         // 半年以上経過している場合は、認証情報をクリア
-        if (kDebugMode) {
-          debugPrint('🔐 最後の利用から半年以上経過しています。認証情報をクリアします。');
-        }
 
         // JWTトークンとユーザー情報をクリア
         await JwtService.clearAll();
@@ -152,13 +123,8 @@ class _SplashScreenState extends State<SplashScreen> {
         // Firebase Authenticationのセッションもクリア
         try {
           await firebase_auth.FirebaseAuth.instance.signOut();
-          if (kDebugMode) {
-            debugPrint('🔐 Firebase Authenticationのセッションをクリアしました。');
-          }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ Firebase Authenticationのセッションクリアエラー: $e');
-          }
+          // ignore
         }
       } else {
         // 半年未満の場合は、最後の利用日時を更新
@@ -168,9 +134,6 @@ class _SplashScreenState extends State<SplashScreen> {
         _updateFcmTokenOnStartup();
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 認証状態チェックエラー: $e');
-      }
       // エラーが発生した場合は、期限切れとみなす
       _isExpired = true;
       await JwtService.clearAll();
@@ -184,27 +147,19 @@ class _SplashScreenState extends State<SplashScreen> {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('🔔 アプリ起動時: JWTトークンが取得できません。FCMトークン更新をスキップします。');
-        }
         return;
       }
 
       // FCMトークンをサーバーに送信
       await FcmService.updateFcmTokenToServer(jwtToken);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ アプリ起動時のFCMトークン更新エラー: $e');
-      }
+      // ignore
     }
   }
 
   void _navigateToNext() async {
     // 半年以上経過している場合は、ログイン画面に遷移
     if (_isExpired) {
-      if (kDebugMode) {
-        debugPrint('🔐 半年以上経過しているため、ログイン画面に遷移します。');
-      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const SocialLoginScreen()),
       );
@@ -218,11 +173,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // 両方が存在する場合は、ログイン済みと判定してホーム画面に直接遷移
     if (firebaseUser != null && jwtToken != null) {
-      if (kDebugMode) {
-        debugPrint('🔐 ログイン状態が維持されているため、ホーム画面に直接遷移します。');
-        debugPrint('  - Firebase User: ${firebaseUser.uid}');
-        debugPrint('  - JWT Token: 存在');
-      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainScreen()),
       );
@@ -230,11 +180,6 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     // ログイン状態が復元されていない場合は、ログイン画面に遷移
-    if (kDebugMode) {
-      debugPrint('🔐 ログイン状態が復元されていないため、ログイン画面に遷移します。');
-      debugPrint('  - Firebase User: ${firebaseUser?.uid ?? "null"}');
-      debugPrint('  - JWT Token: ${jwtToken != null ? "存在" : "null"}');
-    }
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const SocialLoginScreen()),
     );
@@ -305,20 +250,12 @@ class _MainScreenState extends State<MainScreen> {
   void _setupNotificationHandlers() {
     // アプリがバックグラウンド状態で通知をタップした場合
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (kDebugMode) {
-        debugPrint('🔔 バックグラウンドから通知をタップ: ${message.messageId}');
-        debugPrint('🔔 通知データ: ${message.data}');
-      }
       _handleNotificationTap(message);
     });
 
     // アプリが終了状態から通知をタップして起動した場合
     FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
-        if (kDebugMode) {
-          debugPrint('🔔 終了状態から通知をタップして起動: ${message.messageId}');
-          debugPrint('🔔 通知データ: ${message.data}');
-        }
         // 少し遅延させてから処理（MainScreenが完全に構築されてから）
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _handleNotificationTap(message);
@@ -339,9 +276,7 @@ class _MainScreenState extends State<MainScreen> {
         _handleIncomingUri(uri);
       },
       onError: (error) {
-        if (kDebugMode) {
-          debugPrint('⚠️ ディープリンク受信エラー: $error');
-        }
+        // ignore
       },
     );
   }
@@ -363,9 +298,6 @@ class _MainScreenState extends State<MainScreen> {
         return;
       }
       navigationProvider.navigateToHome(postId: contentId);
-      if (kDebugMode) {
-        debugPrint('🔗 ディープリンク: contentId=$contentId');
-      }
       return;
     }
 
@@ -387,9 +319,6 @@ class _MainScreenState extends State<MainScreen> {
           ),
         );
       });
-      if (kDebugMode) {
-        debugPrint('🔗 ディープリンク: playlistId=$playlistId');
-      }
     }
   }
 
@@ -408,10 +337,6 @@ class _MainScreenState extends State<MainScreen> {
     
     // 通知画面に遷移
     navigationProvider.navigateToNotifications();
-    
-    if (kDebugMode) {
-      debugPrint('✅ 通知画面に遷移しました');
-    }
   }
 
   @override

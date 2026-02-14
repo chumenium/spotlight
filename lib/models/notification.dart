@@ -2,8 +2,6 @@ import 'dart:convert';
 import '../services/jwt_service.dart';
 import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show  debugPrint;
-
 // ================================
 // 通知の種類
 // ================================
@@ -105,7 +103,6 @@ class NotificationItem {
       // 既にUTCまたはタイムゾーン情報がある場合はそのままローカル時間に変換
       return parsed.toLocal();
     } catch (e) {
-      debugPrint('⚠️ 日時パースエラー: $timestamp, エラー: $e');
       // エラー時は現在時刻を返す
       return DateTime.now().toLocal();
     }
@@ -143,7 +140,6 @@ class NotificationService {
   static Future<List<NotificationItem>> fetchNotifications() async {
     final url = '${AppConfig.apiBaseUrl}/users/notification';
     final jwtToken = await JwtService.getJwtToken();
-    debugPrint('アクセス先URL：$url');
     final response = await http.post(
       Uri.parse(url),
       headers: {

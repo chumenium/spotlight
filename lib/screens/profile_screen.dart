@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart' hide Badge;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -1066,9 +1065,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return thumbnailUrl.isNotEmpty;
     } catch (e) {
       // undefinedやその他のエラーの場合もfalseを返す
-      if (kDebugMode) {
-        debugPrint('⚠️ サムネイルURLチェックエラー: $e');
-      }
       return false;
     }
   }
@@ -1083,9 +1079,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return 'タイトルなし';
     } catch (e) {
       // undefinedやその他のエラーの場合もデフォルト値を返す
-      if (kDebugMode) {
-        debugPrint('⚠️ タイトル取得エラー: $e');
-      }
       return 'タイトルなし';
     }
   }
@@ -1142,9 +1135,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _playlistFirstContentThumbnails[playlistId] = thumbnailUrl;
       return thumbnailUrl;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ 再生リストの最初のコンテンツ取得エラー: $e');
-      }
       // エラーの場合はnullをキャッシュ
       _playlistFirstContentThumbnails[playlistId] = null;
       return null;
@@ -1284,16 +1274,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               postTitle: _getSafeTitle(post.title),
               post: post,
             );
-
-            if (kDebugMode) {
-              debugPrint(
-                  '📱 プロフィール: 投稿をタップ: ID=$postIdStr, タイトル=${_getSafeTitle(post.title)}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 投稿タップエラー: $e');
-          }
+          // ignore
         }
       },
       child: Container(
@@ -1640,16 +1623,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               postTitle: _getSafeTitle(post.title),
               post: post,
             );
-
-            if (kDebugMode) {
-              debugPrint(
-                  '📱 プロフィール: 視聴履歴をタップ: ID=$postIdStr, タイトル=${_getSafeTitle(post.title)}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ 視聴履歴タップエラー: $e');
-          }
+          // ignore
         }
       },
       child: Container(
@@ -1754,10 +1730,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return GestureDetector(
       onTap: () async {
-        if (kDebugMode) {
-          debugPrint(
-              '📱 プロフィール: 再生リストをタップ: ID=${playlist.playlistid}, タイトル=${playlist.title}');
-        }
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -1769,9 +1741,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         // 戻ってきた時は必ず画面を更新
         if (mounted) {
-          if (kDebugMode) {
-            debugPrint('📋 [プロフィール] プレイリスト詳細画面から戻ってきたため更新します。');
-          }
           await _refreshProfileData();
         }
       },
@@ -2675,9 +2644,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
               // プロフィール編集が成功した場合は、プロフィール情報を更新
               if (result == true && mounted) {
-                if (kDebugMode) {
-                  debugPrint('🔄 プロフィール編集が完了したため、プロフィール情報を更新します...');
-                }
                 // プロフィール情報を更新
                 _refreshProfileData();
               }
@@ -2888,10 +2854,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // ログアウト処理（ゲストモードもログイン中も同じ処理）
                   await authProvider.logout();
 
-                  if (kDebugMode) {
-                    debugPrint('✅ ログアウト完了: ログイン画面へ遷移');
-                  }
-
                   // ログイン画面に遷移
                   if (context.mounted) {
                     Navigator.of(context).pushAndRemoveUntil(
@@ -2980,9 +2942,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // 画像をデコード
       final originalImage = img.decodeImage(imageBytes);
       if (originalImage == null) {
-        if (kDebugMode) {
-          debugPrint('⚠️ 画像のデコードに失敗しました');
-        }
         return null;
       }
 
@@ -2991,9 +2950,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // 既に正方形の場合はそのまま返す
       if (width == height) {
-        if (kDebugMode) {
-          debugPrint('✅ 画像は既に正方形です（$width x $height）');
-        }
         return imageBytes;
       }
 
@@ -3003,13 +2959,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // 切り取る位置を計算（中央から）
       final x = (width - size) ~/ 2;
       final y = (height - size) ~/ 2;
-
-      if (kDebugMode) {
-        debugPrint('✂️ 画像を正方形に切り取ります:');
-        debugPrint('  - 元のサイズ: $width x $height');
-        debugPrint('  - 切り取りサイズ: $size x $size');
-        debugPrint('  - 切り取り位置: x=$x, y=$y');
-      }
 
       // 画像を切り取る
       final croppedImage = img.copyCrop(
@@ -3023,15 +2972,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // PNG形式でエンコード（品質を保持）
       final croppedBytes = Uint8List.fromList(img.encodePng(croppedImage));
 
-      if (kDebugMode) {
-        debugPrint('✅ 画像を正方形に切り取りました: $size x $size');
-      }
-
       return croppedBytes;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 画像の切り取りエラー: $e');
-      }
       return null;
     }
   }
@@ -3086,10 +3028,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
 
       if (iconPath != null) {
-        if (kDebugMode) {
-          debugPrint('📸 アイコンアップロード成功: $iconPath');
-        }
-
         // 4. 画像のURLを取得
         // iconPathの形式を確認してURLを生成
         String newIconUrl;
@@ -3108,10 +3046,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // ファイル名のみの場合は/icon/を追加
         else {
           newIconUrl = '${AppConfig.backendUrl}/icon/$iconPath';
-        }
-
-        if (kDebugMode) {
-          debugPrint('🔗 新しいアイコンURL: $newIconUrl');
         }
 
         // 古いアイコンURLを取得
@@ -3139,19 +3073,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
 
-        if (kDebugMode) {
-          debugPrint('🔗 古いアイコンURL: $oldIconUrl');
-          if (user?.iconPath != null) {
-            final oldIconPath = user!.iconPath!;
-            if (oldIconPath.contains('default_icon') ||
-                oldIconPath.endsWith('default_icon.png')) {
-              debugPrint('ℹ️ 古いアイコンはdefault_iconのため、バックエンド側で削除されません');
-            } else {
-              debugPrint('ℹ️ 古いアイコンファイルはバックエンド側で自動削除されます: $oldIconPath');
-            }
-          }
-        }
-
         // 古いキャッシュをクリア（古いURLとデフォルトアイコン）
         await _clearIconCache(oldIconUrl: oldIconUrl);
 
@@ -3164,15 +3085,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // この時点でiconPathが更新される可能性がある
         final refreshed =
             await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
-
-        if (kDebugMode) {
-          debugPrint('📡 ユーザー情報再取得: ${refreshed ? "成功" : "失敗"}');
-          if (refreshed) {
-            final refreshedUserAfterRefresh = authProvider.currentUser;
-            debugPrint(
-                '📡 再取得後のiconPath: ${refreshedUserAfterRefresh?.iconPath}');
-          }
-        }
 
         // すべてのアイコンURLのキャッシュをクリア（確実に再読み込み）
         final allIconUrls = <String>[];
@@ -3217,13 +3129,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         for (final url in allIconUrls) {
           try {
             await CachedNetworkImage.evictFromCache(url);
-            if (kDebugMode) {
-              debugPrint('🗑️ アイコンURLのキャッシュをクリア: $url');
-            }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ キャッシュクリアエラー: $e');
-            }
+            // ignore
           }
         }
 
@@ -3278,75 +3185,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
               iconPath.startsWith('https://')) {
             // 完全なURLの場合はそのまま使用（CloudFront URLなど）
             finalIconPath = iconPath;
-            if (kDebugMode) {
-              debugPrint('📸 完全なURLを検出（そのまま使用）: $iconPath');
-            }
           } else if (iconPath.startsWith('/icon/')) {
             // /icon/で始まる相対パスの場合はそのまま使用
             finalIconPath = iconPath;
-            if (kDebugMode) {
-              debugPrint('📸 /icon/で始まる相対パスを検出: $iconPath');
-            }
           } else if (iconPath.startsWith('/')) {
             // /で始まるが/icon/でない相対パスの場合もそのまま使用
             finalIconPath = iconPath;
-            if (kDebugMode) {
-              debugPrint('📸 /で始まる相対パスを検出: $iconPath');
-            }
           } else {
             // ファイル名のみの場合は/icon/を追加
             finalIconPath = '/icon/$iconPath';
-            if (kDebugMode) {
-              debugPrint(
-                  '📸 ファイル名のみを検出、/icon/を追加: $iconPath -> $finalIconPath');
-            }
-          }
-
-          if (kDebugMode) {
-            debugPrint('📸 アイコンアップロード後の処理:');
-            debugPrint('  - アップロード成功: iconPath = $iconPath');
-            debugPrint('  - 変換後: finalIconPath = $finalIconPath');
-            debugPrint('  - 現在のユーザーiconPath: ${user?.iconPath}');
           }
 
           // まず、手動でiconPathを更新（確実に反映させるため）
-          // 更新前に現在の状態を確認
-          final beforeUpdate = authProvider.currentUser;
-          if (kDebugMode) {
-            debugPrint('📸 updateUserInfo前:');
-            debugPrint('  - iconPath: ${beforeUpdate?.iconPath}');
-            debugPrint('  - avatarUrl: ${beforeUpdate?.avatarUrl}');
-          }
-
           await authProvider.updateUserInfo(iconPath: finalIconPath);
 
           // 更新直後に確認（notifyListeners()の処理を待つ）
           await Future.delayed(const Duration(milliseconds: 200));
           final afterUpdate = authProvider.currentUser;
-          if (kDebugMode) {
-            debugPrint('📸 updateUserInfo後（200ms待機後）:');
-            debugPrint('  - iconPath: ${afterUpdate?.iconPath}');
-            debugPrint('  - avatarUrl: ${afterUpdate?.avatarUrl}');
-            debugPrint('  - 期待するiconPath: $finalIconPath');
-            debugPrint(
-                '  - iconPath一致: ${afterUpdate?.iconPath == finalIconPath}');
-          }
 
           // iconPathがまだ更新されていない場合は、再度更新を試みる
           if (afterUpdate?.iconPath != finalIconPath) {
-            if (kDebugMode) {
-              debugPrint('⚠️ iconPathが更新されていないため、再度更新を試みます');
-            }
             await authProvider.updateUserInfo(iconPath: finalIconPath);
             await Future.delayed(const Duration(milliseconds: 200));
-            final retryUpdate = authProvider.currentUser;
-            if (kDebugMode) {
-              debugPrint('📸 再更新後:');
-              debugPrint('  - iconPath: ${retryUpdate?.iconPath}');
-              debugPrint('  - 期待するiconPath: $finalIconPath');
-              debugPrint(
-                  '  - iconPath一致: ${retryUpdate?.iconPath == finalIconPath}');
-            }
           }
 
           // refreshUserInfoFromBackend()は既にupdateUserInfo()を内部で呼び出しているため、
@@ -3357,56 +3217,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final refreshedUserAfterRefresh = authProvider.currentUser;
             final refreshedIconPath = refreshedUserAfterRefresh?.iconPath;
 
-            if (kDebugMode) {
-              debugPrint('📸 refreshUserInfoFromBackend後の確認:');
-              debugPrint('  - 再取得後のiconPath: $refreshedIconPath');
-              debugPrint('  - 期待するiconPath: $finalIconPath');
-            }
-
             // 再取得後のiconPathが期待する値と異なる場合は、手動更新を試みる
             // バックエンドから取得した最新情報を優先する
             if (refreshedIconPath != null && refreshedIconPath.isNotEmpty) {
               // 再取得後のiconPathが期待する値と異なる場合
               if (refreshedIconPath != finalIconPath) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ 再取得後のiconPathが期待値と異なります');
-                  debugPrint('  - 再取得後のiconPath: $refreshedIconPath');
-                  debugPrint('  - 期待するiconPath: $finalIconPath');
-                  debugPrint('  - バックエンドの最新情報を優先します');
-                }
                 // 再取得後のiconPathを使用（バックエンドの最新情報を優先）
                 await authProvider.updateUserInfo(iconPath: refreshedIconPath);
                 // finalIconPathを更新（以降の処理で使用）
                 finalIconPath = refreshedIconPath;
-              } else {
-                if (kDebugMode) {
-                  debugPrint('✅ 再取得後のiconPathが期待値と一致しています');
-                }
               }
             } else {
               // 再取得後のiconPathがnullまたは空の場合は、手動更新を試みる
-              if (kDebugMode) {
-                debugPrint('⚠️ 再取得後のiconPathがnullまたは空のため、手動更新を試みます');
-              }
               await authProvider.updateUserInfo(iconPath: finalIconPath);
             }
           } else {
             // refreshUserInfoFromBackend()が失敗した場合は、手動更新のみに依存
-            if (kDebugMode) {
-              debugPrint('⚠️ refreshUserInfoFromBackend()が失敗したため、手動更新のみに依存します');
-            }
           }
 
           // 現在のユーザー情報を確認（updateUserInfo後の最新情報）
           final currentUser = authProvider.currentUser;
-          if (kDebugMode) {
-            debugPrint('🖼️ 最終確認 - ユーザー情報:');
-            debugPrint('  - iconPath: ${currentUser?.iconPath}');
-            debugPrint('  - avatarUrl: ${currentUser?.avatarUrl}');
-            debugPrint('  - 期待するiconPath: $finalIconPath');
-            debugPrint(
-                '  - iconPath一致: ${currentUser?.iconPath == finalIconPath}');
-          }
 
           // アイコンURLのキャッシュを完全にクリア（新しいiconPathに対応）
           // finalIconPathの形式を確認してURLを生成
@@ -3441,13 +3271,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           try {
             final cacheManager = DefaultCacheManager();
             await cacheManager.emptyCache();
-            if (kDebugMode) {
-              debugPrint('🗑️ DefaultCacheManagerでキャッシュを完全にクリアしました');
-            }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ DefaultCacheManagerキャッシュクリアエラー: $e');
-            }
+            // ignore
           }
 
           for (final url in allUrlsToClear) {
@@ -3487,13 +3312,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                 }
               }
-              if (kDebugMode) {
-                debugPrint('🗑️ アイコンURLのキャッシュをクリア: $url (ベースURL: $baseUrl)');
-              }
             } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ キャッシュクリアエラー: $e');
-              }
+              // ignore
             }
           }
 
@@ -3525,9 +3345,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (!allUrlsToClear.contains(url)) {
               try {
                 await CachedNetworkImage.evictFromCache(url);
-                if (kDebugMode) {
-                  debugPrint('🗑️ 追加のアイコンURLのキャッシュをクリア: $url');
-                }
               } catch (e) {
                 // エラーは無視
               }
@@ -3538,15 +3355,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Consumer<AuthProvider>はupdateUserInfo内でnotifyListeners()が呼ばれるため、
           // 自動的に再構築される。しかし、確実に反映させるためにsetState()も呼び出す
           if (mounted) {
-            // まず、現在のユーザー情報を確認
-            final currentUserForState = authProvider.currentUser;
-            if (kDebugMode) {
-              debugPrint('🔄 setState()前の確認:');
-              debugPrint('  - iconPath: ${currentUserForState?.iconPath}');
-              debugPrint('  - avatarUrl: ${currentUserForState?.avatarUrl}');
-              debugPrint('  - 期待するiconPath: $finalIconPath');
-            }
-
             // キャッシュクリア後に少し待ってからsetState()を呼び出す（確実に再構築されるようにする）
             await Future.delayed(const Duration(milliseconds: 100));
 
@@ -3554,16 +3362,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // iconPathが変更されたことを確実に反映するため、空のsetStateを呼び出す
               // Consumer<AuthProvider>が再構築されるようにする
             });
-
-            if (kDebugMode) {
-              debugPrint(
-                  '🔄 setState()を呼び出しました（Consumer<AuthProvider>の再構築を促す）');
-              final afterSetState = authProvider.currentUser;
-              debugPrint(
-                  '  - setState()後のiconPath: ${afterSetState?.iconPath}');
-              debugPrint(
-                  '  - setState()後のavatarUrl: ${afterSetState?.avatarUrl}');
-            }
 
             // さらに少し待ってから再度setState()を呼び出す（確実に再構築されるようにする）
             await Future.delayed(const Duration(milliseconds: 100));
@@ -3574,44 +3372,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
 
-          if (kDebugMode) {
-            debugPrint('🔄 プロフィール画面を再構築しました（アイコン更新）');
-          }
-
           // 少し待ってから再度再構築（サーバー側の処理完了を待つ）
           await Future.delayed(const Duration(milliseconds: 500));
 
           if (mounted) {
             // 再度ユーザー情報を確認
             final updatedUser = authProvider.currentUser;
-            if (kDebugMode) {
-              debugPrint('🖼️ 最終確認 - ユーザー情報:');
-              debugPrint('  - iconPath: ${updatedUser?.iconPath}');
-              debugPrint('  - avatarUrl: ${updatedUser?.avatarUrl}');
-              debugPrint('  - 期待するiconPath: $finalIconPath');
-              debugPrint(
-                  '  - iconPath一致: ${updatedUser?.iconPath == finalIconPath}');
-            }
 
             // iconPathがまだ更新されていない場合は、再度手動更新
             if (updatedUser?.iconPath != finalIconPath) {
-              if (kDebugMode) {
-                debugPrint('⚠️ iconPathがまだ更新されていないため、再度手動更新します');
-                debugPrint('  - 現在: ${updatedUser?.iconPath}');
-                debugPrint('  - 期待: $finalIconPath');
-              }
               // 再度updateUserInfoを呼び出して、notifyListeners()を確実に呼ぶ
               await authProvider.updateUserInfo(iconPath: finalIconPath);
-
-              // 更新後の確認
-              final reUpdatedUser = authProvider.currentUser;
-              if (kDebugMode) {
-                debugPrint('🖼️ 再更新後の確認:');
-                debugPrint('  - iconPath: ${reUpdatedUser?.iconPath}');
-                debugPrint('  - 期待するiconPath: $finalIconPath');
-                debugPrint(
-                    '  - iconPath一致: ${reUpdatedUser?.iconPath == finalIconPath}');
-              }
 
               // 少し待ってからsetStateを呼び出す（notifyListeners()の処理を待つ）
               await Future.delayed(const Duration(milliseconds: 200));
@@ -3675,14 +3446,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                 }
               }
-              if (kDebugMode) {
-                debugPrint(
-                    '🗑️ アイコンキャッシュを再度クリア: $expectedIconUrlForRetry (ベースURL: $baseUrlForRetry)');
-              }
             } catch (e) {
-              if (kDebugMode) {
-                debugPrint('⚠️ キャッシュクリアエラー: $e');
-              }
+              // ignore
             }
 
             // 最終的にsetStateを呼び出して、Consumer<AuthProvider>が再構築されるようにする
@@ -3691,12 +3456,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Consumer<AuthProvider>が再構築されるようにする
             });
 
-            if (kDebugMode) {
-              debugPrint('🔄 プロフィール画面を再度再構築しました（アイコン更新確認）');
-              final finalUser = authProvider.currentUser;
-              debugPrint('  - 最終確認iconPath: ${finalUser?.iconPath}');
-              debugPrint('  - 期待するiconPath: $finalIconPath');
-            }
           }
 
           // 7. レスポンスメッセージ表示
@@ -3708,10 +3467,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ アイコンアップロードエラー: $e');
-      }
-
       _closeSafeLoadingDialog();
 
       // 7. エラーメッセージ表示
@@ -3799,10 +3554,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
 
     if (success) {
-      if (kDebugMode) {
-        debugPrint('🗑️ アイコン削除成功');
-      }
-
       // アイコンキャッシュをクリア（アイコン削除を反映するため）
       _clearIconCache();
 
@@ -3811,11 +3562,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // サーバー側で処理が完了するまで待機（500ms）
       await Future.delayed(const Duration(milliseconds: 500));
-
-      if (kDebugMode) {
-        debugPrint(
-            '📤 アイコン削除通知を送信: username=$username, iconPath=/icon/default_icon.png');
-      }
 
       // 他の画面にアイコン削除を通知（ホーム画面など）
       // nullの代わりに/icon/default_icon.pngを明示的に指定
@@ -3828,15 +3574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // 画面を強制的に再構築してデフォルトアイコンを表示
         setState(() {});
 
-        if (kDebugMode) {
-          debugPrint('🔄 プロフィール画面を再構築しました（デフォルトアイコン）');
-        }
-
         _showSafeSnackBar('アイコンをデフォルトに変更しました', backgroundColor: Colors.green);
-
-        if (kDebugMode) {
-          debugPrint('✅ アイコン削除完了: デフォルトアイコンに変更');
-        }
       }
     } else {
       // 7. エラーメッセージ表示
@@ -3854,11 +3592,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final defaultIconUrl =
         '${AppConfig.cloudFrontUrl}/spotlight-contents/icon/default_icon.png';
 
-    if (kDebugMode) {
-      debugPrint('🖼️ S3のデフォルトアイコン確認中: $defaultIconUrl');
-      debugPrint('🖼️ DB上のiconPath: $defaultIconPath');
-    }
-
     bool refreshed = false;
 
     try {
@@ -3870,18 +3603,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTimeout: () => http.Response('', 404),
           )
           .then((response) {
-        if (kDebugMode) {
-          if (response.statusCode == 200) {
-            debugPrint('✅ S3のデフォルトアイコン確認成功: $defaultIconUrl');
-          } else {
-            debugPrint('⚠️ S3のデフォルトアイコン確認レスポンス: ${response.statusCode}');
-          }
-        }
+        // S3のデフォルトアイコン確認（結果はログに出力しない）
       }).catchError((e) {
         // エラーは無視（S3の確認はオプション）
-        if (kDebugMode) {
-          debugPrint('⚠️ S3のデフォルトアイコン確認エラー（無視）: $e');
-        }
       });
 
       // バックエンドから最新のユーザー情報を再取得して反映（admin情報も含む）
@@ -3889,34 +3613,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // バックエンドから取得したadmin情報も正しく反映される
       refreshed =
           await authProvider.refreshUserInfoFromBackend(forceRefresh: true);
-
-      if (kDebugMode) {
-        if (refreshed) {
-          debugPrint('✅ ユーザー情報を再取得しました（admin情報も含む）');
-          debugPrint('✅ S3のデフォルトアイコンを設定: $defaultIconPath');
-          debugPrint('✅ CloudFront URL: $defaultIconUrl');
-        } else {
-          debugPrint('⚠️ ユーザー情報の再取得に失敗しました。updateUserInfoを使用します');
-        }
-      }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ デフォルトアイコン設定エラー: $e');
-        debugPrint('🖼️ それでもS3のdefault_icon.pngを使用します: $defaultIconUrl');
-      }
+      // ignore
     }
 
     // refreshUserInfoFromBackendが失敗した場合のみ、フォールバックとしてupdateUserInfoを使用
     if (!refreshed) {
       try {
         await authProvider.updateUserInfo(iconPath: defaultIconPath);
-        if (kDebugMode) {
-          debugPrint('✅ フォールバック: updateUserInfoでデフォルトアイコンを設定');
-        }
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('❌ updateUserInfoエラー: $e');
-        }
+        // ignore
       }
     }
 

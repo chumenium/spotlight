@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
 import '../config/app_config.dart';
@@ -62,9 +61,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 管理者権限有効化エラー: $e');
-      }
       setState(() {
         _errorMessage = 'エラーが発生しました: $e';
         _isLoading = false;
@@ -104,9 +100,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ 管理者権限無効化エラー: $e');
-      }
       setState(() {
         _errorMessage = 'エラーが発生しました: $e';
         _isLoading = false;

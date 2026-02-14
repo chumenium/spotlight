@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'auth_provider.dart';
 import '../utils/spotlight_colors.dart';
 import '../providers/navigation_provider.dart';
@@ -161,9 +160,6 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
 
     // ログイン済みの場合はホーム画面にリダイレクト
     if (authProvider.isLoggedIn) {
-      if (kDebugMode) {
-        debugPrint('🔐 ログイン済みのため、ホーム画面にリダイレクトします。');
-      }
       // NavigationProviderをリセット
       final navigationProvider =
           Provider.of<NavigationProvider>(context, listen: false);

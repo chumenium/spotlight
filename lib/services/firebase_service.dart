@@ -1,5 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'fcm_service.dart';
 
@@ -20,19 +20,12 @@ class FirebaseService {
   /// FCMトークンの初期化も含まれます。
   Future<void> initialize() async {
     if (_initialized) {
-      if (kDebugMode) {
-        debugPrint('Firebase already initialized');
-      }
       return;
     }
 
     try {
       final options = _getFirebaseOptions();
       if (options == null) {
-        if (kDebugMode) {
-          debugPrint(
-              '⚠️ FirebaseOptionsがnullのため、google-services.jsonから自動読み込みを試みます');
-        }
         // Android/iOSではgoogle-services.jsonから自動読み込み
         await Firebase.initializeApp();
       } else {
@@ -41,29 +34,11 @@ class FirebaseService {
 
       _initialized = true;
 
-      if (kDebugMode) {
-        debugPrint('✅ Firebase initialized successfully');
-      }
-
       // FCMトークンの自動初期化（Webではスキップ）
       if (!kIsWeb) {
         await _initializeFcm();
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ Firebase initialization failed: $e');
-        debugPrint('❌ Stack trace: $stackTrace');
-        debugPrint('⚠️ Firebase機能は使用できませんが、アプリは起動します');
-        
-        // エラーの詳細を出力
-        if (e.toString().contains('values.xml')) {
-          debugPrint('⚠️ values.xmlエラー: google-services.jsonが正しく処理されていない可能性があります');
-          debugPrint('⚠️ 解決策: android/app/build.gradle.ktsでgoogle-servicesプラグインが適用されているか確認してください');
-        }
-        if (e.toString().contains('ApiException')) {
-          debugPrint('⚠️ Google Play Servicesエラー: Google Play Servicesが利用できない可能性があります');
-        }
-      }
       // エラーを再スローせず、初期化失敗状態を保持
       // これにより、Firebaseが使用できない場合でもアプリを起動できる
       _initialized = false;
@@ -75,20 +50,9 @@ class FirebaseService {
   /// Firebase初期化後に自動的に呼び出されます。
   Future<void> _initializeFcm() async {
     try {
-      final fcmToken = await FcmService.initializeNotifications();
-      if (fcmToken != null) {
-        if (kDebugMode) {
-          debugPrint('✅ FCMトークン初期化完了');
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('⚠️ FCMトークン初期化をスキップ（通知機能は利用できません）');
-        }
-      }
+      await FcmService.initializeNotifications();
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ FCM初期化エラー（続行）: $e');
-      }
+      // ignore
     }
   }
 
@@ -134,17 +98,5 @@ class FirebaseService {
   }
 
   /// Firebase関連のデバッグ情報を出力
-  void printDebugInfo() {
-    if (!kDebugMode) return;
-
-    debugPrint('=== Firebase Debug Info ===');
-    debugPrint('Initialized: $_initialized');
-
-    if (_initialized) {
-      final app = Firebase.app();
-      debugPrint('App Name: ${app.name}');
-      debugPrint('Options: ${app.options}');
-    }
-    debugPrint('=========================');
-  }
+  void printDebugInfo() {}
 }

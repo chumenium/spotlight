@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/search_history.dart';
@@ -124,9 +123,6 @@ class _SearchScreenState extends State<SearchScreen> {
               }
             },
             onAdFailedToLoad: (failedAd, error) {
-              if (kDebugMode) {
-                debugPrint('❌ 検索履歴広告の読み込み失敗: ${error.message}');
-              }
               failedAd.dispose();
               _loadedSearchNativeAds.remove(ad);
               _searchNativeAds.remove(ad);
@@ -168,10 +164,6 @@ class _SearchScreenState extends State<SearchScreen> {
       }
       _syncSearchNativeAds();
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔍 検索履歴取得エラー: $e');
-      }
-
       if (!_isDisposed && mounted) {
         setState(() {
           _isLoadingHistory = false;
@@ -253,13 +245,6 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final results = await SearchService.searchPosts(query);
 
-      if (kDebugMode) {
-        debugPrint('🔍 検索結果取得: ${results.length}件');
-        for (final post in results) {
-          debugPrint('  - ID: ${post.id}, タイトル: ${post.title}');
-        }
-      }
-
       if (!_isDisposed && mounted) {
         setState(() {
           _searchResults = results;
@@ -269,10 +254,6 @@ class _SearchScreenState extends State<SearchScreen> {
         _fetchSearchHistory();
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔍 検索エラー: $e');
-      }
-
       if (!_isDisposed && mounted) {
         setState(() {
           _isSearching = false;
@@ -601,9 +582,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return GestureDetector(
       onTap: () {
-        if (kDebugMode) {
-          debugPrint('🔍 検索結果タップ: ${post.id} - ${post.title}');
-        }
         _navigateToPost(post);
       },
       child: Column(
@@ -736,16 +714,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final navigationProvider =
         Provider.of<NavigationProvider>(context, listen: false);
 
-    if (kDebugMode) {
-      debugPrint('🔍 ホーム画面に遷移: 投稿ID=${post.id}, contentID=${post.id}');
-      debugPrint('🔍 投稿タイトル: ${post.title}');
-    }
-
     // 投稿IDが空の場合はエラー
     if (post.id.isEmpty) {
-      if (kDebugMode) {
-        debugPrint('❌ 投稿IDが空です');
-      }
       return;
     }
 
@@ -755,13 +725,6 @@ class _SearchScreenState extends State<SearchScreen> {
       postTitle: post.title,
       post: post,
     );
-
-    if (kDebugMode) {
-      debugPrint(
-          '✅ NavigationProviderに投稿IDを設定: ${navigationProvider.targetPostId}');
-      debugPrint(
-          '✅ NavigationProviderに投稿タイトルを設定: ${navigationProvider.targetPostTitle}');
-    }
   }
 
   Widget _buildSectionHeader(String title) {

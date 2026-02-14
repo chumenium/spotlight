@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
-    show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -104,9 +104,6 @@ class AuthProvider extends ChangeNotifier {
       // FirebaseServiceが初期化されているか確認
       final firebaseService = FirebaseService.instance;
       if (!firebaseService.isInitialized) {
-        if (kDebugMode) {
-          debugPrint('⚠️ Firebaseが初期化されていないため、FirebaseAuthは使用できません');
-        }
         return null;
       }
 
@@ -114,9 +111,6 @@ class AuthProvider extends ChangeNotifier {
       return firebase_auth.FirebaseAuth.instance;
     } catch (e) {
       // Firebaseが初期化されていない場合、エラーをキャッチしてnullを返す
-      if (kDebugMode) {
-        debugPrint('⚠️ FirebaseAuth取得エラー: $e');
-      }
       return null;
     }
   }
@@ -195,19 +189,6 @@ class AuthProvider extends ChangeNotifier {
     final auth = _firebaseAuth;
     if (auth != null) {
       auth.authStateChanges().listen(_onAuthStateChanged);
-    } else {
-      if (kDebugMode) {
-        debugPrint('⚠️ FirebaseAuthが初期化されていません');
-      }
-    }
-
-    // Google Sign-In初期化状態をデバッグ出力
-    if (kDebugMode) {
-      debugPrint('🔐 AuthProvider初期化完了');
-      debugPrint('🔐 Google Sign-In設定: スコープ=${AuthConfig.googleScopes}');
-      if (kIsWeb) {
-        debugPrint('🔐 Webプラットフォームで実行中');
-      }
     }
   }
 
@@ -230,12 +211,6 @@ class AuthProvider extends ChangeNotifier {
         admin: false, // 初期値はfalse、APIから取得後に更新される
       );
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 ユーザーログイン: ${firebaseUser.uid}');
-        debugPrint(
-            '  プロバイダー: ${firebaseUser.providerData.map((e) => e.providerId).join(', ')}');
-      }
-
       // バックエンドからユーザー情報とJWTトークンを取得（非同期処理、awaitなし）
       // ログイン時は強制更新（キャッシュを無視）
       _fetchUserInfoAndTokens(firebaseUser.uid, forceRefresh: true).then((_) {
@@ -246,9 +221,6 @@ class AuthProvider extends ChangeNotifier {
       });
     } else {
       _currentUser = null;
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 ユーザーログアウト');
-      }
     }
     notifyListeners();
   }
@@ -260,9 +232,6 @@ class AuthProvider extends ChangeNotifier {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔔 ログイン後: JWTトークンが取得できません。FCMトークン更新をスキップします。');
-        }
         return;
       }
 
@@ -272,9 +241,7 @@ class AuthProvider extends ChangeNotifier {
       // FCMトークンをサーバーに送信
       await FcmService.updateFcmTokenToServer(jwtToken);
     } catch (e) {
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('❌ ログイン後のFCMトークン更新エラー: $e');
-      }
+      // ignore
     }
   }
 
@@ -336,27 +303,6 @@ class AuthProvider extends ChangeNotifier {
       _lastLoginWasNewUser = false;
       notifyListeners();
 
-      if (kDebugMode) {
-        debugPrint('🔐 [Google] Sign-In開始');
-        debugPrint('🔐 [Google] 設定確認:');
-        debugPrint(
-            '  - Firebase Google Sign-In有効: ${FirebaseConfig.enableGoogleSignIn}');
-        debugPrint('  - Google Sign-Inスコープ: ${AuthConfig.googleScopes}');
-        debugPrint('  - パッケージ名: com.example.spotlight');
-        debugPrint('  - AuthDebugLog有効: ${AuthConfig.enableAuthDebugLog}');
-
-        // Google Sign-Inの現在の状態を確認
-        try {
-          final currentUser = await _googleSignIn.signInSilently();
-          debugPrint(
-              '  - 既存のGoogle Sign-Inユーザー: ${currentUser?.email ?? 'なし'}');
-          debugPrint(
-              '  - WebクライアントID: 185578323389-jouqlpvh55a25gt36vuu00i8pa95di3n.apps.googleusercontent.com');
-        } catch (e) {
-          debugPrint('  - Google Sign-In状態確認エラー: $e');
-        }
-      }
-
       // Google Play Servicesの状態を事前にチェック
       // エミュレータでGoogle Play Servicesが利用できない場合、エラーを早期に検出
       try {
@@ -366,37 +312,18 @@ class AuthProvider extends ChangeNotifier {
         await _googleSignIn.signInSilently();
       } catch (e) {
         // Google Play Servicesが利用できない場合のエラーハンドリング
-        if (kDebugMode) {
-          debugPrint('⚠️ [Google] Google Play Servicesが利用できない可能性があります: $e');
-        }
         // エラーを続行して、実際のsignIn()でエラーをキャッチする
       }
 
       // STEP 1: Googleサインインフローを開始
       // Google Sign-Inダイアログが表示され、ユーザーがアカウントを選択
-      if (kDebugMode) {
-        debugPrint('🔐 [Google] GoogleSignIn.signIn()を呼び出し中...');
-      }
-
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (kDebugMode) {
-        debugPrint(
-            '🔐 [Google] GoogleSignIn.signIn()完了: ${googleUser != null ? 'ユーザー取得成功' : 'ユーザー取得失敗またはキャンセル'}');
-      }
 
       if (googleUser == null) {
         // ユーザーがサインインをキャンセルした場合
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 [Google] ユーザーがキャンセル');
-        }
         _isLoading = false;
         notifyListeners();
         return false;
-      }
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Google] 認証情報取得: ${googleUser.email}');
       }
 
       // STEP 2: Google認証情報（accessToken、idToken）を取得
@@ -413,9 +340,6 @@ class AuthProvider extends ChangeNotifier {
       // STEP 4: Firebaseにサインイン
       final auth = _firebaseAuth;
       if (auth == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [Google] FirebaseAuthが初期化されていません');
-        }
         _isLoading = false;
         notifyListeners();
         return false;
@@ -428,10 +352,6 @@ class AuthProvider extends ChangeNotifier {
       _lastLoginWasNewUser =
           userCredential.additionalUserInfo?.isNewUser ?? false;
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 [Google] Sign-In成功');
-      }
-
       _isLoading = false;
       notifyListeners();
       return true;
@@ -439,9 +359,6 @@ class AuthProvider extends ChangeNotifier {
       // Firebase認証エラー
       _isLoading = false;
       _errorMessage = AuthService.getAuthErrorMessage(e);
-      if (kDebugMode) {
-        debugPrint('🔐 [Google] Firebaseエラー: ${e.code} - ${e.message}');
-      }
       notifyListeners();
       return false;
     } on PlatformException catch (e) {
@@ -449,25 +366,14 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
       String errorMessage = 'Googleログインに失敗しました';
 
-      if (kDebugMode) {
-        debugPrint('🔐 [Google] プラットフォームエラー: ${e.code} - ${e.message}');
-        debugPrint('🔐 [Google] エラー詳細: ${e.details}');
-      }
-
       // エラーコード別の詳細メッセージ
       switch (e.code) {
         case 'sign_in_failed':
           // Google Play Services の状態を再確認
           try {
-            final isSignedIn = await _googleSignIn.isSignedIn();
-            if (kDebugMode) {
-              debugPrint(
-                  '🔐 [Google] エラー時のGoogle Play Services状態: $isSignedIn');
-            }
+            await _googleSignIn.isSignedIn();
           } catch (gpsError) {
-            if (kDebugMode) {
-              debugPrint('🔐 [Google] Google Play Services確認エラー: $gpsError');
-            }
+            // ignore
           }
 
           errorMessage =
@@ -480,10 +386,6 @@ class AuthProvider extends ChangeNotifier {
               '1. 設定アプリ → アプリ → Google Play Services → 更新\n'
               '2. Google Play ストアからGoogle Play Servicesを更新\n'
               '3. デバイスを再起動';
-          if (kDebugMode) {
-            debugPrint('🔐 [Google] Google Play Servicesの更新が必要です');
-            debugPrint('🔐 [Google] エミュレータを使用している場合は、Google Play Services対応のエミュレータを使用してください');
-          }
           break;
         case 'network_error':
           errorMessage = 'ネットワークエラーが発生しました。接続を確認してください。';
@@ -506,19 +408,11 @@ class AuthProvider extends ChangeNotifier {
       final errorString = e.toString();
       if (errorString.contains('People API') ||
           errorString.contains('SERVICE_DISABLED')) {
-        _errorMessage = 'Google People APIが有効になっていません。\n'
+          _errorMessage = 'Google People APIが有効になっていません。\n'
             'Firebase ConsoleでPeople APIを有効にしてください:\n'
             'https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=185578323389';
-        if (kDebugMode) {
-          debugPrint('🔐 [Google] People APIエラー: $e');
-          debugPrint('🔐 [Google] People APIを有効化してください: '
-              'https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=185578323389');
-        }
       } else {
         _errorMessage = 'Googleログインに失敗しました';
-        if (kDebugMode) {
-          debugPrint('🔐 [Google] 予期しないエラー: $e');
-        }
       }
 
       notifyListeners();
@@ -555,10 +449,6 @@ class AuthProvider extends ChangeNotifier {
       _lastLoginWasNewUser = false;
       notifyListeners();
 
-      if (kDebugMode) {
-        debugPrint('🍎 [Apple] Sign-In開始');
-      }
-
       final rawNonce = _generateNonce();
       final hashedNonce = _sha256(rawNonce);
 
@@ -569,9 +459,6 @@ class AuthProvider extends ChangeNotifier {
 
       final auth = _firebaseAuth;
       if (auth == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [Apple] FirebaseAuthが初期化されていません');
-        }
         _isLoading = false;
         notifyListeners();
         return false;
@@ -581,9 +468,6 @@ class AuthProvider extends ChangeNotifier {
       if (identityToken == null || identityToken.isEmpty) {
         _isLoading = false;
         _errorMessage = 'Appleログインに失敗しました';
-        if (kDebugMode) {
-          debugPrint('🍎 [Apple] identityTokenが取得できません');
-        }
         notifyListeners();
         return false;
       }
@@ -612,10 +496,6 @@ class AuthProvider extends ChangeNotifier {
         await userCredential.user?.updateDisplayName(displayName);
       }
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🍎 [Apple] Sign-In成功');
-      }
-
       _isLoading = false;
       notifyListeners();
       return true;
@@ -626,25 +506,16 @@ class AuthProvider extends ChangeNotifier {
       } else {
         _errorMessage = 'Appleログインに失敗しました';
       }
-      if (kDebugMode) {
-        debugPrint('🍎 [Apple] 認証エラー: ${e.code} - ${e.message}');
-      }
       notifyListeners();
       return false;
     } on firebase_auth.FirebaseAuthException catch (e) {
       _isLoading = false;
       _errorMessage = AuthService.getAuthErrorMessage(e);
-      if (kDebugMode) {
-        debugPrint('🍎 [Apple] Firebaseエラー: ${e.code} - ${e.message}');
-      }
       notifyListeners();
       return false;
     } catch (e) {
       _isLoading = false;
       _errorMessage = 'Appleログインに失敗しました';
-      if (kDebugMode) {
-        debugPrint('🍎 [Apple] 予期しないエラー: $e');
-      }
       notifyListeners();
       return false;
     }
@@ -692,10 +563,6 @@ class AuthProvider extends ChangeNotifier {
   /// - 本番環境では無効化してください（AppConfig.canSkipAuth = false）
   /// - Firebase UIDは生成されません（ゲストIDのみ）
   void skipLogin() {
-    if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-      debugPrint('🔐 [ゲスト] ログイン（開発モード）');
-    }
-
     // 仮のゲストユーザーを作成
     // Firebase UIDではなく、固定の'guest' IDを使用
     _currentUser = User(
@@ -729,23 +596,13 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = auth.currentUser;
       if (user == null) {
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 Firebase IDトークン取得失敗: ユーザー未ログイン');
-        }
         return null;
       }
 
       final idToken = await user.getIdToken();
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 Firebase IDトークン取得成功');
-      }
-
       return idToken;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 Firebase IDトークン取得エラー: $e');
-      }
       return null;
     }
   }
@@ -762,26 +619,11 @@ class AuthProvider extends ChangeNotifier {
       // Firebase IDトークンを取得
       final firebaseIdToken = await getFirebaseIdToken();
       if (firebaseIdToken == null) {
-        if (kDebugMode) {
-          debugPrint('🔐 Firebase IDトークンが取得できません');
-        }
         return null;
       }
 
       // FCMトークンを取得（失敗しても続行）
       final fcmToken = await FcmService.getFcmToken();
-      if (fcmToken == null) {
-        if (kDebugMode) {
-          debugPrint('🔔 FCMトークンが取得できません（モックトークンを使用）');
-        }
-      }
-
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 トークン送信開始:');
-        debugPrint('  Firebase IDトークン: ${firebaseIdToken.substring(0, 50)}...');
-        debugPrint('  FCMトークン: ${fcmToken?.substring(0, 50) ?? 'null'}...');
-        debugPrint('  送信先: ${AppConfig.backendUrl}/api/auth/firebase');
-      }
 
       // バックエンドサーバーにリクエストを送信
       final response = await http.post(
@@ -792,11 +634,6 @@ class AuthProvider extends ChangeNotifier {
           'token': fcmToken ?? 'mock_fcm_token_123', // FCMトークンが取得できない場合はモックを使用
         }),
       );
-
-      if (kDebugMode) {
-        debugPrint('🔐 レスポンス受信: ${response.statusCode}');
-        debugPrint('🔐 レスポンス内容: ${response.body}');
-      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -825,32 +662,12 @@ class AuthProvider extends ChangeNotifier {
             await JwtService.saveUserInfo(userInfo);
           }
 
-          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('🔐 トークン送信成功:');
-            debugPrint('  JWTトークン: ${jwtToken.substring(0, 50)}...');
-            if (userInfo != null) {
-              debugPrint('  ユーザー情報: ${userInfo.toString()}');
-            }
-          }
-
           return data;
-        } else {
-          if (kDebugMode) {
-            debugPrint('🔐 サーバーエラー: ${data['error'] ?? '不明なエラー'}');
-          }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('🔐 HTTPエラー: ${response.statusCode}');
-          debugPrint('🔐 エラー内容: ${response.body}');
         }
       }
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 トークン送信エラー: $e');
-      }
       return null;
     }
   }
@@ -866,10 +683,6 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _fetchUserInfoAndTokens(String uid,
       {bool forceRefresh = false}) async {
     try {
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 ユーザー情報取得開始: $uid (forceRefresh: $forceRefresh)');
-      }
-
       // 1. JWTトークンを取得
       await sendTokensToBackend();
 
@@ -878,24 +691,10 @@ class AuthProvider extends ChangeNotifier {
       final data =
           await UserService.refreshUserInfo(uid, forceRefresh: forceRefresh);
 
-      if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-        debugPrint('🔐 ユーザー情報取得結果: ${data != null ? '成功' : '失敗（null）'}');
-        if (data != null) {
-          debugPrint('🔐 取得したデータ: $data');
-        }
-      }
-
       if (data != null) {
         final username = data['username'] as String?;
         final iconPath = data['iconimgpath'] as String?;
         final admin = data['admin'] as bool? ?? false;
-
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('🔐 バックエンドから受け取った情報:');
-          debugPrint('  username: $username');
-          debugPrint('  iconPath: $iconPath');
-          debugPrint('  admin: $admin');
-        }
 
         // ユーザー情報を更新
         // usernameがnullでも、既存のユーザー情報を保持しつつadmin情報だけ更新する
@@ -914,9 +713,6 @@ class AuthProvider extends ChangeNotifier {
               // 相対パスの場合はbackendUrlと結合
               fullIconUrl = '${AppConfig.backendUrl}$iconPath';
             }
-            if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-              debugPrint('🔐 アイコンURL: $fullIconUrl');
-            }
           }
 
           // iconPathが空文字列の場合はnullに変換（既存のアイコンを保持するため）
@@ -934,28 +730,11 @@ class AuthProvider extends ChangeNotifier {
             admin: admin,
           );
 
-          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('🔐 ユーザー情報更新完了:');
-            debugPrint('  backendUsername: ${_currentUser!.backendUsername}');
-            debugPrint('  iconPath: ${_currentUser!.iconPath}');
-            debugPrint('  admin: ${_currentUser!.admin}');
-          }
-
           notifyListeners();
-        } else {
-          if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-            debugPrint('⚠️ ユーザー情報更新スキップ: _currentUserがnull');
-          }
-        }
-      } else {
-        if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-          debugPrint('⚠️ ユーザー情報取得失敗: dataがnull');
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報取得エラー: $e');
-      }
+      // ignore
     }
   }
 
@@ -988,10 +767,6 @@ class AuthProvider extends ChangeNotifier {
   /// 注意:
   /// - ゲストモードの場合はFirebase認証を使わないため、直接クリア
   Future<void> logout() async {
-    if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-      debugPrint('🔐 ログアウト開始');
-    }
-
     final isGuest = _currentUser?.id == 'guest';
 
     if (!isGuest) {
@@ -1017,10 +792,6 @@ class AuthProvider extends ChangeNotifier {
 
     // JWTトークンとユーザー情報をローカルから削除
     await JwtService.clearAll();
-
-    if (kDebugMode && AuthConfig.enableAuthDebugLog) {
-      debugPrint('🔐 ログアウト完了: ゲストモード=${isGuest}');
-    }
 
     // 画面更新を通知
     notifyListeners();
@@ -1140,9 +911,7 @@ class AuthProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報更新エラー: $e');
-      }
+      // ignore
     }
   }
 
@@ -1169,27 +938,12 @@ class AuthProvider extends ChangeNotifier {
             userInfo['iconimgpath'] as String?; // バックエンドで生成（完全なURLまたは相対パス）
         final admin = userInfo['admin'] as bool? ?? _currentUser!.admin; // 管理者フラグを取得
 
-        if (kDebugMode) {
-          debugPrint('🔐 最新ユーザー情報取得: username=$username, iconPath=$iconPath, admin=$admin');
-          if (iconPath != null) {
-            // iconPathの形式を確認してログ出力
-            if (iconPath.startsWith('http://') ||
-                iconPath.startsWith('https://')) {
-              debugPrint('🔐 アイコンURL（完全なURL）: $iconPath');
-            } else {
-              debugPrint('🔐 アイコンURL（相対パス）: ${AppConfig.backendUrl}$iconPath');
-            }
-          }
-        }
-
         // admin情報も含めて更新
         await updateUserInfo(username: username, iconPath: iconPath, admin: admin);
         return true;
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('🔐 ユーザー情報再取得エラー: $e');
-      }
+      // ignore
     }
 
     return false;

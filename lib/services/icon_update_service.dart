@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 /// アイコン更新イベント
 class IconUpdateEvent {
@@ -33,14 +32,6 @@ class IconUpdateService {
   /// 
   /// プロフィール画面でアイコン変更後に呼び出す
   void notifyIconUpdate(String username, {String? iconPath}) {
-    if (kDebugMode) {
-      if (iconPath == null) {
-        debugPrint('🔔 アイコン更新通知: $username -> default_icon.png (削除)');
-      } else {
-        debugPrint('🔔 アイコン更新通知: $username -> $iconPath (変更)');
-      }
-    }
-    
     _controller.add(IconUpdateEvent(
       username: username,
       iconPath: iconPath,

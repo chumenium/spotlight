@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
@@ -44,11 +43,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   /// プレイリストのコンテンツを取得
   /// API仕様書に基づいて実装
   Future<void> _fetchPlaylistContents() async {
-    if (kDebugMode) {
-      debugPrint('📋 [プレイリスト詳細] ========== コンテンツ取得開始 ==========');
-      debugPrint('📋 [プレイリスト詳細] playlistId: ${widget.playlistId}');
-    }
-
     if (mounted) {
       setState(() {
         _isLoading = true;
@@ -67,22 +61,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       final contentsJson =
           await PlaylistService.getPlaylistDetail(widget.playlistId);
 
-      if (kDebugMode) {
-        debugPrint('📋 [プレイリスト詳細] API取得完了: ${contentsJson.length}件');
-        if (contentsJson.isNotEmpty) {
-          debugPrint('📋 [プレイリスト詳細] 最初の項目: ${contentsJson[0]}');
-        }
-      }
-
       if (contentsJson.isEmpty) {
         if (mounted) {
           setState(() {
             _contents = [];
             _isLoading = false;
           });
-        }
-        if (kDebugMode) {
-          debugPrint('📋 [プレイリスト詳細] コンテンツが空です');
         }
         return;
       }
@@ -108,19 +92,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
           posts.add(post);
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [プレイリスト詳細] Post作成エラー: $e');
-            debugPrint('   - 項目: $item');
-          }
-        }
-      }
-
-      if (kDebugMode) {
-        debugPrint(
-            '📋 [プレイリスト詳細] Post作成完了: ${posts.length}件 / ${contentsJson.length}件');
-        if (posts.isNotEmpty) {
-          debugPrint(
-              '📋 [プレイリスト詳細] 最初のPost: ID=${posts[0].id}, タイトル=${posts[0].title}');
+          // ignore
         }
       }
 
@@ -129,9 +101,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           _contents = posts;
           _isLoading = false;
         });
-        if (kDebugMode) {
-          debugPrint('📋 [プレイリスト詳細] 状態更新完了: ${_contents.length}件');
-        }
       }
 
       if (posts.isNotEmpty) {
@@ -143,11 +112,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         }
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [プレイリスト詳細] エラー: $e');
-        debugPrint('❌ [プレイリスト詳細] スタックトレース: $stackTrace');
-      }
-
       if (mounted) {
         setState(() {
           _errorMessage = 'プレイリストの取得に失敗しました';
@@ -159,10 +123,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   Future<List<Post>> _enrichPlaylistContents(List<Post> posts) async {
     if (posts.isEmpty) return posts;
-
-    if (kDebugMode) {
-      debugPrint('📋 [プレイリスト詳細] ユーザー情報補完: ${posts.length}件のコンテンツを取得します');
-    }
 
     final futures = posts.map((post) => PostService.fetchContentById(post.id));
     final details = await Future.wait<Post?>(futures);
@@ -176,13 +136,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         continue;
       }
       enriched.add(_mergePostKeepingThumbnail(original, detail));
-    }
-
-    if (kDebugMode) {
-      final enrichedCount =
-          enriched.where((post) => post.userId.isNotEmpty).length;
-      debugPrint(
-          '📋 [プレイリスト詳細] 補完結果: ${enrichedCount}/${posts.length}件でuserIdを取得');
     }
 
     return enriched;
@@ -364,16 +317,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
             // 現在の画面を閉じてホーム画面に戻る
             Navigator.of(context).popUntil((route) => route.isFirst);
-
-            if (kDebugMode) {
-              debugPrint(
-                  '📱 [プレイリスト詳細] 投稿をタップ: ID=$postId, タイトル=${_getSafeTitle(post.title)}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ [プレイリスト詳細] タップエラー: $e');
-          }
+          // ignore
         }
       },
       child: Container(

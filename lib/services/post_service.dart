@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/app_config.dart';
 import '../models/post.dart';
 import '../services/jwt_service.dart';
@@ -46,20 +45,11 @@ class PostService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 JWTトークンが取得できません');
-        // }
         return null;
-      }
-      if (kDebugMode) {
-        debugPrint('📝 JWTトークン: $jwtToken');
       }
 
       final primaryUrl = '${AppConfig.postApiBaseUrl}/content/add';
       final fallbackUrl = '${AppConfig.backendUrl}/content/add';
-      // if (kDebugMode) {
-      //   debugPrint('📝 最小投稿URL: $url');ƒƒ
-      // }
 
       final Map<String, dynamic> body = {
         'type': type,
@@ -95,22 +85,12 @@ class PostService {
         }
       } else if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        // if (kDebugMode) {
-        //   debugPrint('📝 最小投稿レスポンス: ${responseData.toString()}');
-        // }
         if (responseData['status'] == 'success') {
           return responseData['data'];
         }
       }
-      // else {
-      //   if (kDebugMode) {
-      //     debugPrint('📝 最小投稿エラー: ${response.statusCode}');
-      //   }
-      // }
     } catch (e) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 最小投稿例外: $e');
-      // }
+      // ignore
     }
 
     return null;
@@ -126,9 +106,6 @@ class PostService {
   }) async {
     // コスト削減のため、一括取得APIを使用
     // startIdパラメータは無視され、ランダム取得として動作します
-    // if (kDebugMode) {
-    //   debugPrint('⚠️ [fetchPosts] 非推奨メソッドが呼び出されました。fetchContents()の使用を推奨します');
-    // }
 
     // 一括取得APIを使用（コスト削減）
     return await fetchContents();
@@ -170,9 +147,7 @@ class PostService {
         }
       }
     } catch (e) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライト投稿取得例外: $e');
-      // }
+      // ignore
     }
 
     return [];
@@ -189,10 +164,6 @@ class PostService {
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/on';
 
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトON URL: $url, contentID: $postId');
-      // }
-
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -202,15 +173,8 @@ class PostService {
         body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
       );
 
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトONレスポンス: ${response.statusCode}');
-      // }
-
       return response.statusCode == 200;
     } catch (e) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトON例外: $e');
-      // }
       return false;
     }
   }
@@ -226,10 +190,6 @@ class PostService {
 
       final url = '${AppConfig.apiBaseUrl}/content/spotlight/off';
 
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトOFF URL: $url, contentID: $postId');
-      // }
-
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -239,19 +199,12 @@ class PostService {
         body: jsonEncode({'contentID': int.tryParse(postId) ?? 0}),
       );
 
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトOFFレスポンス: ${response.statusCode}');
-      // }
-
       if (response.statusCode == 200) {
         await PlaylistService.removeContentFromSpotlightPlaylist(postId);
         return true;
       }
       return false;
     } catch (e) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 スポットライトOFF例外: $e');
-      // }
       return false;
     }
   }
@@ -269,26 +222,17 @@ class PostService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] JWTトークンが取得できません');
-        }
         return false;
       }
 
       final contentIdInt = int.tryParse(contentId);
       if (contentIdInt == null || contentIdInt == 0) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] contentIDが無効です: $contentId');
-        }
         return false;
       }
 
       final hasTitle = title != null;
       final hasTag = tag != null;
       if (!hasTitle && !hasTag) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] title または tag が必要です');
-        }
         return false;
       }
 
@@ -304,11 +248,6 @@ class PostService {
         requestBody['tag'] = tag;
       }
 
-      if (kDebugMode) {
-        debugPrint('📝 [投稿編集] URL: $primaryUrl');
-        debugPrint('📝 [投稿編集] body: ${jsonEncode(requestBody)}');
-      }
-
       final response = await http.patch(
         Uri.parse(primaryUrl),
         headers: {
@@ -317,11 +256,6 @@ class PostService {
         },
         body: jsonEncode(requestBody),
       );
-
-      if (kDebugMode) {
-        debugPrint('📝 [投稿編集] statusCode: ${response.statusCode}');
-        debugPrint('📝 [投稿編集] body: ${response.body}');
-      }
 
       if (response.statusCode == 404) {
         final retryPatch = await http.patch(
@@ -332,13 +266,6 @@ class PostService {
           },
           body: jsonEncode(requestBody),
         );
-
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] PATCH fallback URL: $fallbackUrl');
-          debugPrint(
-              '📝 [投稿編集] PATCH fallback statusCode: ${retryPatch.statusCode}');
-          debugPrint('📝 [投稿編集] PATCH fallback body: ${retryPatch.body}');
-        }
 
         if (retryPatch.statusCode == 200) {
           final responseData = jsonDecode(retryPatch.body);
@@ -354,11 +281,6 @@ class PostService {
           body: jsonEncode(requestBody),
         );
 
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] PUT statusCode: ${fallback.statusCode}');
-          debugPrint('📝 [投稿編集] PUT body: ${fallback.body}');
-        }
-
         if (fallback.statusCode == 200) {
           final responseData = jsonDecode(fallback.body);
           return responseData['status'] == 'success';
@@ -373,13 +295,6 @@ class PostService {
           body: jsonEncode(requestBody),
         );
 
-        if (kDebugMode) {
-          debugPrint('📝 [投稿編集] PUT fallback URL: $fallbackUrl');
-          debugPrint(
-              '📝 [投稿編集] PUT fallback statusCode: ${fallbackPut.statusCode}');
-          debugPrint('📝 [投稿編集] PUT fallback body: ${fallbackPut.body}');
-        }
-
         if (fallbackPut.statusCode == 200) {
           final responseData = jsonDecode(fallbackPut.body);
           return responseData['status'] == 'success';
@@ -391,9 +306,6 @@ class PostService {
 
       return false;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 [投稿編集] 例外: $e');
-      }
       return false;
     }
   }
@@ -404,9 +316,6 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 [視聴履歴記録] JWTトークンが取得できません: contentID=$contentId');
-        // }
         return false;
       }
 
@@ -414,15 +323,8 @@ class PostService {
       final contentIdInt = int.tryParse(contentId) ?? 0;
 
       if (contentIdInt == 0) {
-        // if (kDebugMode) {
-        //   debugPrint('📝 [視聴履歴記録] 無効なcontentID: $contentId');
-        // }
         return false;
       }
-
-      // if (kDebugMode) {
-      //   debugPrint('📝 [視聴履歴記録] 記録開始: contentID=$contentId');
-      // }
 
       final response = await http
           .post(
@@ -436,9 +338,6 @@ class PostService {
           .timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          // if (kDebugMode) {
-          //   debugPrint('📝 [視聴履歴記録] タイムアウト: contentID=$contentId');
-          // }
           return http.Response('', 408);
         },
       );
@@ -450,31 +349,11 @@ class PostService {
           // 視聴履歴を記録したcontentIDをキャッシュに保存（最新の視聴履歴を確実に取得するため）
           _addRecentlyRecordedContentId(contentId);
 
-          // if (kDebugMode) {
-          //   debugPrint('📝 [視聴履歴記録] 記録成功: contentID=$contentId');
-          // }
-
           return true;
         }
-        // else {
-        //   if (kDebugMode) {
-        //     debugPrint(
-        //         '📝 [視聴履歴記録] APIレスポンスエラー: contentID=$contentId, status=${responseData['status']}');
-        //   }
-        // }
       }
-      // else {
-      //   if (kDebugMode) {
-      //     debugPrint(
-      //         '📝 [視聴履歴記録] HTTPエラー: contentID=$contentId, statusCode=${response.statusCode}');
-      //     debugPrint('📝 [視聴履歴記録] レスポンス: ${response.body}');
-      //   }
-      // }
     } catch (e) {
-      // if (kDebugMode) {
-      //   debugPrint('📝 [視聴履歴記録] 例外: contentID=$contentId, error=$e');
-      //   debugPrint('📝 [視聴履歴記録] スタックトレース: $e');
-      // }
+      // ignore
     }
 
     return false;
@@ -506,9 +385,6 @@ class PostService {
       // バックエンド側でランダム5件を返しているため、ここではそのうち先頭1件を利用
       return posts.first;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 [ランダム取得] 例外: error=$e');
-      }
       return null;
     }
   }
@@ -539,19 +415,8 @@ class PostService {
       for (final historyPost in recentHistory) {
         recentPlayHistoryIds.add(historyPost.id);
       }
-
-      // if (kDebugMode) {
-      //   debugPrint('🎲 [ランダム取得複数] 直近視聴50件を除外: ${recentPlayHistoryIds.length}件');
-      // }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [ランダム取得複数] 視聴履歴取得エラー（除外なしで続行）: $e');
-      }
-    }
-
-    if (kDebugMode) {
-      debugPrint(
-          '🎲 [ランダム取得複数] 取得開始: limit=$limit, 除外ID数=${recentPlayHistoryIds.length}');
+      // ignore
     }
 
     int attemptCount = 0;
@@ -559,11 +424,6 @@ class PostService {
 
     while (posts.length < limit && attemptCount < maxAttempts) {
       attemptCount++;
-
-      if (kDebugMode) {
-        debugPrint(
-            '🎲 [ランダム取得複数] 試行$attemptCount: 現在の取得数=${posts.length}/$limit');
-      }
 
       final post = await fetchRandomPost();
 
@@ -573,31 +433,11 @@ class PostService {
         // 重複しておらず、直近視聴5件にも含まれていない場合のみ追加
         posts.add(post);
         fetchedIds.add(post.id);
-
-        if (kDebugMode) {
-          debugPrint(
-              '🎲 [ランダム取得複数] 取得成功: contentID=${post.id}, タイトル=${post.title}');
-        }
-      } else if (post != null) {
-        if (kDebugMode) {
-          if (fetchedIds.contains(post.id)) {
-            debugPrint('🎲 [ランダム取得複数] 重複スキップ: contentID=${post.id}');
-          } else if (recentPlayHistoryIds.contains(post.id)) {
-            debugPrint('🎲 [ランダム取得複数] 直近視聴50件のため除外: contentID=${post.id}');
-          }
-        }
       }
 
       // 少し待機してから次のリクエストを送信（サーバー負荷軽減）
       if (posts.length < limit && attemptCount < maxAttempts) {
         await Future.delayed(const Duration(milliseconds: 100));
-      }
-    }
-
-    if (kDebugMode) {
-      debugPrint('🎲 [ランダム取得複数] 取得完了: ${posts.length}件（試行回数: $attemptCount）');
-      if (posts.length < limit) {
-        debugPrint('⚠️ [ランダム取得複数] 要求件数に達しませんでした（除外IDの影響の可能性）');
       }
     }
 
@@ -612,9 +452,6 @@ class PostService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [投稿削除] JWTトークンが取得できません');
-        }
         return false;
       }
 
@@ -624,10 +461,6 @@ class PostService {
       final contentIdInt = int.tryParse(contentId);
 
       if (contentIdInt == null || contentIdInt == 0) {
-        if (kDebugMode) {
-          debugPrint('❌ [投稿削除] contentIDの解析に失敗しました');
-          debugPrint('   - contentId (元の値): $contentId');
-        }
         return false;
       }
 
@@ -635,12 +468,6 @@ class PostService {
       final requestBody = {
         'contentID': contentIdInt,
       };
-
-      if (kDebugMode) {
-        debugPrint('📝 [投稿削除] ========== API呼び出し ==========');
-        debugPrint('📝 [投稿削除] URL: $url');
-        debugPrint('📝 [投稿削除] リクエストボディ: ${jsonEncode(requestBody)}');
-      }
 
       // タイムアウトを設定（30秒）
       final response = await http
@@ -655,74 +482,29 @@ class PostService {
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ [投稿削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
-          }
           throw TimeoutException('投稿削除のリクエストがタイムアウトしました');
         },
       );
-
-      if (kDebugMode) {
-        debugPrint('📝 [投稿削除] HTTPステータスコード: ${response.statusCode}');
-        debugPrint('📝 [投稿削除] レスポンスボディ: ${response.body}');
-      }
 
       if (response.statusCode == 200) {
         try {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 [投稿削除] レスポンス（パース後）: ${responseData.toString()}');
-          }
-
           if (responseData['status'] == 'success') {
-            if (kDebugMode) {
-              debugPrint('✅ [投稿削除] 成功: データベースから削除されました');
-            }
             return true;
           } else {
-            if (kDebugMode) {
-              debugPrint('❌ [投稿削除] APIレスポンスエラー');
-              debugPrint('   - status: ${responseData['status']}');
-              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
-            }
             return false;
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [投稿削除] レスポンスのパースエラー: $e');
-          }
           return false;
         }
       } else if (response.statusCode == 404) {
-        if (kDebugMode) {
-          debugPrint('❌ [投稿削除] エンドポイントが見つかりません (404)');
-          debugPrint('   - URL: $url');
-          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
-        }
         return false;
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ [投稿削除] HTTPエラー: ${response.statusCode}');
-          debugPrint('📝 [投稿削除] レスポンス: ${response.body}');
-        }
         return false;
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [投稿削除] 例外: $e');
-        debugPrint('📝 [投稿削除] スタックトレース: $stackTrace');
-
-        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
-        if (e.toString().contains('ClientException') ||
-            e.toString().contains('Failed to fetch')) {
-          debugPrint('⚠️ [投稿削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
-          debugPrint(
-              '   - バックエンドに /api/delete/content エンドポイントが実装されているか確認してください');
-          debugPrint('   - CORS設定が正しく行われているか確認してください');
-          debugPrint('   - ネットワーク接続を確認してください');
-        }
-      }
+      // ignore
     }
 
     return false;
@@ -751,22 +533,10 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴] JWTトークンが取得できません');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/users/getplayhistory';
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] ========== 視聴履歴取得開始 ==========');
-        debugPrint('📝 [視聴履歴] API呼び出し: $url');
-        debugPrint(
-            '📝 [視聴履歴] JWTトークン: ${jwtToken.substring(0, 20)}... (先頭20文字)');
-        debugPrint('📝 [視聴履歴] バックエンドは WHERE p.userID = %s でフィルタリング');
-        debugPrint('📝 [視聴履歴] バックエンドは ORDER BY p.playID DESC で降順ソート');
-      }
 
       // ステップ1: /api/users/getplayhistory から視聴履歴データを取得
       final response = await http.post(
@@ -779,92 +549,20 @@ class PostService {
       );
 
       if (response.statusCode != 200) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴] APIエラー: ${response.statusCode}');
-          debugPrint('📝 [視聴履歴] レスポンス: ${response.body}');
-        }
         return [];
       }
 
       final responseData = jsonDecode(response.body);
 
       if (responseData['status'] != 'success') {
-        if (kDebugMode) {
-          debugPrint('❌ [視聴履歴] APIレスポンスエラー: status=${responseData['status']}');
-          debugPrint('❌ [視聴履歴] レスポンスデータ: ${responseData.toString()}');
-        }
         return [];
       }
 
       if (responseData['data'] == null) {
-        if (kDebugMode) {
-          debugPrint('⚠️ [視聴履歴] APIレスポンスのdataがnullです');
-          debugPrint('⚠️ [視聴履歴] レスポンスデータ: ${responseData.toString()}');
-        }
         return [];
       }
 
       final List<dynamic> historyJson = responseData['data'] as List;
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] ========== バックエンドレスポンス ==========');
-        debugPrint('📝 [視聴履歴] 取得件数: ${historyJson.length}件');
-        debugPrint('📝 [視聴履歴] バックエンドは ORDER BY p.playID DESC でソート済み');
-        debugPrint('📝 [視聴履歴] → playIDが大きい（新しい）ものが最初に来る');
-        if (historyJson.isNotEmpty) {
-          if (historyJson[0] is Map) {
-            debugPrint(
-                '📝 [視聴履歴] 最初の項目のキー: ${(historyJson[0] as Map).keys.toList()}');
-            debugPrint('📝 [視聴履歴] 最初の項目（最新の視聴履歴）: ${historyJson[0]}');
-          }
-          debugPrint(
-              '📝 [視聴履歴] 全項目のcontentID（順序）: ${historyJson.map((item) => item is Map ? (item['contentID'] ?? item['contentid'] ?? item['contentId'] ?? 'N/A').toString() : 'N/A').join(", ")}');
-          debugPrint('📝 [視聴履歴] → 最初に来るcontentIDが最新の視聴履歴');
-
-          // contentIDの分布を確認
-          final contentIdCounts = <String, int>{};
-          for (final item in historyJson) {
-            if (item is Map) {
-              final contentId = (item['contentID'] ??
-                      item['contentid'] ??
-                      item['contentId'] ??
-                      'N/A')
-                  .toString();
-              contentIdCounts[contentId] =
-                  (contentIdCounts[contentId] ?? 0) + 1;
-            }
-          }
-          debugPrint('📝 [視聴履歴] contentIDの分布（視聴回数）:');
-          contentIdCounts.forEach((contentId, count) {
-            debugPrint('   contentID=$contentId: $count回視聴');
-          });
-          final uniqueContentIds = contentIdCounts.keys.toSet();
-          debugPrint('📝 [視聴履歴] ユニークなcontentID数: ${uniqueContentIds.length}件');
-          debugPrint('📝 [視聴履歴] 注意: 同じcontentIDが複数回視聴されている場合、重複排除されます');
-          debugPrint(
-              '📝 [視聴履歴] 注意: バックエンドのクエリは JOIN content c ON p.contentID = c.contentID でJOINしているため、');
-          debugPrint('📝 [視聴履歴]      contentが存在しない視聴履歴は返されません');
-
-          // 最初の5件の詳細を表示
-          debugPrint('📝 [視聴履歴] 最初の5件の詳細:');
-          for (int i = 0; i < historyJson.length && i < 5; i++) {
-            final item = historyJson[i];
-            if (item is Map) {
-              debugPrint(
-                  '   [$i] contentID=${item['contentID']}, title=${item['title']}, posttimestamp=${item['posttimestamp']}');
-            }
-          }
-        } else {
-          debugPrint('⚠️ [視聴履歴] バックエンドからデータが返されていません');
-          debugPrint('⚠️ [視聴履歴] 考えられる原因:');
-          debugPrint('   1. playhistoryテーブルに現在のユーザーのデータが存在しない');
-          debugPrint('   2. バックエンドのクエリエラー（WHERE p.userID = %s の条件が一致しない）');
-          debugPrint('   3. 認証トークンの問題（JWTトークンに含まれるfirebase_uidが正しくない）');
-          debugPrint(
-              '   4. JOIN content c ON p.contentID = c.contentID で一致するcontentが存在しない');
-        }
-        debugPrint('📝 [視聴履歴] ===========================================');
-      }
 
       // ステップ1.5: 最近記録されたcontentIDを確認し、バックエンドから返されるデータに含まれていない場合は直接取得
       final Set<String> backendContentIds = {};
@@ -914,18 +612,9 @@ class PostService {
       final List<String> orderedContentIds = [];
       final Map<String, Map<String, dynamic>> contentIdToHistoryData = {};
 
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] ========== contentID抽出開始 ==========');
-        debugPrint('📝 [視聴履歴] バックエンドは既に playID DESC でソート済み');
-        debugPrint('📝 [視聴履歴] 最初に見つかったcontentIDが最新の視聴履歴');
-      }
-
       for (int index = 0; index < historyJson.length; index++) {
         final item = historyJson[index];
         if (item is! Map<String, dynamic>) {
-          if (kDebugMode) {
-            debugPrint('⚠️ [視聴履歴] 無効なアイテム形式[$index]: ${item.runtimeType}');
-          }
           continue;
         }
 
@@ -936,9 +625,6 @@ class PostService {
             '';
 
         if (contentId.isEmpty) {
-          if (kDebugMode) {
-            debugPrint('⚠️ [視聴履歴] contentIDが空[$index]: $item');
-          }
           continue;
         }
 
@@ -949,45 +635,19 @@ class PostService {
           orderedContentIds.add(contentId);
           // バックエンドから返されるデータの情報を保持（title, posttimestamp等）
           contentIdToHistoryData[contentId] = Map<String, dynamic>.from(item);
-          if (kDebugMode) {
-            debugPrint('✅ [視聴履歴] contentID追加[$index]: $contentId (最新の視聴履歴)');
-            debugPrint(
-                '   📝 保持したデータ: title=${item['title']}, posttimestamp=${item['posttimestamp']}');
-          }
-        } else {
-          if (kDebugMode) {
-            final firstIndex = contentIdToFirstIndex[contentId]!;
-            debugPrint(
-                '⏭️ [視聴履歴] contentID重複スキップ[$index]: $contentId (既に追加済み、最初の出現: $firstIndex)');
-          }
         }
       }
 
       // 順序を保持したまま重複排除されたリスト
       final uniqueContentIds = orderedContentIds;
 
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] 重複排除後: ${uniqueContentIds.length}件');
-        debugPrint(
-            '📝 [視聴履歴] 抽出したcontentID（順序保持）: ${uniqueContentIds.join(", ")}');
-        debugPrint('📝 [視聴履歴] ===========================================');
-      }
-
       // ステップ3: コスト削減のため30件までに制限（50件→30件）
       final limitedContentIds = uniqueContentIds.take(30).toList();
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] 制限後: ${limitedContentIds.length}件');
-      }
 
       // ステップ4: バックエンドから返されたデータでPostオブジェクトを作成
       final Map<String, Post> contentMap = {};
 
       if (limitedContentIds.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴] バックエンドから返されたデータでPostオブジェクトを作成');
-        }
-
         for (final contentId in limitedContentIds) {
           try {
             final historyData = contentIdToHistoryData[contentId];
@@ -1004,37 +664,16 @@ class PostService {
 
               // Postオブジェクトに変換
               try {
-                if (kDebugMode) {
-                  debugPrint('📝 [視聴履歴] Post変換開始: contentID=$contentId');
-                  debugPrint(
-                      '📝 [視聴履歴] mergedDataのキー: ${mergedData.keys.toList()}');
-                }
                 final post =
                     Post.fromJson(mergedData, backendUrl: AppConfig.backendUrl);
                 contentMap[contentId] = post;
-                if (kDebugMode) {
-                  debugPrint(
-                      '✅ [視聴履歴] Post変換成功: contentID=$contentId, title=${post.title}, username=${post.username}');
-                }
               } catch (e, stackTrace) {
-                if (kDebugMode) {
-                  debugPrint(
-                      '❌ [視聴履歴] Post変換エラー: contentID=$contentId, error=$e');
-                  debugPrint('❌ [視聴履歴] スタックトレース: $stackTrace');
-                  debugPrint('❌ [視聴履歴] mergedData: $mergedData');
-                }
+                // ignore
               }
             }
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('⚠️ [視聴履歴] 処理エラー: contentID=$contentId, error=$e');
-            }
+            // ignore
           }
-        }
-
-        if (kDebugMode) {
-          debugPrint(
-              '📝 [視聴履歴] コンテンツ情報取得完了: ${contentMap.length}件 / ${limitedContentIds.length}件');
         }
       }
 
@@ -1045,45 +684,7 @@ class PostService {
 
         if (post != null) {
           posts.add(post);
-          if (kDebugMode) {
-            debugPrint(
-                '📝 [視聴履歴] 追加: contentID=$contentId, タイトル=${post.title}');
-          }
-        } else {
-          if (kDebugMode) {
-            debugPrint('📝 [視聴履歴] コンテンツ情報が見つかりません: contentID=$contentId');
-          }
         }
-      }
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] ========== 最終結果 ==========');
-        debugPrint('📝 [視聴履歴] バックエンドから取得: ${historyJson.length}件');
-        debugPrint('📝 [視聴履歴] 重複排除後: ${uniqueContentIds.length}件');
-        debugPrint('📝 [視聴履歴] 制限後（50件まで）: ${limitedContentIds.length}件');
-        debugPrint('📝 [視聴履歴] コンテンツ詳細取得成功: ${contentMap.length}件');
-        debugPrint('📝 [視聴履歴] 最終的に返す件数: ${posts.length}件');
-        if (posts.isNotEmpty) {
-          debugPrint(
-              '📝 [視聴履歴] 最初の項目（最新の視聴履歴）: ID=${posts[0].id}, タイトル=${posts[0].title}, 投稿者=${posts[0].username}');
-          if (posts.length > 1) {
-            debugPrint(
-                '📝 [視聴履歴] 最後の項目: ID=${posts[posts.length - 1].id}, タイトル=${posts[posts.length - 1].title}');
-          }
-          debugPrint(
-              '📝 [視聴履歴] 全項目のID（表示順序）: ${posts.map((p) => p.id).join(", ")}');
-          debugPrint(
-              '📝 [視聴履歴] 全項目のタイトル: ${posts.map((p) => p.title).join(", ")}');
-        } else {
-          debugPrint('⚠️ [視聴履歴] 取得したデータが空です');
-          debugPrint(
-              '📝 [視聴履歴] バックエンドから取得したcontentID: ${limitedContentIds.join(", ")}');
-          debugPrint('⚠️ [視聴履歴] 考えられる原因:');
-          debugPrint('   1. コンテンツ詳細の取得に失敗した');
-          debugPrint('   2. Post.fromJson()の変換に失敗した');
-          debugPrint('   3. バックエンドから返されたcontentIDが無効');
-        }
-        debugPrint('📝 [視聴履歴] ================================');
       }
 
       // 最近記録されたcontentIDで取得できた投稿を先頭に追加（最新の視聴履歴として）
@@ -1098,10 +699,6 @@ class PostService {
 
       return posts;
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴] 例外: $e');
-        debugPrint('📝 [視聴履歴] スタックトレース: $stackTrace');
-      }
       return [];
     }
   }
@@ -1112,17 +709,10 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/users/getusercontents';
-
-      if (kDebugMode) {
-        debugPrint('📝 自分の投稿取得URL: $url');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -1136,17 +726,9 @@ class PostService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📝 自分の投稿取得レスポンス: ${responseData.toString()}');
-        }
-
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final List<dynamic> postsJson = responseData['data'];
-
-          if (kDebugMode) {
-            debugPrint('📝 自分の投稿数: ${postsJson.length}');
-          }
 
           // バックエンドから返されたデータでPostオブジェクトを作成
           final List<Post> posts = [];
@@ -1164,25 +746,15 @@ class PostService {
                   Post.fromJson(postData, backendUrl: AppConfig.backendUrl);
               posts.add(post);
             } catch (e) {
-              if (kDebugMode) {
-                debugPrint(
-                    '⚠️ [自分の投稿] Post変換エラー: contentID=$contentId, error=$e');
-              }
+              // ignore
             }
           }
 
           return posts;
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 自分の投稿取得エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
-        }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 自分の投稿取得例外: $e');
-      }
+      // ignore
     }
 
     return [];
@@ -1196,9 +768,6 @@ class PostService {
     try {
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 [視聴履歴削除] JWTトークンが取得できません');
-        }
         return false;
       }
 
@@ -1207,22 +776,12 @@ class PostService {
       final url = '${AppConfig.apiBaseUrl}/delete/playhistory';
 
       if (playId == null || playId == 0) {
-        if (kDebugMode) {
-          debugPrint('❌ [視聴履歴削除] playIDが取得できません');
-        }
         return false;
       }
 
       final requestBody = {
         'playID': playId,
       };
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴削除] ========== API呼び出し ==========');
-        debugPrint('📝 [視聴履歴削除] URL: $url');
-        debugPrint('📝 [視聴履歴削除] リクエストボディ: ${jsonEncode(requestBody)}');
-        debugPrint('📝 [視聴履歴削除] playID: $playId');
-      }
 
       // タイムアウトを設定（30秒）
       final response = await http
@@ -1237,76 +796,29 @@ class PostService {
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ [視聴履歴削除] タイムアウト: 30秒以内にレスポンスがありませんでした');
-          }
           throw TimeoutException('視聴履歴削除のリクエストがタイムアウトしました');
         },
       );
-
-      if (kDebugMode) {
-        debugPrint('📝 [視聴履歴削除] HTTPステータスコード: ${response.statusCode}');
-        debugPrint('📝 [視聴履歴削除] レスポンスボディ: ${response.body}');
-      }
 
       if (response.statusCode == 200) {
         try {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 [視聴履歴削除] レスポンス（パース後）: ${responseData.toString()}');
-          }
-
           if (responseData['status'] == 'success') {
-            if (kDebugMode) {
-              debugPrint('✅ [視聴履歴削除] 成功: データベースから削除されました');
-            }
             return true;
           } else {
-            if (kDebugMode) {
-              debugPrint('❌ [視聴履歴削除] APIレスポンスエラー');
-              debugPrint('   - status: ${responseData['status']}');
-              debugPrint('   - message: ${responseData['message'] ?? 'なし'}');
-            }
             return false;
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [視聴履歴削除] レスポンスのパースエラー: $e');
-          }
           return false;
         }
       } else if (response.statusCode == 404) {
-        if (kDebugMode) {
-          debugPrint('❌ [視聴履歴削除] エンドポイントが見つかりません (404)');
-          debugPrint('   - URL: $url');
-          debugPrint('   - このエンドポイントはバックエンドに実装されていない可能性があります');
-        }
         return false;
       } else {
-        if (kDebugMode) {
-          debugPrint('❌ [視聴履歴削除] HTTPエラー: ${response.statusCode}');
-          debugPrint('📝 [視聴履歴削除] レスポンス: ${response.body}');
-        }
         return false;
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [視聴履歴削除] 例外: $e');
-        debugPrint('📝 [視聴履歴削除] スタックトレース: $stackTrace');
-
-        // ClientExceptionの場合は、エンドポイントが存在しないかCORSエラーの可能性
-        if (e.toString().contains('ClientException') ||
-            e.toString().contains('Failed to fetch')) {
-          debugPrint('⚠️ [視聴履歴削除] エンドポイントが存在しないか、CORSエラーの可能性があります');
-          debugPrint(
-              '   - バックエンドに /api/delete/playhistory エンドポイントが実装されているか確認してください');
-          debugPrint('   - CORS設定が正しく行われているか確認してください');
-          debugPrint('   - ネットワーク接続を確認してください');
-          debugPrint(
-              '   - 注意: バックエンドはplayIDを期待していますが、現在のAPIレスポンスにplayIDが含まれていません');
-        }
-      }
+      // ignore
     }
 
     return false;
@@ -1329,21 +841,11 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
-        }
         throw Exception('JWTトークンが取得できません');
-      }
-      if (kDebugMode) {
-        debugPrint('📝 JWTトークン: $jwtToken');
       }
 
       final primaryUrl = '${AppConfig.postApiBaseUrl}/content/add';
       final fallbackUrl = '${AppConfig.backendUrl}/content/add';
-
-      if (kDebugMode) {
-        debugPrint('📝 投稿作成URL: $primaryUrl');
-      }
 
       // リクエストボディ作成
       Map<String, dynamic> body = {
@@ -1367,22 +869,11 @@ class PostService {
         body['orientation'] = orientation.trim();
       }
 
-      if (kDebugMode) {
-        debugPrint('📝 リクエストボディのキー: ${body.keys.toList()}');
-        debugPrint(
-            '📝 linkの状態: ${link == null ? "null" : (link.isEmpty ? "空文字列" : "値あり: $link")}');
-        debugPrint(
-            '📝 タグの状態: ${tag == null ? "null" : (tag.isEmpty ? "空文字列" : "値あり: $tag")}');
-      }
-
       if (type == 'text') {
         // テキスト投稿の場合
         if (text != null && text.isNotEmpty) {
           body['text'] = text;
         } else {
-          if (kDebugMode) {
-            debugPrint('📝 テキスト投稿にはtextが必要です');
-          }
           throw Exception('テキスト投稿にはtextが必要です');
         }
       } else {
@@ -1391,46 +882,12 @@ class PostService {
           body['file'] = fileBase64;
           body['thumbnail'] = thumbnailBase64;
         } else {
-          if (kDebugMode) {
-            debugPrint('📝 非テキスト投稿にはfileとthumbnailが必要です');
-          }
           throw Exception('非テキスト投稿にはfileとthumbnailが必要です');
-        }
-      }
-
-      // リクエストボディをJSONエンコード
-      // デバッグ: リクエストボディの内容を確認（tagとlinkが含まれていないことを確認）
-      if (kDebugMode) {
-        debugPrint('📝 リクエストボディ（JSONエンコード前）:');
-        debugPrint('   - すべてのキー: ${body.keys.toList()}');
-        debugPrint('   - linkフィールドの存在: ${body.containsKey('link')}');
-        if (body.containsKey('link')) {
-          debugPrint('   - linkの値: ${body['link']}');
-        }
-        debugPrint('   - tagフィールドの存在: ${body.containsKey('tag')}');
-        if (body.containsKey('tag')) {
-          debugPrint('   - tagの値: ${body['tag']}');
         }
       }
 
       final jsonBody = jsonEncode(body);
       final requestBodySize = jsonBody.length;
-
-      if (kDebugMode) {
-        debugPrint('📝 リクエストボディサイズ:');
-        debugPrint(
-            '   - JSON文字列サイズ: ${(requestBodySize / 1024 / 1024).toStringAsFixed(2)} MB');
-        if (fileBase64 != null) {
-          debugPrint(
-              '   - file(base64)サイズ: ${(fileBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
-        if (thumbnailBase64 != null) {
-          debugPrint(
-              '   - thumbnail(base64)サイズ: ${(thumbnailBase64.length / 1024 / 1024).toStringAsFixed(2)} MB');
-        }
-        debugPrint(
-            '   - その他（type, title, link等）: ${((requestBodySize - (fileBase64?.length ?? 0) - (thumbnailBase64?.length ?? 0)) / 1024).toStringAsFixed(2)} KB');
-      }
 
       // 大きなファイルを送信するためのHTTPクライアント設定
       final client = http.Client();
@@ -1478,10 +935,6 @@ class PostService {
         if (response.statusCode == 200) {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 投稿作成レスポンス: ${responseData.toString()}');
-          }
-
           if (responseData['status'] == 'success') {
             return responseData['data'];
           } else {
@@ -1507,23 +960,12 @@ class PostService {
             errorMessage = '投稿に失敗しました（HTTP ${response.statusCode}）';
           }
 
-          if (kDebugMode) {
-            debugPrint('📝 投稿作成エラー: ${response.statusCode}');
-            debugPrint('📝 エラーメッセージ: $errorMessage');
-            debugPrint(
-                '📝 リクエストボディサイズ: ${(requestBodySize / 1024 / 1024).toStringAsFixed(2)} MB');
-            debugPrint('📝 レスポンスボディ: ${response.body}');
-          }
-
           throw Exception(errorMessage);
         }
       } finally {
         client.close();
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 投稿作成例外: $e');
-      }
       // 既にExceptionの場合はそのまま再スロー、それ以外はExceptionにラップ
       if (e is Exception) {
         rethrow;
@@ -1538,18 +980,10 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('📝 JWTトークンが取得できません');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/users/getusercontents';
-
-      if (kDebugMode) {
-        debugPrint('📝 ユーザー投稿取得URL: $url');
-        debugPrint('📝 ユーザーID (firebase_uid): $userId');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -1565,22 +999,9 @@ class PostService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
-        if (kDebugMode) {
-          debugPrint('📝 ユーザー投稿取得レスポンス: ${responseData.toString()}');
-        }
-
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final List<dynamic> postsJson = responseData['data'];
-
-          if (kDebugMode) {
-            debugPrint('📝 ユーザー投稿数: ${postsJson.length}');
-            if (postsJson.isNotEmpty) {
-              final firstPost = postsJson.first;
-              debugPrint('📝 最初の投稿のuser_id: ${firstPost['user_id']}');
-              debugPrint('📝 リクエストしたuserId: $userId');
-            }
-          }
 
           final posts = postsJson.map((json) {
             // contentIDをidとして設定
@@ -1589,28 +1010,11 @@ class PostService {
             return Post.fromJson(json, backendUrl: AppConfig.backendUrl);
           }).toList();
 
-          // 取得した投稿が指定したユーザーのものか確認
-          if (kDebugMode && posts.isNotEmpty) {
-            final firstPostUserId = posts.first.userId;
-            if (firstPostUserId != userId) {
-              debugPrint('⚠️ 警告: 取得した投稿のユーザーIDが一致しません');
-              debugPrint('  期待されるuserId: $userId');
-              debugPrint('  実際のuserId: $firstPostUserId');
-            }
-          }
-
           return posts;
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('📝 ユーザー投稿取得エラー: ${response.statusCode}');
-          debugPrint('レスポンス: ${response.body}');
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('📝 ユーザー投稿取得例外: $e');
-      }
+      // ignore
     }
 
     return [];
@@ -1626,10 +1030,6 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents] JWTトークンが取得できません');
-          debugPrint('❌ [getcontents] 認証が必要です。ログインしてください。');
-        }
         return [];
       }
 
@@ -1641,12 +1041,6 @@ class PostService {
       final requestBody = <String, dynamic>{
         'excludeContentIDs': excludeContentIDs,
       };
-
-      if (kDebugMode) {
-        debugPrint('📝 [getcontents] API呼び出し開始: $url');
-        debugPrint('📝 [getcontents] JWTトークン: ${jwtToken.substring(0, 20)}...');
-        debugPrint('📝 [getcontents] リクエストボディ: $requestBody');
-      }
 
       // タイムアウトを設定（30秒）
       final response = await http
@@ -1661,10 +1055,6 @@ class PostService {
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents] タイムアウト: 30秒以内にレスポンスがありませんでした');
-            debugPrint('❌ [getcontents] URL: $url');
-          }
           throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
         },
       );
@@ -1673,25 +1063,12 @@ class PostService {
         try {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 [getcontents] レスポンス受信: statusCode=200');
-            debugPrint(
-                '📝 [getcontents] レスポンスステータス: ${responseData['status']}');
-          }
-
           if (responseData['status'] == 'success' &&
               responseData['data'] != null) {
             final List<dynamic> contentsJson = responseData['data'] as List;
 
-            if (kDebugMode) {
-              debugPrint('📝 [getcontents] 取得件数: ${contentsJson.length}件');
-            }
-
             // データが空のリストの場合
             if (contentsJson.isEmpty) {
-              if (kDebugMode) {
-                debugPrint('⚠️ [getcontents] レスポンスデータが空です');
-              }
               return [];
             }
 
@@ -1700,27 +1077,10 @@ class PostService {
             for (int i = 0; i < contentsJson.length; i++) {
               final contentJson = contentsJson[i] as Map<String, dynamic>;
 
-              if (kDebugMode) {
-                debugPrint(
-                    '📝 [getcontents] コンテンツ[$i]のキー: ${contentJson.keys.toList()}');
-                debugPrint('📝 [getcontents] コンテンツ[$i]の内容: $contentJson');
-              }
-
               // contentIDがレスポンスに含まれていない場合の警告
               if (!contentJson.containsKey('contentID') &&
                   !contentJson.containsKey('contentid') &&
                   !contentJson.containsKey('id')) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ [getcontents] ⚠️⚠️⚠️ バックエンドの不具合 ⚠️⚠️⚠️');
-                  debugPrint(
-                      '⚠️ [getcontents] contentID/contentid/idがレスポンスに含まれていません: インデックス $i');
-                  debugPrint(
-                      '⚠️ [getcontents] バックエンドのcontents.pyの/getcontentsエンドポイントで、');
-                  debugPrint(
-                      '⚠️ [getcontents] result.append()に"contentID": row[12]を追加する必要があります');
-                  debugPrint(
-                      '⚠️ [getcontents] 現在のレスポンスキー: ${contentJson.keys.toList()}');
-                }
                 // バックエンドの不具合のため、このコンテンツはスキップ
                 continue;
               }
@@ -1732,9 +1092,6 @@ class PostService {
                   '';
 
               if (contentId.isEmpty) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ [getcontents] contentIDが空です: インデックス $i');
-                }
                 continue;
               }
 
@@ -1744,87 +1101,18 @@ class PostService {
 
               // Post.fromJsonを使用してPostオブジェクトに変換
               try {
-                // データの整合性を確認（バックエンドから返されるデータにusernameやuser_idが含まれているか）
-                if (kDebugMode) {
-                  final hasUsername = contentJson.containsKey('username') &&
-                      contentJson['username'] != null &&
-                      (contentJson['username'] as String).isNotEmpty;
-                  final hasUserId = (contentJson.containsKey('user_id') &&
-                          contentJson['user_id'] != null &&
-                          (contentJson['user_id'] as String).isNotEmpty) ||
-                      (contentJson.containsKey('firebase_uid') &&
-                          contentJson['firebase_uid'] != null &&
-                          (contentJson['firebase_uid'] as String).isNotEmpty);
-
-                  if (!hasUsername) {
-                    debugPrint(
-                        '⚠️ [getcontents] データ整合性警告[$i]: usernameが含まれていません');
-                    debugPrint(
-                        '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
-                    debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
-                  }
-                  if (!hasUserId) {
-                    debugPrint(
-                        '⚠️ [getcontents] データ整合性警告[$i]: user_id/firebase_uidが含まれていません');
-                    debugPrint(
-                        '   - contentID: ${contentJson['contentID'] ?? contentJson['id']}');
-                    debugPrint('   - username: ${contentJson['username']}');
-                    debugPrint('   - 利用可能なキー: ${contentJson.keys.toList()}');
-                  }
-                }
-
                 final post = Post.fromJson(contentJson,
                     backendUrl: AppConfig.backendUrl);
-
-                // 変換後のデータの整合性を確認
-                if (kDebugMode) {
-                  if (post.id.isEmpty) {
-                    debugPrint('⚠️ [getcontents] Post変換後[$i]: IDが空です');
-                  }
-                  if (post.username.isEmpty) {
-                    debugPrint(
-                        '⚠️ [getcontents] Post変換後[$i]: usernameが空です (postId: ${post.id})');
-                  }
-                  if (post.userId.isEmpty) {
-                    debugPrint(
-                        '⚠️ [getcontents] Post変換後[$i]: userIdが空です (postId: ${post.id}, username: ${post.username})');
-                  }
-                  debugPrint(
-                      '✅ [getcontents] Post変換成功[$i]: ID=${post.id}, タイトル=${post.title}, username=${post.username}, userId=${post.userId}');
-                }
-
                 posts.add(post);
               } catch (e, stackTrace) {
-                if (kDebugMode) {
-                  debugPrint('⚠️ [getcontents] Post変換エラー: $e, インデックス $i');
-                  debugPrint('⚠️ [getcontents] スタックトレース: $stackTrace');
-                  debugPrint('⚠️ [getcontents] コンテンツJSON: $contentJson');
-                }
-              }
-            }
-
-            if (kDebugMode) {
-              debugPrint('📝 [getcontents] 変換完了: ${posts.length}件');
-              if (posts.isEmpty) {
-                debugPrint('⚠️ [getcontents] 変換後の投稿が0件です。データ変換エラーの可能性があります。');
+                // ignore
               }
             }
 
             return posts;
-          } else {
-            if (kDebugMode) {
-              debugPrint('❌ [getcontents] APIレスポンスエラー:');
-              debugPrint('   - status: ${responseData['status']}');
-              debugPrint(
-                  '   - message: ${responseData['message'] ?? responseData['error'] ?? 'なし'}');
-              debugPrint('   - data: ${responseData['data']}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents] レスポンスJSON解析エラー: $e');
-            debugPrint('❌ [getcontents] レスポンスボディ: ${response.body}');
-          }
+          // ignore
         }
       } else if (response.statusCode == 429) {
         // 429 Too Many Requests - レート制限エラー
@@ -1839,68 +1127,22 @@ class PostService {
           }
         }
 
-        if (kDebugMode) {
-          debugPrint('⚠️ [getcontents] レート制限エラー (429):');
-          debugPrint('   - メッセージ: リクエストが頻繁すぎます。しばらく待ってから再度お試しください。');
-          debugPrint('   - 待機時間: ${retryAfterSeconds}秒');
-        }
-
         // 429エラー時は例外をスローして、呼び出し元で再試行できるようにする
         throw TooManyRequestsException(
             'リクエストが頻繁すぎます。${retryAfterSeconds}秒待ってから再度お試しください。',
             retryAfterSeconds);
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents] HTTPエラー:');
-          debugPrint('   - ステータスコード: ${response.statusCode}');
-          debugPrint('   - レスポンス: ${response.body}');
-        }
-
-        // 401 Unauthorizedの場合は認証エラー
-        if (response.statusCode == 401) {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents] 認証エラー: JWTトークンが無効です');
-          }
-        }
-        // 500 Internal Server Errorの場合はサーバーエラー
-        else if (response.statusCode >= 500) {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents] サーバーエラー: バックエンドサーバーでエラーが発生しています');
-          }
-        }
       }
     } on TooManyRequestsException {
       // 429エラーは呼び出し元で再試行するため、そのまま再スロー
       rethrow;
     } on TimeoutException catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents] タイムアウトエラー: $e');
-        debugPrint('❌ [getcontents] ネットワーク接続がタイムアウトしました');
-      }
+      // ignore
     } on http.ClientException catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents] ネットワーク接続エラー: $e');
-        debugPrint('❌ [getcontents] インターネット接続を確認してください');
-        debugPrint(
-            '❌ [getcontents] URL: ${AppConfig.apiBaseUrl}/content/getcontents');
-        debugPrint('❌ [getcontents] 考えられる原因:');
-        debugPrint('   1. インターネット接続の問題');
-        debugPrint('   2. CORS設定の問題（Webブラウザの場合）');
-        debugPrint('   3. サーバーがダウンしている');
-        debugPrint('   4. ファイアウォールまたはプロキシの設定');
-      }
+      // ignore
     } on FormatException catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents] データ形式エラー: $e');
-        debugPrint('❌ [getcontents] サーバーからのレスポンス形式が正しくありません');
-        debugPrint('❌ [getcontents] エラーメッセージ: ${e.message}');
-      }
+      // ignore
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents] 予期しないエラー: $e');
-        debugPrint('❌ [getcontents] エラータイプ: ${e.runtimeType}');
-        debugPrint('❌ [getcontents] スタックトレース: $stackTrace');
-      }
+      // ignore
     }
 
     return [];
@@ -1913,20 +1155,10 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents/newest] JWTトークンが取得できません');
-          debugPrint('❌ [getcontents/newest] 認証が必要です。ログインしてください。');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/getcontents/newest';
-
-      if (kDebugMode) {
-        debugPrint('📝 [getcontents/newest] API呼び出し開始: $url');
-        debugPrint(
-            '📝 [getcontents/newest] JWTトークン: ${jwtToken.substring(0, 20)}...');
-      }
 
       final response = await http
           .post(
@@ -1940,10 +1172,6 @@ class PostService {
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents/newest] タイムアウト: 30秒以内にレスポンスがありませんでした');
-            debugPrint('❌ [getcontents/newest] URL: $url');
-          }
           throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
         },
       );
@@ -1952,25 +1180,11 @@ class PostService {
         try {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 [getcontents/newest] レスポンス受信: statusCode=200');
-            debugPrint(
-                '📝 [getcontents/newest] レスポンスステータス: ${responseData['status']}');
-          }
-
           if (responseData['status'] == 'success' &&
               responseData['data'] != null) {
             final List<dynamic> contentsJson = responseData['data'] as List;
 
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 [getcontents/newest] 取得件数: ${contentsJson.length}件');
-            }
-
             if (contentsJson.isEmpty) {
-              if (kDebugMode) {
-                debugPrint('⚠️ [getcontents/newest] レスポンスデータが空です');
-              }
               return [];
             }
 
@@ -1995,36 +1209,18 @@ class PostService {
                     backendUrl: AppConfig.backendUrl);
                 posts.add(post);
               } catch (e) {
-                if (kDebugMode) {
-                  debugPrint(
-                      '⚠️ [getcontents/newest] Post変換エラー: $e, インデックス $i');
-                }
+                // ignore
               }
-            }
-
-            if (kDebugMode) {
-              debugPrint('📝 [getcontents/newest] 変換完了: ${posts.length}件');
             }
 
             return posts;
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents/newest] レスポンスJSON解析エラー: $e');
-            debugPrint('❌ [getcontents/newest] レスポンスボディ: ${response.body}');
-          }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents/newest] HTTPエラー: ${response.statusCode}');
-          debugPrint('❌ [getcontents/newest] レスポンス: ${response.body}');
+          // ignore
         }
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents/newest] 予期しないエラー: $e');
-        debugPrint('❌ [getcontents/newest] スタックトレース: $stackTrace');
-      }
+      // ignore
     }
 
     return [];
@@ -2037,20 +1233,10 @@ class PostService {
       final jwtToken = await JwtService.getJwtToken();
 
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents/oldest] JWTトークンが取得できません');
-          debugPrint('❌ [getcontents/oldest] 認証が必要です。ログインしてください。');
-        }
         return [];
       }
 
       final url = '${AppConfig.apiBaseUrl}/content/getcontents/oldest';
-
-      if (kDebugMode) {
-        debugPrint('📝 [getcontents/oldest] API呼び出し開始: $url');
-        debugPrint(
-            '📝 [getcontents/oldest] JWTトークン: ${jwtToken.substring(0, 20)}...');
-      }
 
       final response = await http
           .post(
@@ -2064,10 +1250,6 @@ class PostService {
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents/oldest] タイムアウト: 30秒以内にレスポンスがありませんでした');
-            debugPrint('❌ [getcontents/oldest] URL: $url');
-          }
           throw TimeoutException('コンテンツ取得のリクエストがタイムアウトしました');
         },
       );
@@ -2076,25 +1258,11 @@ class PostService {
         try {
           final responseData = jsonDecode(response.body);
 
-          if (kDebugMode) {
-            debugPrint('📝 [getcontents/oldest] レスポンス受信: statusCode=200');
-            debugPrint(
-                '📝 [getcontents/oldest] レスポンスステータス: ${responseData['status']}');
-          }
-
           if (responseData['status'] == 'success' &&
               responseData['data'] != null) {
             final List<dynamic> contentsJson = responseData['data'] as List;
 
-            if (kDebugMode) {
-              debugPrint(
-                  '📝 [getcontents/oldest] 取得件数: ${contentsJson.length}件');
-            }
-
             if (contentsJson.isEmpty) {
-              if (kDebugMode) {
-                debugPrint('⚠️ [getcontents/oldest] レスポンスデータが空です');
-              }
               return [];
             }
 
@@ -2119,36 +1287,18 @@ class PostService {
                     backendUrl: AppConfig.backendUrl);
                 posts.add(post);
               } catch (e) {
-                if (kDebugMode) {
-                  debugPrint(
-                      '⚠️ [getcontents/oldest] Post変換エラー: $e, インデックス $i');
-                }
+                // ignore
               }
-            }
-
-            if (kDebugMode) {
-              debugPrint('📝 [getcontents/oldest] 変換完了: ${posts.length}件');
             }
 
             return posts;
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('❌ [getcontents/oldest] レスポンスJSON解析エラー: $e');
-            debugPrint('❌ [getcontents/oldest] レスポンスボディ: ${response.body}');
-          }
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontents/oldest] HTTPエラー: ${response.statusCode}');
-          debugPrint('❌ [getcontents/oldest] レスポンス: ${response.body}');
+          // ignore
         }
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [getcontents/oldest] 予期しないエラー: $e');
-        debugPrint('❌ [getcontents/oldest] スタックトレース: $stackTrace');
-      }
+      // ignore
     }
 
     return [];
@@ -2162,17 +1312,11 @@ class PostService {
       final contentIdInt = int.tryParse(contentId) ?? 0;
 
       if (contentIdInt == 0) {
-        if (kDebugMode) {
-          debugPrint('📝 [getcontent] 無効なcontentID: $contentId');
-        }
         return null;
       }
 
       final jwtToken = await JwtService.getJwtToken();
       if (jwtToken == null) {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontent] JWTトークンが取得できません');
-        }
         return null;
       }
 
@@ -2180,11 +1324,6 @@ class PostService {
       final requestBody = {
         'contentID': contentIdInt,
       };
-
-      if (kDebugMode) {
-        debugPrint('📝 [getcontent] API呼び出し開始: $url');
-        debugPrint('📝 [getcontent] リクエストボディ: $requestBody');
-      }
 
       final response = await http.post(
         Uri.parse(url),
@@ -2197,9 +1336,6 @@ class PostService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        if (kDebugMode) {
-          debugPrint('📝 [getcontent] レスポンス: $responseData');
-        }
 
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
@@ -2210,15 +1346,6 @@ class PostService {
             return Post.fromJson(data, backendUrl: AppConfig.backendUrl);
           }
         }
-      } else {
-        if (kDebugMode) {
-          debugPrint('❌ [getcontent] HTTPエラー: ${response.statusCode}');
-          debugPrint('❌ [getcontent] レスポンス: ${response.body}');
-        }
-      }
-
-      if (kDebugMode) {
-        debugPrint('⚠️ [getcontent] /getcontentで取得できなかったため、ランダム取得にフォールバックします');
       }
 
       final posts = await fetchContents(excludeContentIDs: []);
@@ -2228,15 +1355,9 @@ class PostService {
         }
       }
 
-      if (kDebugMode) {
-        debugPrint('⚠️ [getcontent] 該当IDが見つかりません: contentID=$contentId');
-      }
       return null;
     } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('📝 [getcontent] 例外: $e');
-        debugPrint('📝 [getcontent] スタックトレース: $stackTrace');
-      }
+      // ignore
     }
 
     return null;

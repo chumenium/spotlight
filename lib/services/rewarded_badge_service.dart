@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import 'jwt_service.dart';
@@ -70,9 +69,6 @@ class RewardedBadgeService {
 
       return _extractCount(data) ?? 0;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ fetchRewardAdCount error: $e');
-      }
       return null;
     }
   }
@@ -122,9 +118,6 @@ class RewardedBadgeService {
       }
 
       if (response.statusCode == 429) {
-        if (kDebugMode) {
-          debugPrint('⚠️ incrementrewardadcount rate limited: ${response.body}');
-        }
         return RewardAdIncrementResult(
           success: false,
           rateLimited: true,
@@ -135,10 +128,6 @@ class RewardedBadgeService {
 
       final status = data['status']?.toString().toLowerCase();
       if (response.statusCode != 200 || (status != 'success' && status != 'ok')) {
-        if (kDebugMode) {
-          debugPrint(
-              '❌ incrementrewardadcount failed: status=${response.statusCode}, body=${response.body}');
-        }
         return RewardAdIncrementResult(
           success: false,
           message: data['message']?.toString() ??
@@ -158,9 +147,6 @@ class RewardedBadgeService {
       }
       return RewardAdIncrementResult(success: true, count: count);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ incrementRewardAdCount error: $e');
-      }
       return const RewardAdIncrementResult(
         success: false,
         message: '通信エラーが発生しました',

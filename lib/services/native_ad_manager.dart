@@ -1,5 +1,4 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import '../config/ad_config.dart';
 import 'ad_service.dart';
 
@@ -38,33 +37,16 @@ class NativeAdManager {
       ),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
-          if (kDebugMode) {
-            debugPrint('✅ ネイティブ広告の読み込み完了: ${ad.adUnitId}');
-          }
           final nativeAd = ad as NativeAd;
           onAdLoaded(nativeAd);
         },
         onAdFailedToLoad: (ad, error) {
-          if (kDebugMode) {
-            debugPrint('❌ ネイティブ広告の読み込み失敗: ${ad.adUnitId}');
-            debugPrint('   エラーコード: ${error.code}');
-            debugPrint('   エラーメッセージ: ${error.message}');
-            debugPrint('   エラードメイン: ${error.domain}');
-          }
           ad.dispose();
           final nativeAd = ad as NativeAd;
           onAdFailedToLoad(nativeAd, error);
         },
-        onAdClicked: (_) {
-          if (kDebugMode) {
-            debugPrint('📢 ネイティブ広告がクリックされました');
-          }
-        },
-        onAdImpression: (_) {
-          if (kDebugMode) {
-            debugPrint('📢 ネイティブ広告が表示されました');
-          }
-        },
+        onAdClicked: (_) {},
+        onAdImpression: (_) {},
       ),
     );
 

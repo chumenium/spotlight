@@ -42,6 +42,10 @@ class AppConfig {
   // デバッグログの表示制御
   static bool get showDebugLog => isDevelopment;
 
+  // 詳細ログの表示制御（false=エラーのみ, true=全ログ）
+  // デバッグ中にターミナルが見やすくなる
+  static const bool verboseLog = false;
+
   // TestFlightなど審査前の環境でテスト広告を強制する
   // 本番審査後はfalseに変更すること
   static const bool forceTestAds = false;

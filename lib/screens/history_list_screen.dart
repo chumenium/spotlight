@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:provider/provider.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
@@ -51,81 +50,21 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
 
   /// 視聴履歴を取得
   Future<void> _fetchHistory() async {
-    if (kDebugMode) {
-      debugPrint('📝 [画面] ========== 視聴履歴取得開始 ==========');
-    }
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      if (kDebugMode) {
-        debugPrint('📝 [画面] PostService.getPlayHistory()を呼び出します');
-      }
-
       final posts = await PostService.getPlayHistory();
-
-      if (kDebugMode) {
-        debugPrint('📝 [画面] ========== PostServiceから取得完了 ==========');
-        debugPrint('📝 [画面] 取得件数: ${posts.length}件');
-        if (posts.isNotEmpty) {
-          debugPrint('📝 [画面] 視聴履歴の最初の項目:');
-          debugPrint('   - ID: ${posts[0].id}');
-          debugPrint('   - タイトル: ${posts[0].title}');
-          debugPrint('   - 投稿者: ${posts[0].username}');
-          debugPrint('   - タイプ: ${posts[0].postType}');
-          debugPrint('   - 作成日時: ${posts[0].createdAt}');
-          debugPrint('   - playNum: ${posts[0].playNum}');
-          debugPrint('   - thumbnailUrl: ${posts[0].thumbnailUrl}');
-          debugPrint('   - userIconUrl: ${posts[0].userIconUrl}');
-
-          // すべての項目のタイトルと投稿者を確認
-          debugPrint('📝 [画面] 視聴履歴の全項目:');
-          for (int i = 0; i < posts.length; i++) {
-            final post = posts[i];
-            debugPrint(
-                '   [$i] ID=${post.id}, タイトル="${post.title}", 投稿者="${post.username}", playNum=${post.playNum}');
-          }
-        } else {
-          debugPrint('⚠️ [画面] 視聴履歴が空です');
-        }
-        debugPrint('📝 [画面] ===========================================');
-      }
 
       if (mounted) {
         setState(() {
-          final previousCount = _historyPosts.length;
           _historyPosts = posts;
           _isLoading = false;
-
-          if (kDebugMode) {
-            debugPrint('📝 [画面] ========== 状態更新完了 ==========');
-            debugPrint('📝 [画面] 前回の件数: $previousCount件');
-            debugPrint('📝 [画面] 今回の件数: ${_historyPosts.length}件');
-            debugPrint('📝 [画面] リストに格納: ${_historyPosts.length}件');
-            if (_historyPosts.isNotEmpty) {
-              debugPrint('📝 [画面] 最初の項目ID: ${_historyPosts[0].id}');
-              debugPrint(
-                  '📝 [画面] 最後の項目ID: ${_historyPosts[_historyPosts.length - 1].id}');
-            }
-            debugPrint('📝 [画面] ===========================================');
-          }
         });
-      } else {
-        if (kDebugMode) {
-          debugPrint('⚠️ [画面] Widgetがマウントされていません。状態を更新しません。');
-        }
       }
-    } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('❌ [画面] ========== 視聴履歴取得エラー ==========');
-        debugPrint('❌ [画面] エラー: $e');
-        debugPrint('❌ [画面] スタックトレース: $stackTrace');
-        debugPrint('❌ [画面] ===========================================');
-      }
-
+    } catch (e) {
       if (mounted) {
         setState(() {
           _errorMessage = '視聴履歴の取得に失敗しました';
@@ -278,15 +217,9 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
 
             // 現在の画面を閉じてホーム画面に戻る
             Navigator.of(context).popUntil((route) => route.isFirst);
-
-            if (kDebugMode) {
-              debugPrint('📱 [画面] 投稿をタップ: ID=$postId, タイトル=${post.title}');
-            }
           }
         } catch (e) {
-          if (kDebugMode) {
-            debugPrint('⚠️ [画面] タップエラー: $e');
-          }
+          // ignore
         }
       },
       child: Container(
@@ -481,18 +414,11 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
   }
 
   Future<void> _handlePlaylistAdd(Post post) async {
-    if (kDebugMode) {
-      debugPrint('📂 [再生履歴] 再生リスト追加: postId=${post.id}');
-    }
-
     try {
       final playlists = await PlaylistService.getPlaylists();
       if (!mounted) return;
       _showPlaylistDialog(post, playlists);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ [再生履歴] プレイリスト取得エラー: $e');
-      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
